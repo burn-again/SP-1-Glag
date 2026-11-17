@@ -142,6 +142,13 @@ void glui_set_saved(int i, const gl_patch *p)
 }
 const gl_patch *glui_saved(int i) { return (unsigned)i < GL_NPIECES && saved_valid[i] ? &saved[i] : 0; }
 const gl_patch *glui_patch(void) { return &cur; }
+float glui_target(int f, int *c)
+{
+	target t = map(f & 3, layer_shift);
+	if (c)
+		*c = caught[f & 3];
+	return *t.val;
+}
 
 void glui_init(void)
 {

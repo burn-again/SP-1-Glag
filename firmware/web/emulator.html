@@ -1,0 +1,399 @@
+<title>Glag Emulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@600;700&display=swap">
+<style>
+/* Layout: the instrument on the left (faders, LED rows, buttons), the "screen it doesn't have" on the right; stacks on phones */
+:root {
+  --bg: #e9ebee; --fg: #1f2329; --muted: #626872; --line: #cdd1d7;
+  --body: #f6f6f4; --body-edge: #d4d6d9; --slot: #d9dce0; --thumb: #ffffff;
+  --led: #ff8a2a; --led-off: #c9ccd1; --ok: #2f7d4f; --warn: #a86a00; --bad: #b3261e;
+  --display: "Syne", system-ui, sans-serif; --text: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a;
+  --body: #23262b; --body-edge: #353a41; --slot: #17191c; --thumb: #c9ccd1;
+  --led: #ff9a45; --led-off: #383c43; --ok: #5cc28a; --warn: #e0a640; --bad: #f2776c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a;
+  --body: #23262b; --body-edge: #353a41; --slot: #17191c; --thumb: #c9ccd1;
+  --led: #ff9a45; --led-off: #383c43; --ok: #5cc28a; --warn: #e0a640; --bad: #f2776c; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--text); font-size: 15px; line-height: 1.5; }
+main { max-width: 1060px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+header h1 { font-family: var(--display); font-size: 2rem; margin: 0; line-height: 1.1; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 66ch; }
+.cols { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* the instrument */
+.device { background: var(--body); border: 1px solid var(--body-edge); border-radius: 28px; padding: 22px; display: grid; gap: 18px; box-shadow: 0 1px 0 var(--body-edge), 0 18px 40px -28px rgba(0,0,0,.45); }
+.row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.leds { display: flex; gap: 14px; align-items: center; }
+.led { width: 12px; height: 12px; border-radius: 50%; background: var(--led-off); transition: background .05s; }
+.rowlabel { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.faders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.fader { display: grid; justify-items: center; gap: 8px; }
+.track { position: relative; width: 44px; height: 220px; border-radius: 22px; background: var(--slot); touch-action: none; cursor: ns-resize; outline: none; }
+.track:focus-visible { box-shadow: 0 0 0 3px var(--led); }
+.fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 22px; background: color-mix(in srgb, var(--led) 22%, transparent); pointer-events: none; }
+.thumb { position: absolute; left: 4px; right: 4px; height: 26px; border-radius: 13px; background: var(--thumb); border: 1px solid var(--body-edge); pointer-events: none; }
+.ghost { position: absolute; left: -6px; right: -6px; height: 0; border-top: 2px dashed var(--led); transform: translateY(1px); pointer-events: none; }
+.ghost[hidden] { display: none !important; }
+.fname { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.tbtns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.btn { font: 500 14px var(--text); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; min-height: 44px; padding: 6px 10px; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; display: grid; justify-items: center; gap: 2px; }
+.btn small { font: 11px var(--mono); color: var(--muted); }
+.btn:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+.btn.down { background: color-mix(in srgb, var(--led) 30%, var(--bg)); border-color: var(--led); }
+.btnrow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 480px) { .btnrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } .track { height: 180px; } }
+.start { font: 600 15px var(--text); background: var(--fg); color: var(--bg); border: 0; border-radius: 12px; min-height: 48px; padding: 0 20px; cursor: pointer; }
+.start:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+
+/* the screen it doesn't have */
+.side { display: grid; gap: 16px; min-width: 0; }
+.panel { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
+.panel h2 { font-family: var(--display); font-size: 1.1rem; margin: 0; }
+.page { font-family: var(--display); font-size: 1.5rem; line-height: 1.15; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 6px 14px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.kv .k { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.kv .v { font-weight: 500; overflow-wrap: anywhere; }
+.kv .n { font-family: var(--mono); font-size: 13px; text-align: right; }
+.pick { font-family: var(--mono); font-size: 11px; color: var(--led); }
+.cpu { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cpu b { font-family: var(--display); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.pill { font: 12px var(--mono); border-radius: 999px; padding: 2px 10px; border: 1px solid currentColor; }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 66ch; }
+.keys { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
+.keys kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+details summary { cursor: pointer; font-weight: 500; }
+.map { font-size: 13px; display: grid; gap: 4px; margin-top: 8px; }
+.map b { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .led { transition: none; } }
+</style>
+
+<main>
+  <header>
+    <h1>Glag emulator</h1>
+    <p>The SP-1 firmware's own engine and controls, compiled for the browser. Everything the hardware does happens here the same way; the panel on the right is the screen the SP-1 doesn't have.</p>
+  </header>
+
+  <div class="cols">
+    <section class="device" aria-label="SP-1 controls">
+      <div class="row">
+        <button class="start" id="start" type="button">Start sound</button>
+        <span class="rowlabel" id="status">Sound is off</span>
+      </div>
+      <div class="row">
+        <span class="rowlabel">Track LEDs</span>
+        <div class="leds" id="ledt"><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span></div>
+      </div>
+      <div class="faders" id="faders"></div>
+      <div class="tbtns" id="tbtns"></div>
+      <div class="row">
+        <span class="rowlabel">Play row</span>
+        <div class="leds" id="ledp"><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span></div>
+      </div>
+      <div class="btnrow" id="btnrow"></div>
+    </section>
+
+    <div class="side">
+      <section class="panel" aria-live="polite">
+        <span class="rowlabel" id="piece">Piece 1</span>
+        <div class="page" id="pagename">Home</div>
+        <div class="kv" id="fmap"></div>
+      </section>
+      <section class="panel">
+        <h2>Channels</h2>
+        <div class="kv" id="chans"></div>
+        <p class="note">Hold •• and tap a T button on Home to change that channel's voice.</p>
+      </section>
+      <section class="panel">
+        <h2>SP-1 CPU, worst case</h2>
+        <div class="cpu"><b id="cpu">–</b><span class="pill" id="cpupill">–</span></div>
+        <p class="note">Estimated for these four voices at full activity and length, from the engine run on an emulated Cortex-M4 and scaled by how Plaits measured on real SP-1s. The hardware log will have the real number.</p>
+      </section>
+      <section class="panel">
+        <h2>Keyboard</h2>
+        <div class="keys">
+          <kbd>1</kbd><span>to <kbd>4</kbd>: T1 to T4</span>
+          <kbd>Shift</kbd><span>•• (hold it as the shift key; tap twice for Home)</span>
+          <kbd>Space</kbd><span>PLAY</span>
+          <kbd>[</kbd><span>RWD</span>
+          <kbd>]</kbd><span>FFWD</span>
+          <kbd>-</kbd><span><kbd>=</kbd>: VOL− and VOL+</span>
+          <kbd>↑</kbd><span><kbd>↓</kbd> on a focused fader moves it</span>
+        </div>
+        <details>
+          <summary>The whole control map</summary>
+          <div class="map">
+            <div><b>Home</b>: F1 tempo, F2 delay, F3 reverb, F4 DJ filter. T1 to T4 open a channel. •• + T changes that channel's voice.</div>
+            <div><b>Channel</b>: F1 activity, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, character).</div>
+            <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion.</div>
+            <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
+            <div><b>Rocker</b>: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
+          </div>
+        </details>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const WASM_B64 = "@@WASM@@";
+const VOICES = ["Pad", "Bells", "Bass", "Piano", "Marimba", "Drone", "Kalimba", "Flute", "Arp"];
+const PIECES = ["Terminal", "Gate Seven", "Long Wait", "Jet Lag", "Tarmac", "Night Flight", "Arrivals", "Lounge"];
+const MODES = ["Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian", "Pent maj", "Pent min"];
+const NOTES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const CHAR = ["Colour: warm to hollow", "Ratios: harmonic, bell, glass", "Glide and fifths", "Tine: 1:1, 2:1, 3:1",
+  "Ratio 2.5 to 5", "Interval: 5th, 4th, oct, 9th", "Brightness", "Vibrato", "Pattern: up, up-down, random, pedal"];
+/* worst-case cost per channel by voice, and the fixed part (model %, see host/cpu) */
+const CPU_BASE = 17.5, CPU_VOICE = [9.85, 11.75, 5.85, 6.5, 7.9, 8.0, 10.3, 4.5, 11.3], CPU_SCALE = 1.4;
+const B = { T1: 0, T2: 1, T3: 2, T4: 3, PLAY: 4, VOLUP: 5, VOLDN: 6, FFWD: 7, RWD: 8, FN: 9 };
+const PAGES = ["Home", "Channel", "Extended", "Harmony"];
+
+let faders = [0, 0, 0, 0], buttons = 0, node = null, ctx = null, state = null, patch = null;
+let pressed = 0;   /* buttons pressed since the engine last heard: a quick tap is never lost */
+
+/* ---- the instrument ---- */
+const fwrap = document.getElementById("faders");
+const fel = [];
+for (let f = 0; f < 4; f++) {
+  const d = document.createElement("div");
+  d.className = "fader";
+  d.innerHTML = `<div class="track" role="slider" tabindex="0" aria-label="Fader F${f + 1}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="fill"></div><div class="ghost" hidden></div><div class="thumb"></div></div><span class="fname">F${f + 1}</span>`;
+  fwrap.appendChild(d);
+  const tr = d.querySelector(".track");
+  fel.push({ tr, fill: d.querySelector(".fill"), thumb: d.querySelector(".thumb"), ghost: d.querySelector(".ghost") });
+  const set = (y) => { const r = tr.getBoundingClientRect(); setFader(f, 1 - (y - r.top) / r.height); };
+  tr.addEventListener("pointerdown", (e) => { tr.setPointerCapture(e.pointerId); set(e.clientY); });
+  tr.addEventListener("pointermove", (e) => { if (tr.hasPointerCapture(e.pointerId)) set(e.clientY); });
+  tr.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 0.1 : 0.02;
+    if (e.key === "ArrowUp") { setFader(f, faders[f] + step); e.preventDefault(); }
+    if (e.key === "ArrowDown") { setFader(f, faders[f] - step); e.preventDefault(); }
+  });
+}
+function setFader(f, v) {
+  faders[f] = Math.min(1, Math.max(0, v));
+  const e = fel[f];
+  e.fill.style.height = (faders[f] * 100) + "%";
+  e.thumb.style.bottom = `calc(${faders[f]} * (100% - 26px))`;   /* the knob stays inside its track */
+  e.tr.setAttribute("aria-valuenow", Math.round(faders[f] * 100));
+  send();
+}
+for (let f = 0; f < 4; f++) setFader(f, 0);
+
+function makeBtn(parent, label, sub, bit, key) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn";
+  b.innerHTML = label + (sub ? `<small>${sub}</small>` : "");
+  const press = (on) => { if (on) { buttons |= 1 << bit; pressed |= 1 << bit; } else buttons &= ~(1 << bit); b.classList.toggle("down", on); send(); };
+  b.addEventListener("pointerdown", (e) => { b.setPointerCapture(e.pointerId); press(true); });
+  b.addEventListener("pointerup", () => press(false));
+  b.addEventListener("pointercancel", () => press(false));
+  b.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { press(true); e.preventDefault(); } });
+  b.addEventListener("keyup", (e) => { if (e.key === "Enter" || e.key === " ") { press(false); e.preventDefault(); } });
+  parent.appendChild(b);
+  keymap[key] = { press, el: b };
+  return b;
+}
+const keymap = {};
+const tb = document.getElementById("tbtns");
+for (let t = 0; t < 4; t++) makeBtn(tb, "T" + (t + 1), "", t, String(t + 1));
+const br = document.getElementById("btnrow");
+makeBtn(br, "••", "shift", B.FN, "Shift");
+makeBtn(br, "PLAY", "", B.PLAY, " ");
+makeBtn(br, "RWD", "slow", B.RWD, "[");
+makeBtn(br, "FFWD", "freeze", B.FFWD, "]");
+makeBtn(br, "VOL−", "", B.VOLDN, "-");
+makeBtn(br, "VOL+", "", B.VOLUP, "=");
+
+/* shifted keys (•• is Shift) still mean the same button */
+const ALIAS = { "!": "1", "@": "2", "#": "3", "$": "4", "{": "[", "}": "]", "_": "-", "+": "=" };
+const keyFor = (e) => keymap[e.key] || keymap[ALIAS[e.key]];
+document.addEventListener("keydown", (e) => {
+  if (e.repeat || e.target.closest(".track") || e.target.closest(".btn")) return;
+  const k = keyFor(e);
+  if (k) { k.press(true); e.preventDefault(); }
+});
+document.addEventListener("keyup", (e) => {
+  const k = keyFor(e);
+  if (k) { k.press(false); e.preventDefault(); }
+});
+window.addEventListener("blur", () => { buttons = 0; document.querySelectorAll(".btn.down").forEach((b) => b.classList.remove("down")); send(); });
+
+function send() { if (node) { node.port.postMessage({ t: "in", f: faders, b: buttons, p: pressed }); pressed = 0; } }
+
+/* ---- the firmware, ticking and rendering: one driver, run in an AudioWorklet where the
+ * browser allows it, else in a ScriptProcessor on the page (the same code either way) ---- */
+class GlagCore {
+  constructor(opt) {
+    const m = new WebAssembly.Module(opt.wasm);
+    this.w = new WebAssembly.Instance(m, {}).exports;
+    for (const s of opt.saved) {                  /* saved pieces, before the UI starts */
+      new Uint8Array(this.w.memory.buffer).set(new Uint8Array(s.bytes), this.w.wg_scratch());
+      this.w.wg_set_saved(s.piece, 1);
+    }
+    this.w.wg_init(opt.seed);
+    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0;
+    this.frames = 0; this.f = [0, 0, 0, 0]; this.b = 0; this.p = 0; this.sent = 0; this.lastSave = 0;
+  }
+  input(f, b, p) { this.f = f; this.b = b; this.p |= p || 0; }
+  /* fill L and R; returns a state message about 33 times a second, else null */
+  run(L, R) {
+    const w = this.w;
+    for (let off = 0; off < L.length; off += 128) {
+      const len = Math.min(128, L.length - off);
+      w.wg_input(this.f[0], this.f[1], this.f[2], this.f[3], this.b | this.p);   /* a tap shows for one tick */
+      this.p = 0;
+      w.wg_tick(Math.floor(this.frames / 48));
+      while (this.n < len) {
+        const a = new Float32Array(w.memory.buffer, w.wg_render(48), 96);
+        for (let i = 0; i < 96; i++) this.fifo[(this.r + this.n * 2 + i) & 4095] = a[i];
+        this.n += 48;
+      }
+      for (let i = 0; i < len; i++) {
+        L[off + i] = this.fifo[this.r]; R[off + i] = this.fifo[(this.r + 1) & 4095];
+        this.r = (this.r + 2) & 4095;
+      }
+      this.n -= len;
+      this.frames += len;
+    }
+    if (this.frames - this.sent < 1440) return null;
+    this.sent = this.frames;
+    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 76).slice();
+    const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), 180).slice();
+    const msg = { t: "st", st: st.buffer, pt: pt.buffer };
+    const slot = st[13];
+    if (slot && slot !== this.lastSave) {
+      this.lastSave = slot;
+      msg.save = { piece: slot - 1, bytes: new Uint8Array(w.memory.buffer, w.wg_saved(slot - 1), 180).slice().buffer };
+    }
+    return msg;
+  }
+}
+const WORKLET = GlagCore.toString() + `
+class GlagNode extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.core = new GlagCore(o.processorOptions);
+    this.port.onmessage = (e) => { if (e.data.t === "in") this.core.input(e.data.f, e.data.b, e.data.p); };
+  }
+  process(_, outs) {
+    const out = outs[0];
+    const msg = this.core.run(out[0], out[1] || out[0]);
+    if (msg) this.port.postMessage(msg);
+    return true;
+  }
+}
+registerProcessor("glag", GlagNode);`;
+
+function b64(s) { const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+function loadSaved() {
+  const out = [];
+  try { for (let p = 0; p < 8; p++) { const s = localStorage.getItem("glag-piece-" + p); if (s) out.push({ piece: p, bytes: b64(s) }); } } catch (e) {}
+  return out;
+}
+function storeSaved(piece, bytes) {
+  try { let s = ""; const u = new Uint8Array(bytes); for (const x of u) s += String.fromCharCode(x); localStorage.setItem("glag-piece-" + piece, btoa(s)); } catch (e) {}
+}
+
+const startBtn = document.getElementById("start"), status = document.getElementById("status");
+startBtn.addEventListener("click", async () => {
+  if (ctx) {
+    if (ctx.state === "running") { await ctx.suspend(); startBtn.textContent = "Start sound"; status.textContent = "Sound is off"; }
+    else { await ctx.resume(); startBtn.textContent = "Stop sound"; status.textContent = "Playing"; }
+    return;
+  }
+  ctx = new AudioContext({ sampleRate: 48000 });
+  const opt = { wasm: b64(WASM_B64), seed: (Math.random() * 4294967295) >>> 0, saved: loadSaved() };
+  const onState = (data) => {
+    state = new DataView(data.st);
+    patch = new DataView(data.pt);
+    if (data.save) storeSaved(data.save.piece, data.save.bytes);
+    draw();
+  };
+  try {
+    const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+    await ctx.audioWorklet.addModule(url);
+    const w = new AudioWorkletNode(ctx, "glag", { numberOfOutputs: 1, outputChannelCount: [2], processorOptions: opt });
+    w.port.onmessage = (e) => { if (e.data.t === "st") onState(e.data); };
+    w.connect(ctx.destination);
+    node = { port: w.port };
+  } catch (err) {
+    /* no worklet here (a local file, an older browser): run the same driver on the page */
+    const core = new GlagCore(opt);
+    const sp = ctx.createScriptProcessor(1024, 0, 2);
+    sp.onaudioprocess = (e) => {
+      const msg = core.run(e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1));
+      if (msg) onState(msg);
+    };
+    sp.connect(ctx.destination);
+    node = { port: { postMessage: (m) => { if (m.t === "in") core.input(m.f, m.b, m.p); } } };
+  }
+  send();
+  startBtn.textContent = "Stop sound";
+  status.textContent = "Playing";
+});
+
+/* ---- the screen it doesn't have ---- */
+const ledT = [...document.querySelectorAll("#ledt .led")], ledP = [...document.querySelectorAll("#ledp .led")];
+const g = (i) => patch.getFloat32(148 + i * 4, true);
+const ch = (c, p) => patch.getFloat32(4 + (c * 9 + p) * 4, true);
+const pct = (v) => Math.round(v * 100) + "%";
+const steps = (v, n) => Math.round(v * (n - 1));
+function filterText(v) { return v < 0.47 ? "Low-pass " + pct((0.47 - v) / 0.47) : v > 0.53 ? "High-pass " + pct((v - 0.53) / 0.47) : "Off"; }
+function driftText(v) { const s = 10 * Math.pow(24, 1 - v); return s < 60 ? Math.round(s) + " s" : Math.floor(s / 60) + " min " + Math.round(s % 60) + " s"; }
+function panText(v) { return Math.abs(v - 0.5) < 0.01 ? "Centre" : v < 0.5 ? "Left " + pct((0.5 - v) * 2) : "Right " + pct((v - 0.5) * 2); }
+
+function rows() {
+  const page = state.getUint8(8), c = state.getUint8(9), shift = (buttons >> B.FN) & 1;
+  const voice = (k) => VOICES[patch.getUint8(k)] || "?";
+  if (shift) return { title: "Levels (•• held)", r: [0, 1, 2, 3].map((k) => [`Level ${k + 1}`, voice(k), pct(ch(k, 8))]) };
+  if (page === 0) return { title: "Home", r: [
+    ["Tempo", "", Math.round(30 + 90 * g(0)) + " BPM"], ["Delay", "", pct(g(1))], ["Reverb", "", pct(g(2))], ["Filter", "", filterText(g(3))]] };
+  if (page === 1) return { title: `Channel ${c + 1}: ${voice(c)}`, r: [
+    ["Activity", "", pct(ch(c, 0))], ["Tone", "", pct(ch(c, 1))], ["Length", "", pct(ch(c, 2))],
+    ["Register", "", ((steps(ch(c, 3), 5) - 2) > 0 ? "+" : "") + (steps(ch(c, 3), 5) - 2) + " oct"]] };
+  if (page === 2) { const vi = patch.getUint8(c); return { title: `Channel ${c + 1}: ${voice(c)}, extended`, r: [
+    ["Echo send", "", pct(ch(c, 4))], ["Reverb send", "", pct(ch(c, 5))], ["Pan", "", panText(ch(c, 6))], ["Character", CHAR[vi] || "", pct(ch(c, 7))]] }; }
+  return { title: "Harmony", r: [
+    ["Root", "", NOTES[steps(g(4), 12)]], ["Mode", "", MODES[steps(g(5), 8)]], ["Drift", "", driftText(g(6))], ["Motion", "", pct(g(7))]] };
+}
+
+function draw() {
+  if (!state) return;
+  for (let i = 0; i < 4; i++) {
+    const a = state.getUint8(i) / 255, b = state.getUint8(4 + i) / 255;
+    ledT[i].style.background = a > 0.02 ? `color-mix(in srgb, var(--led) ${Math.round(a * 100)}%, var(--led-off))` : "";
+    ledP[i].style.background = b > 0.02 ? `color-mix(in srgb, var(--led) ${Math.round(b * 100)}%, var(--led-off))` : "";
+    const tgt = state.getFloat32(28 + i * 4, true), caught = state.getInt32(44 + i * 4, true);
+    const e = fel[i];
+    e.ghost.hidden = !!caught;
+    e.ghost.style.bottom = `calc(13px + ${tgt} * (100% - 26px))`;   /* level with the knob's centre */
+  }
+  const pc = state.getUint8(10);
+  document.getElementById("piece").textContent = `Piece ${pc + 1}: ${PIECES[pc]}` + (state.getUint8(12) ? "  ·  frozen" : "") + (state.getUint8(11) ? "" : "  ·  resting") +
+    (state.getFloat32(20, true) < 0.99 ? `  ·  slowing ${Math.round(state.getFloat32(20, true) * 100)}%` : "");
+  const m = rows();
+  document.getElementById("pagename").textContent = m.title;
+  document.getElementById("fmap").innerHTML = m.r.map((r, i) => {
+    const caught = state.getInt32(44 + i * 4, true);
+    return `<span class="k">F${i + 1}</span><span class="v">${r[0]}${r[1] ? ` <span class="k">${r[1]}</span>` : ""}${caught ? "" : ' <span class="pick">move to the dashed line</span>'}</span><span class="n">${r[2]}</span>`;
+  }).join("");
+  let cpu = CPU_BASE;
+  document.getElementById("chans").innerHTML = [0, 1, 2, 3].map((k) => {
+    const v = patch.getUint8(k);
+    cpu += CPU_VOICE[v] || 0;
+    return `<span class="k">T${k + 1}</span><span class="v">${VOICES[v]}</span><span class="n">${pct(ch(k, 8))}</span>`;
+  }).join("");
+  const est = Math.round(cpu * CPU_SCALE);
+  document.getElementById("cpu").textContent = est + "%";
+  const pill = document.getElementById("cpupill");
+  pill.textContent = est < 75 ? "comfortable" : est <= 90 ? "tight" : "over budget";
+  pill.className = "pill " + (est < 75 ? "ok" : est <= 90 ? "warn" : "bad");
+}
+</script>

@@ -60,6 +60,9 @@ void glui_init(void);
 void glui_set_saved(int piece, const gl_patch *p);
 const gl_patch *glui_saved(int piece);  /* NULL if that piece was never saved */
 const gl_patch *glui_patch(void);       /* what is playing */
+/* What fader f (0..3) controls right now: its stored value, and whether the fader has picked
+ * it up yet (soft takeover). For emulators and logs. */
+float glui_target(int f, int *caught);
 /* Call every few milliseconds. Posts to the engine itself. */
 void glui_tick(uint32_t now_ms, const gl_input *in, gl_ui_out *out);
 
