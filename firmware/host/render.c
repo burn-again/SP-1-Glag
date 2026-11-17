@@ -1,0 +1,53 @@
+/* Render a piece to a WAV on a computer: render PIECE SECONDS OUT.wav [voices e.g. 0127] */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "glag_engine.h"
+
+static void wav_header(FILE *f, uint32_t frames)
+{
+	uint32_t ds = frames * 4u, u;
+	uint16_t h;
+	fwrite("RIFF", 1, 4, f); u = 36 + ds; fwrite(&u, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f);
+	u = 16; fwrite(&u, 4, 1, f); h = 1; fwrite(&h, 2, 1, f); h = 2; fwrite(&h, 2, 1, f);
+	u = 48000; fwrite(&u, 4, 1, f); u = 192000; fwrite(&u, 4, 1, f); h = 4; fwrite(&h, 2, 1, f);
+	h = 16; fwrite(&h, 2, 1, f); fwrite("data", 1, 4, f); fwrite(&ds, 4, 1, f);
+}
+
+int main(int argc, char **argv)
+{
+	if (argc < 4) { fprintf(stderr, "render PIECE SECONDS OUT.wav [VOICES]\n"); return 2; }
+	int piece = atoi(argv[1]);
+	float secs = (float)atof(argv[2]);
+	gl_init(1234);
+	gl_patch p;
+	gl_piece(piece, &p);
+	if (argc > 4)
+		for (int c = 0; c < GL_NCH && argv[4][c]; c++)
+			p.voice[c] = (uint8_t)(argv[4][c] - '0');
+	if (argc > 5)   /* channel mask, e.g. 0100 keeps channel 2 only */
+		for (int c = 0; c < GL_NCH && argv[5][c]; c++)
+			if (argv[5][c] == '0')
+				p.ch[c][CP_LEVEL] = 0.0f;
+	if (getenv("DRY")) { p.g[GP_REVERB] = 0; p.g[GP_DELAY] = 0; for (int c = 0; c < GL_NCH; c++) p.ch[c][CP_VERB] = p.ch[c][CP_ECHO] = 0; }
+	gl_post_patch(&p);
+	uint32_t frames = (uint32_t)(secs * 48000.0f) / 96u * 96u;
+	FILE *f = fopen(argv[3], "wb");
+	wav_header(f, frames);
+	int16_t blk[192];
+	double sum2 = 0; int clip = 0, peak = 0;
+	for (uint32_t n = 0; n < frames; n += 96) {
+		gl_render(blk, 96, 0.8f);
+		for (int i = 0; i < 192; i++) {
+			int a = abs(blk[i]);
+			if (a > peak) peak = a;
+			if (a >= 31990) clip++;
+			sum2 += (double)blk[i] * blk[i];
+		}
+		fwrite(blk, 2, 192, f);
+	}
+	fclose(f);
+	printf("%s: piece %d (%s) rms %.1f dBFS peak %.1f dBFS clipped %d\n", argv[3], piece, gl_piece_name(piece),
+	       10 * __builtin_log10(sum2 / (frames * 2.0) / (32768.0 * 32768.0) + 1e-20), 20 * __builtin_log10(peak / 32768.0 + 1e-9), clip);
+	return 0;
+}
