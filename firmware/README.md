@@ -106,6 +106,12 @@ LED at that end). While •• + VOL is held, the play row fills toward the 3 s 
 Distortion costs about 6-10 % of the CPU in the model, so while it is on the voice budget gives up
 two voices.
 
+## The manual
+
+`manual/glag-manual.html` is the visual manual: an interactive control map (choose a page and the
+faders, buttons and lights change), how the pages connect, every gesture, distortion, the light
+language, the voices, the pieces and power. Open it in any browser.
+
 ## The emulator
 
 `web/` builds the engine and the controls to WebAssembly and runs them in a page with the SP-1's

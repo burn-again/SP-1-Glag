@@ -1,0 +1,515 @@
+<title>Glag Manual</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@600;700&display=swap">
+<style>
+/* Layout: one column of chapters; the first is an interactive control map (the instrument on the left,
+   what everything does on the chosen page on the right). Same tokens as the Glag emulator and listening room. */
+:root {
+  --bg: #e9ebee; --fg: #1f2329; --muted: #5e646e; --line: #cdd1d7; --panel: #f6f6f4;
+  --body: #f6f6f4; --body-edge: #cfd2d6; --slot: #d9dce0; --thumb: #ffffff;
+  --led: #ff8a2a; --led-off: #c9ccd1; --led-ink: #a8500f;
+  --display: "Syne", system-ui, sans-serif; --text: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a; --panel: #1d2024;
+  --body: #23262b; --body-edge: #363b42; --slot: #17191c; --thumb: #c9ccd1;
+  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a; --panel: #1d2024;
+  --body: #23262b; --body-edge: #363b42; --slot: #17191c; --thumb: #c9ccd1;
+  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--text); font-size: 15px; line-height: 1.55; }
+main { max-width: 1080px; margin: 0 auto; padding-block: 32px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 48px; }
+h1 { font-family: var(--display); font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.05; margin: 0; letter-spacing: -0.01em; }
+h2 { font-family: var(--display); font-size: 1.5rem; line-height: 1.15; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--display); font-size: 1.1rem; margin: 0; }
+p { margin: 0; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--led-ink); }
+.lede { color: var(--muted); max-width: 68ch; margin-top: 10px; }
+.chapter { display: grid; gap: 18px; }
+.chapter > header { display: grid; gap: 6px; max-width: 72ch; }
+.chapter > header p { color: var(--muted); }
+kbd, .key { font-family: var(--mono); font-size: 12.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; background: var(--panel); white-space: nowrap; color: var(--fg); }
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+nav.toc a { font-family: var(--mono); font-size: 13px; color: var(--fg); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--led); outline: none; }
+
+/* ---- control map ---- */
+.map { display: grid; grid-template-columns: minmax(0, 470px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 880px) { .map { grid-template-columns: minmax(0, 1fr); } }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tab { font: 500 14px var(--text); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-height: 40px; padding: 6px 14px; cursor: pointer; }
+.tab[aria-selected="true"] { border-color: var(--led); background: color-mix(in srgb, var(--led) 18%, var(--panel)); }
+.tab:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+.device svg { width: 100%; height: auto; display: block; }
+.device figcaption { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 8px; }
+.svg-body { fill: var(--body); stroke: var(--body-edge); stroke-width: 1.5; }
+.svg-slot { fill: var(--slot); }
+.svg-thumb { fill: var(--thumb); stroke: var(--body-edge); }
+.svg-fill { fill: var(--led); opacity: .22; }
+.svg-btn { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+.svg-btn.hot { stroke: var(--led); stroke-width: 2; fill: color-mix(in srgb, var(--led) 16%, var(--bg)); }
+.svg-led { fill: var(--led-off); }
+.svg-txt { fill: var(--fg); font: 500 13px var(--text); }
+.svg-small { fill: var(--muted); font: 11px var(--mono); letter-spacing: .04em; }
+.svg-flabel { fill: var(--fg); font: 600 12.5px var(--text); }
+.svg-fsub { fill: var(--muted); font: 10.5px var(--mono); }
+.detail { display: grid; gap: 14px; min-width: 0; }
+.detail .pagename { font-family: var(--display); font-size: 1.6rem; line-height: 1.1; }
+.detail .how { color: var(--muted); }
+.rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; align-items: baseline; }
+.rows dt { font-family: var(--mono); font-size: 12.5px; color: var(--led-ink); white-space: nowrap; }
+.rows dd { margin: 0; min-width: 0; }
+.rows dd b { font-weight: 600; }
+.rows dd span { color: var(--muted); }
+
+/* ---- LED pictures ---- */
+.ledrow { display: inline-flex; gap: 7px; align-items: center; vertical-align: middle; }
+.ledrow i { width: 11px; height: 11px; border-radius: 50%; background: var(--led-off); display: block; }
+.ledrow i.on { background: var(--led); box-shadow: 0 0 6px color-mix(in srgb, var(--led) 60%, transparent); }
+.ledrow i.dim { background: color-mix(in srgb, var(--led) 28%, var(--led-off)); }
+.ledrow i.half { background: color-mix(in srgb, var(--led) 55%, var(--led-off)); }
+.a-breathe { animation: breathe 2s ease-in-out infinite; }
+.a-blink250 { animation: blink .5s steps(1) infinite; }
+.a-blinkslow { animation: blink .6s steps(1) infinite; }
+.a-blinkfast { animation: blink .18s steps(1) infinite; }
+.a-find { animation: blink .24s steps(1) infinite; }
+.a-flash { animation: blink .3s steps(1) 3; }
+.a-pulse { animation: breathe 1.2s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { background: color-mix(in srgb, var(--led) 12%, var(--led-off)); box-shadow: none; } 50% { background: color-mix(in srgb, var(--led) 45%, var(--led-off)); } }
+@keyframes blink { 0% { background: var(--led); } 50% { background: var(--led-off); box-shadow: none; } }
+.chase i { animation: chase 1.2s steps(1) infinite; background: color-mix(in srgb, var(--led) 18%, var(--led-off)); }
+.chase i:nth-child(2) { animation-delay: .3s; } .chase i:nth-child(3) { animation-delay: .6s; } .chase i:nth-child(4) { animation-delay: .9s; }
+@keyframes chase { 0% { background: var(--led); } 25% { background: color-mix(in srgb, var(--led) 18%, var(--led-off)); } }
+.sweep-up i { animation: sweep 1.6s steps(1) infinite; }
+.sweep-up i:nth-child(2) { animation-delay: .1s; } .sweep-up i:nth-child(3) { animation-delay: .2s; } .sweep-up i:nth-child(4) { animation-delay: .3s; }
+.sweep-down i { animation: sweep 1.6s steps(1) infinite; }
+.sweep-down i:nth-child(3) { animation-delay: .1s; } .sweep-down i:nth-child(2) { animation-delay: .2s; } .sweep-down i:nth-child(1) { animation-delay: .3s; }
+@keyframes sweep { 0% { background: var(--led); } 6.25% { background: var(--led-off); } }
+.fill i { animation: fillup 3s steps(1) infinite; }
+.fill i:nth-child(2) { animation-delay: .75s; } .fill i:nth-child(3) { animation-delay: 1.5s; } .fill i:nth-child(4) { animation-delay: 2.25s; }
+@keyframes fillup { 0% { background: var(--led); } }
+@media (prefers-reduced-motion: reduce) {
+  .ledrow i, .chase i, .sweep-up i, .sweep-down i, .fill i { animation: none !important; }
+}
+
+/* ---- tables and cards ---- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+th, td { text-align: left; padding: 10px 14px; vertical-align: top; border-top: 1px solid var(--line); }
+thead th { border-top: 0; font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td.g { white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card .k { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: .04em; }
+.card .pic { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.voice h3 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.voice .num { font-family: var(--mono); font-size: 12px; color: var(--led-ink); }
+.voice .f4 { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.note { font-size: 13.5px; color: var(--muted); max-width: 72ch; }
+.flow svg { width: 100%; height: auto; display: block; max-width: 900px; }
+.flow-box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.flow-box.home { stroke: var(--led); stroke-width: 2; }
+.flow-t { fill: var(--fg); font: 600 15px var(--display); }
+.flow-s { fill: var(--muted); font: 11.5px var(--mono); }
+.flow-a { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.flow-head { fill: var(--muted); }
+.flow-lbl { fill: var(--led-ink); font: 11.5px var(--mono); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+.warn { border-left: 3px solid var(--led); padding: 4px 0 4px 14px; }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">SP-1 firmware · version 0.3</div>
+    <h1>Glag manual</h1>
+    <p class="lede">Glag turns the SP-1 into a generative ambient instrument. It plays itself from the moment it is switched on: four channels, each holding one of fifteen voices, drawing on one scale and one slowly drifting chord, through an echo and a reverb. You tend it rather than play it. This manual covers every control, every page and every light.</p>
+    <nav class="toc" aria-label="Chapters">
+      <a href="#controls">Control map</a><a href="#pages">Getting around</a><a href="#anywhere">Anywhere</a>
+      <a href="#distortion">Distortion</a><a href="#lights">Reading the lights</a><a href="#voices">Voices</a>
+      <a href="#pieces">Pieces</a><a href="#power">Power</a>
+    </nav>
+  </header>
+
+  <!-- ============================================================ control map -->
+  <section class="chapter" id="controls" aria-labelledby="h-controls">
+    <header>
+      <div class="eyebrow">1 · The controls</div>
+      <h2 id="h-controls">Control map</h2>
+      <p>The SP-1 has four faders, four track buttons with a light above each, a row of four play lights, PLAY, ••, a volume rocker and a FFWD / RWD rocker. What the faders and track buttons do depends on the page you are on. Choose a page to see the map change.</p>
+    </header>
+    <div class="tabs" role="tablist" aria-label="Page">
+      <button class="tab" role="tab" id="tab-home" aria-selected="true" data-page="home">Home</button>
+      <button class="tab" role="tab" id="tab-ch" aria-selected="false" data-page="ch">Channel</button>
+      <button class="tab" role="tab" id="tab-ext" aria-selected="false" data-page="ext">Extended</button>
+      <button class="tab" role="tab" id="tab-har" aria-selected="false" data-page="har">Harmony</button>
+      <button class="tab" role="tab" id="tab-shift" aria-selected="false" data-page="shift">•• held</button>
+    </div>
+    <div class="map">
+      <figure class="device" style="margin:0">
+        <svg viewBox="0 0 470 560" role="img" aria-labelledby="svg-title">
+          <title id="svg-title">Schematic of the SP-1's controls, labelled for the chosen page</title>
+          <rect class="svg-body" x="4" y="4" width="462" height="552" rx="34"/>
+          <text class="svg-small" x="34" y="44">TRACK LIGHTS</text>
+          <g id="tleds"></g>
+          <g id="faders"></g>
+          <g id="tbtns"></g>
+          <text class="svg-small" x="34" y="448">PLAY LIGHTS</text>
+          <g id="pleds"></g>
+          <g id="btnrow"></g>
+        </svg>
+        <figcaption>Schematic, not to scale: it shows every control and how they relate, not the SP-1's exact shape.</figcaption>
+      </figure>
+      <div class="detail" aria-live="polite">
+        <div>
+          <div class="pagename" id="d-name">Home</div>
+          <p class="how" id="d-how"></p>
+        </div>
+        <dl class="rows" id="d-faders"></dl>
+        <dl class="rows" id="d-buttons"></dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ pages -->
+  <section class="chapter" id="pages" aria-labelledby="h-pages">
+    <header>
+      <div class="eyebrow">2 · Pages</div>
+      <h2 id="h-pages">Getting around</h2>
+      <p>Glag starts on Home. Every channel has its own page and an extended page behind it. Harmony is one page for the whole instrument. Tap •• twice from anywhere to come back Home.</p>
+    </header>
+    <div class="flow" style="overflow-x:auto">
+      <svg viewBox="0 0 900 330" role="img" aria-labelledby="flow-title" style="min-width:640px">
+        <title id="flow-title">How the pages connect</title>
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="flow-head" d="M0 0 L10 5 L0 10 z"/></marker></defs>
+        <rect class="flow-box home" x="20" y="125" width="180" height="96" rx="14"/>
+        <text class="flow-t" x="110" y="160" text-anchor="middle">Home</text>
+        <text class="flow-s" x="110" y="182" text-anchor="middle">tempo · delay</text>
+        <text class="flow-s" x="110" y="198" text-anchor="middle">reverb · filter</text>
+        <rect class="flow-box" x="370" y="40" width="200" height="96" rx="14"/>
+        <text class="flow-t" x="470" y="75" text-anchor="middle">Channel 1-4</text>
+        <text class="flow-s" x="470" y="97" text-anchor="middle">activity · tone</text>
+        <text class="flow-s" x="470" y="113" text-anchor="middle">length · register</text>
+        <rect class="flow-box" x="680" y="40" width="200" height="96" rx="14"/>
+        <text class="flow-t" x="780" y="75" text-anchor="middle">Extended 1-4</text>
+        <text class="flow-s" x="780" y="97" text-anchor="middle">echo · reverb</text>
+        <text class="flow-s" x="780" y="113" text-anchor="middle">pan · character</text>
+        <rect class="flow-box" x="370" y="215" width="200" height="96" rx="14"/>
+        <text class="flow-t" x="470" y="250" text-anchor="middle">Harmony</text>
+        <text class="flow-s" x="470" y="272" text-anchor="middle">root · mode</text>
+        <text class="flow-s" x="470" y="288" text-anchor="middle">drift · motion</text>
+        <path class="flow-a" d="M200 150 C 280 120, 300 95, 368 88" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="250" y="106">T1-T4</text>
+        <path class="flow-a" d="M570 70 L 678 70" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="624" y="28" text-anchor="middle">•• + its own T</text>
+        <path class="flow-a" d="M678 108 L 572 108" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="624" y="160" text-anchor="middle">back: •• + its own T,</text>
+        <text class="flow-lbl" x="624" y="176" text-anchor="middle">or any T</text>
+        <path class="flow-a" d="M200 195 C 280 220, 300 250, 368 260" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="214" y="250">•• + PLAY once</text>
+        <path class="flow-a" d="M470 215 L 470 138" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="480" y="182">T1-T4</text>
+        <text class="flow-lbl" x="20" y="30">From any page: •• twice → Home</text>
+        <text class="flow-lbl" x="20" y="50">On Home: •• + T1-T4 → next voice</text>
+      </svg>
+    </div>
+    <p class="note"><b>Faders pick up.</b> When you change page, a fader does nothing until it reaches the value it would change. Move it and the play lights blink that value, so you can find it. Once it passes through, it takes over. The emulator draws this as a dashed line on each fader.</p>
+  </section>
+
+  <!-- ============================================================ anywhere -->
+  <section class="chapter" id="anywhere" aria-labelledby="h-anywhere">
+    <header>
+      <div class="eyebrow">3 · On every page</div>
+      <h2 id="h-anywhere">Anywhere</h2>
+      <p>These work the same on every page. •• is the shift button: hold it, then press the other control.</p>
+    </header>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Gesture</th><th scope="col">Does</th><th scope="col">The lights</th></tr></thead>
+        <tbody>
+          <tr><td class="g"><span class="key">PLAY</span></td><td>Grow or rest. Resting stops new notes; what is ringing rings on.</td><td>The play lights go quiet with the notes</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> once</td><td>Harmony page</td><td><span class="ledrow chase"><i></i><i></i><i></i><i></i></span> on the track lights</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> twice</td><td>Next piece (12, then back to 1)</td><td>The piece number on the play lights</td></tr>
+          <tr><td class="g"><span class="key">••</span> held + faders</td><td>The four channel levels: F1 channel 1 … F4 channel 4</td><td>The level as a bar while you move</td></tr>
+          <tr><td class="g"><span class="key">••</span> twice</td><td>Home</td><td><span class="ledrow"><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i></span> breathing</td></tr>
+          <tr><td class="g"><span class="key">FFWD</span> tap</td><td>Freeze, latched: the chord holds, no new notes, the reverb rings forever. Tap again to let go.</td><td><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</td></tr>
+          <tr><td class="g"><span class="key">FFWD</span> held</td><td>Freeze until you let go</td><td>A still glow</td></tr>
+          <tr><td class="g"><span class="key">RWD</span> held</td><td>The record slows to 10 BPM over 10 s, pitch and tempo together. Let go and it springs back.</td><td>The play lights dim as it slows</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span></td><td>Randomize the piece. Voices are kept and the DJ filter left open.</td><td><span class="ledrow sweep-up"><i></i><i></i><i></i><i></i></span> sweeps up</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span></td><td>Undo the last randomize or piece change. Again redoes it.</td><td><span class="ledrow sweep-down"><i></i><i></i><i></i><i></i></span> sweeps down</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 2 s</td><td>Save the piece to its slot. It comes back whenever you step to that piece (until power-off in 0.3).</td><td>All eight lights flash three times</td></tr>
+          <tr><td class="g"><span class="key">VOL−</span> <span class="key">VOL+</span></td><td>Output level, 3 dB steps</td><td>The level as a bar for a second</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> / <span class="key">VOL+</span></td><td>Distortion (next chapter)</td><td>Type and amount</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ distortion -->
+  <section class="chapter" id="distortion" aria-labelledby="h-dist">
+    <header>
+      <div class="eyebrow">4 · Colour</div>
+      <h2 id="h-dist">Distortion</h2>
+      <p>Five shapers on the volume rocker with •• held. They sit outside the pieces, so changing piece or randomizing leaves them as they are.</p>
+    </header>
+    <div class="two">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Gesture</th><th scope="col">Does</th></tr></thead>
+          <tbody>
+            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> tap</td><td>Amount: off → 1 → 2 → 3 → 4 → off</td></tr>
+            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL+</span> tap</td><td>Type: Chebyshev → Overdrive → Fuzz → Fold → XOR</td></tr>
+            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> held 3 s</td><td>Off, and everything back to default: Chebyshev, off, before the effects</td></tr>
+            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL+</span> held 3 s</td><td>Swap between before the delay and reverb (default) and after them</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">
+        <div class="card"><span class="k">Amount 2, before the effects</span><div class="pic"><span class="ledrow"><i class="on"></i><i class="on"></i><i></i><i></i></span> fills from the •• end</div></div>
+        <div class="card"><span class="k">Amount 2, after the effects</span><div class="pic"><span class="ledrow"><i></i><i></i><i class="on"></i><i class="on"></i></span> fills from the PLAY end</div></div>
+        <div class="card"><span class="k">Off, before the effects</span><div class="pic"><span class="ledrow"><i class="dim"></i><i></i><i></i><i></i></span> one dim light marks the end</div></div>
+        <div class="card"><span class="k">Holding for 3 s</span><div class="pic"><span class="ledrow fill"><i></i><i></i><i></i><i></i></span> fills toward 3 s</div></div>
+      </div>
+    </div>
+    <p class="note">Every click shows both settings at once: the <b>type</b> on the track lights, as a number (Chebyshev 1, Overdrive 2, Fuzz 3, Fold 4, XOR 5, read as in <a href="#lights">Reading the lights</a>), and the <b>amount</b> on the play lights. A hold never also counts as a tap. Holding •• with the volume rocker can't power the SP-1 off.</p>
+    <div class="grid">
+      <div class="card"><h3>Chebyshev</h3><p>A harmonic exciter. It adds the octave and the twelfth above whatever plays, the same at any volume. It colours rather than crushes.</p></div>
+      <div class="card"><h3>Overdrive</h3><p>Soft saturation, warmer and denser at each step.</p></div>
+      <div class="card"><h3>Fuzz</h3><p>An uneven hard clip with a buzz.</p></div>
+      <div class="card"><h3>Fold</h3><p>A wavefolder: past the edge, the wave turns back on itself.</p></div>
+      <div class="card"><h3>XOR</h3><p>Digital grit: the sound crushed to fewer bits and scrambled against its own last sample.</p></div>
+      <div class="card"><h3>Before or after</h3><p><b>Before</b>: the instruments are distorted and the delay and reverb carry them. <b>After</b>: the whole mix is, tails included, ahead of the DJ filter, so the filter can tame a fuzz.</p></div>
+    </div>
+    <p class="note">Each step changes the colour more than the loudness: amount 1 sits close to the clean level, and each step adds a little. While distortion is on, one or two fewer notes can sound at once, which keeps the SP-1's processor within its budget.</p>
+  </section>
+
+  <!-- ============================================================ lights -->
+  <section class="chapter" id="lights" aria-labelledby="h-lights">
+    <header>
+      <div class="eyebrow">5 · No screen</div>
+      <h2 id="h-lights">Reading the lights</h2>
+      <p>The <b>track lights</b> say where you are. The <b>play lights</b> show the music, or for a moment whatever you just touched. Lights numbered here run from the •• end to the PLAY end.</p>
+    </header>
+    <h3>Where you are (track lights)</h3>
+    <div class="grid">
+      <div class="card"><span class="k">Home</span><div class="pic"><span class="ledrow"><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i></span> all four breathing</div></div>
+      <div class="card"><span class="k">Channel 2</span><div class="pic"><span class="ledrow"><i></i><i class="on"></i><i></i><i></i></span> its light on</div></div>
+      <div class="card"><span class="k">Channel 2, extended</span><div class="pic"><span class="ledrow"><i></i><i class="on a-blink250"></i><i></i><i></i></span> its light blinking</div></div>
+      <div class="card"><span class="k">Harmony</span><div class="pic"><span class="ledrow chase"><i></i><i></i><i></i><i></i></span> a slow chase</div></div>
+    </div>
+    <h3>Numbers (voices, pieces, distortion types)</h3>
+    <p class="note">The light's position gives 1 to 4. How it lights gives the group of four.</p>
+    <div class="grid">
+      <div class="card"><span class="k">1-4 · steady</span><div class="pic"><span class="ledrow"><i></i><i></i><i class="on"></i><i></i></span> = 3</div></div>
+      <div class="card"><span class="k">5-8 · slow blink</span><div class="pic"><span class="ledrow"><i></i><i></i><i class="on a-blinkslow"></i><i></i></span> = 7</div></div>
+      <div class="card"><span class="k">9-12 · fast blink</span><div class="pic"><span class="ledrow"><i class="on a-blinkfast"></i><i></i><i></i><i></i></span> = 9</div></div>
+      <div class="card"><span class="k">13-16 · breathing</span><div class="pic"><span class="ledrow"><i></i><i class="a-pulse"></i><i></i><i></i></span> = 14</div></div>
+    </div>
+    <h3>What you touched (play lights)</h3>
+    <div class="grid">
+      <div class="card"><span class="k">A value, while a fader moves</span><div class="pic"><span class="ledrow"><i class="on"></i><i class="on"></i><i class="half"></i><i></i></span> a bar, for a second</div></div>
+      <div class="card"><span class="k">Picking a fader up</span><div class="pic"><span class="ledrow"><i class="on a-find"></i><i class="on a-find"></i><i></i><i></i></span> the value to reach, blinking</div></div>
+      <div class="card"><span class="k">The music</span><div class="pic"><span class="ledrow"><i class="half"></i><i class="dim"></i><i class="on"></i><i class="dim"></i></span> one light per channel, glowing as it plays</div></div>
+      <div class="card"><span class="k">Frozen</span><div class="pic"><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</div></div>
+      <div class="card"><span class="k">Saved</span><div class="pic"><span class="ledrow"><i class="on a-blinkslow"></i><i class="on a-blinkslow"></i><i class="on a-blinkslow"></i><i class="on a-blinkslow"></i></span> three flashes, all eight</div></div>
+      <div class="card"><span class="k">Battery (tap ••)</span><div class="pic"><span class="ledrow"><i class="on"></i><i class="on"></i><i class="half"></i><i></i></span> the charge, for 1.5 s</div></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ voices -->
+  <section class="chapter" id="voices" aria-labelledby="h-voices">
+    <header>
+      <div class="eyebrow">6 · Fifteen voices</div>
+      <h2 id="h-voices">Voices</h2>
+      <p>Any voice can sit on any channel, and two channels can share one. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads its page's faders the same way (activity, tone, length, register); <b>Character</b>, F4 on the extended page, is the one control that differs.</p>
+    </header>
+    <div class="grid" id="voicegrid"></div>
+  </section>
+
+  <!-- ============================================================ pieces -->
+  <section class="chapter" id="pieces" aria-labelledby="h-pieces">
+    <header>
+      <div class="eyebrow">7 · Twelve recipes</div>
+      <h2 id="h-pieces">Pieces</h2>
+      <p>A piece sets every voice, value and harmony at once. Hold •• and press PLAY twice for the next one. Glag starts on Terminal.</p>
+    </header>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">#</th><th scope="col">Piece</th><th scope="col">T1</th><th scope="col">T2</th><th scope="col">T3</th><th scope="col">T4</th><th scope="col">Tempo · key</th></tr></thead>
+        <tbody id="piecerows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ power -->
+  <section class="chapter" id="power" aria-labelledby="h-power">
+    <header>
+      <div class="eyebrow">8 · On, off, recovery</div>
+      <h2 id="h-power">Power</h2>
+      <p>The power gestures come from Wakes, the SP-1 base Glag runs on, unchanged.</p>
+    </header>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Gesture</th><th scope="col">Does</th></tr></thead>
+        <tbody>
+          <tr><td class="g"><span class="key">••</span> held 1.5 s</td><td>On. Nothing shows for half a second, then the track lights fill as it starts.</td></tr>
+          <tr><td class="g"><span class="key">••</span> held 3 s, nothing else touched</td><td>Off, with an animation. Let go before it ends to cancel. Touching any other control while •• is held makes it a shift press instead.</td></tr>
+          <tr><td class="g"><span class="key">••</span> held 30 s</td><td>Forced off, whatever is happening. The track lights pulse from 25 s.</td></tr>
+          <tr><td class="g"><span class="key">••</span> tap</td><td>Shows the battery on the play lights for 1.5 s</td></tr>
+          <tr><td class="g">USB plugged in, off</td><td>Standby: it charges and shows the charge</td></tr>
+          <tr><td class="g"><span class="key">T1</span> + <span class="key">T4</span> held while plugging in USB-C</td><td>The bootloader, for flashing firmware at solderless.engineering. It lives below anything Glag can write, so it always works.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note warn">The USB console (any serial terminal) logs what Glag does: pages, pieces, voices, distortion, and every 5 s the audio load. Glag has not yet been run on an SP-1; flash it at your own risk.</p>
+  </section>
+</main>
+
+<script>
+/* ---------------- data ---------------- */
+const VOICES = [
+  ["Pad", "Two or three voices breathing in and out on unequal cycles, each taking its note of the chord.", "warm to hollow, and detune"],
+  ["Bells", "Four tape loops of 13, 17, 23 and 29 beats, soft FM bells drifting against each other.", "harmonic, bell or glass ratios"],
+  ["Bass", "A sine and its sub-octave on the chord's root, gliding.", "glide time, and how often it takes the fifth"],
+  ["Piano", "Sparse 2-op FM electric piano.", "tine: 1:1, 2:1, 3:1"],
+  ["Marimba", "Short, slightly inharmonic FM.", "ratio 2.5 to 5"],
+  ["Drone", "Root and an interval, the tone opening and closing over tens of seconds.", "interval: fifth, fourth, octave, ninth"],
+  ["Kalimba", "Plucked strings (Karplus-Strong).", "brightness"],
+  ["Flute", "Feedback FM, slow breathy attack, vibrato.", "vibrato"],
+  ["Arp", "A glassy tone walking the chord.", "pattern: up, up-down, random, pedal"],
+  ["Swell", "Brass chord swells: two detuned tones brightening as they swell, vibrato arriving late.", "detune and vibrato"],
+  ["EP", "1980s FM electric piano with a bell-like tine on the attack. Tone runs dull to bright.", "tine amount"],
+  ["Gong", "Low gongs struck on each new chord: a pitch dip, then a slow bloom.", "metal: four ratios"],
+  ["Pizz", "Short pizzicato plucks up and down the chord.", "octaves: none, alternating, random jumps"],
+  ["Shimmer", "Buzzy FM swoops with fast vibrato and tremolo, echoed an octave up.", "buzz"],
+  ["Tails", "Every note a different FM ratio, its brightness falling, blooming or rising.", "tail: falls, blooms, rises"],
+];
+const PIECES = [
+  ["Terminal", "Pad Bells Bass Flute", "72 BPM · D Dorian"], ["Gate Seven", "Pad Piano Drone Bells", "60 BPM · C Ionian"],
+  ["Long Wait", "Drone Flute Pad Kalimba", "50 BPM · A Aeolian"], ["Jet Lag", "Arp Pad Bass Marimba", "80 BPM · G Lydian"],
+  ["Tarmac", "Bass Drone Bells Piano", "66 BPM · F pentatonic major"], ["Night Flight", "Pad Kalimba Flute Drone", "53 BPM · E pentatonic minor"],
+  ["Arrivals", "Bells Arp Pad Bass", "86 BPM · G Lydian"], ["Lounge", "Piano Marimba Pad Flute", "62 BPM · F Ionian"],
+  ["Rain City", "Swell EP Gong Shimmer", "57 BPM · E Aeolian"], ["Deep Water", "Shimmer Tails Gong Pad", "48 BPM · D Dorian"],
+  ["Lobby 84", "EP Pizz Bass Swell", "80 BPM · F Ionian"], ["Long Haul", "Pizz Tails Swell Gong", "71 BPM · A pentatonic minor"],
+];
+const PAGES = {
+  home: { name: "Home", how: "Where Glag starts. Tap •• twice from anywhere to return.",
+    f: [["Tempo", "30-120 BPM"], ["Delay", "echo amount"], ["Reverb", "space and size"], ["DJ filter", "left low-pass · centre off · right high-pass"]],
+    t: "breathe", hot: [0, 1, 2, 3],
+    b: [["T1-T4", "<b>Open that channel's page</b>"], ["•• + T1-T4", "<b>That channel's next voice</b> <span>(all fifteen, in order)</span>"], ["•• + PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"]] },
+  ch: { name: "Channel page", how: "Tap a channel's T on Home. Shown here for channel 2.",
+    f: [["Activity", "how often it plays"], ["Tone", "dark to bright"], ["Length", "how long notes ring"], ["Register", "five octave steps"]],
+    t: "one", hot: [1],
+    b: [["Another T", "<b>That channel's page</b>"], ["•• + its own T", "<b>Its extended page</b>"], ["•• + another T", "<b>That channel's extended page</b>"]] },
+  ext: { name: "Extended page", how: "Hold •• and tap the channel's own T on its page. Again to go back.",
+    f: [["Echo send", "how much goes to the delay"], ["Reverb send", "how much goes to the reverb"], ["Pan", "centre detent"], ["Character", "the voice's own control"]],
+    t: "blink", hot: [1],
+    b: [["•• + its own T", "<b>Back to its channel page</b>"], ["T1-T4", "<b>That channel's page</b>"]] },
+  har: { name: "Harmony", how: "Hold •• and press PLAY once, then wait a moment. One page for the whole instrument.",
+    f: [["Root", "12 steps, C to B"], ["Mode", "8 steps: Ionian … pentatonic minor"], ["Drift", "a new chord every 10 s to 4 min"], ["Motion", "the slow tide, and how much it evolves"]],
+    t: "chase", hot: [0, 1, 2, 3],
+    b: [["T1-T4", "<b>That channel's page</b>"], ["•• twice", "<b>Home</b>"]] },
+  shift: { name: "•• held", how: "While •• is held, on any page, the faders are the mixer.",
+    f: [["Level 1", "channel 1"], ["Level 2", "channel 2"], ["Level 3", "channel 3"], ["Level 4", "channel 4"]],
+    t: "breathe", hot: [],
+    b: [["+ T (Home)", "<b>Next voice</b> on that channel"], ["+ PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["+ FFWD / RWD", "<b>Randomize / undo</b> · RWD held 2 s saves"], ["+ VOL− / VOL+", "<b>Distortion</b> amount / type"]] },
+};
+
+/* ---------------- the schematic ---------------- */
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent, text) => {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (text !== undefined) n.textContent = text;
+  parent.appendChild(n);
+  return n;
+};
+const X = [95, 195, 295, 395];
+const tleds = document.getElementById("tleds"), fg = document.getElementById("faders");
+const tb = document.getElementById("tbtns"), pl = document.getElementById("pleds"), br = document.getElementById("btnrow");
+const tLed = X.map((x) => el("circle", { cx: x, cy: 70, r: 7, class: "svg-led" }, tleds));
+const fl = [], fs = [];
+const POS = [0.55, 0.4, 0.7, 0.5];
+X.forEach((x, i) => {
+  el("rect", { x: x - 20, y: 96, width: 40, height: 220, rx: 20, class: "svg-slot" }, fg);
+  const h = 196 * POS[i];
+  el("rect", { x: x - 20, y: 316 - h - 24, width: 40, height: h + 24, rx: 20, class: "svg-fill" }, fg);
+  el("rect", { x: x - 17, y: 316 - h - 24, width: 34, height: 22, rx: 11, class: "svg-thumb" }, fg);
+  el("text", { x: x, y: 112 - 24, "text-anchor": "middle", class: "svg-small" }, fg, "F" + (i + 1));
+  fl.push(el("text", { x: x, y: 336, "text-anchor": "middle", class: "svg-flabel" }, fg, ""));
+  fs.push(el("text", { x: x, y: 351, "text-anchor": "middle", class: "svg-fsub" }, fg, ""));
+});
+const tBtn = X.map((x, i) => {
+  const r = el("rect", { x: x - 38, y: 372, width: 76, height: 38, rx: 10, class: "svg-btn" }, tb);
+  el("text", { x: x, y: 396, "text-anchor": "middle", class: "svg-txt" }, tb, "T" + (i + 1));
+  return r;
+});
+const pLed = [0, 1, 2, 3].map((i) => el("circle", { cx: 300 + i * 36, cy: 444, r: 7, class: "svg-led" }, pl));
+const BTN = [["••", "shift"], ["PLAY", ""], ["RWD", "slow"], ["FFWD", "freeze"], ["VOL−", ""], ["VOL+", ""]];
+const bBtn = BTN.map((b, i) => {
+  const x = 34 + i * 70;
+  const r = el("rect", { x, y: 476, width: 62, height: 48, rx: 10, class: "svg-btn" }, br);
+  el("text", { x: x + 31, y: 497, "text-anchor": "middle", class: "svg-txt" }, br, b[0]);
+  if (b[1]) el("text", { x: x + 31, y: 514, "text-anchor": "middle", class: "svg-fsub" }, br, b[1]);
+  return r;
+});
+
+/* ---------------- page switching ---------------- */
+let anim = null;
+function setPage(key) {
+  const p = PAGES[key];
+  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.page === key ? "true" : "false"));
+  document.getElementById("d-name").textContent = p.name;
+  document.getElementById("d-how").textContent = p.how;
+  p.f.forEach((f, i) => { fl[i].textContent = f[0]; fs[i].textContent = f[1].length > 16 ? "" : f[1]; });
+  document.getElementById("d-faders").innerHTML = p.f.map((f, i) => `<dt>F${i + 1}</dt><dd><b>${f[0]}</b> <span>${f[1]}</span></dd>`).join("");
+  document.getElementById("d-buttons").innerHTML = p.b.map((b) => `<dt>${b[0]}</dt><dd>${b[1]}</dd>`).join("");
+  tBtn.forEach((r, i) => r.setAttribute("class", "svg-btn" + (key !== "shift" && (key === "home" || key === "har" || p.hot.includes(i)) ? " hot" : "")));
+  bBtn.forEach((r, i) => r.setAttribute("class", "svg-btn" + ((key === "shift" && i === 0) || (key === "har" && (i === 0 || i === 1)) ? " hot" : "")));
+  if (anim) clearInterval(anim);
+  let t = 0;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const draw = () => {
+    t += 50;
+    tLed.forEach((c, i) => {
+      let a = 0;
+      if (p.t === "breathe") { const x = (t % 2000) / 1000; a = 0.12 + 0.35 * (x < 1 ? x : 2 - x); }
+      else if (p.t === "one") a = i === 1 ? 1 : 0;
+      else if (p.t === "blink") a = i === 1 && (reduce || Math.floor(t / 250) % 2) ? 1 : 0;
+      else if (p.t === "chase") a = i === Math.floor(t / 300) % 4 ? 1 : 0.16;
+      c.style.fill = a > 0.02 ? `color-mix(in srgb, var(--led) ${Math.round(a * 100)}%, var(--led-off))` : "";
+    });
+    const glow = [0.5, 0.15, 0.85, 0.3];
+    pLed.forEach((c, i) => { const a = key === "shift" ? POS[i] : glow[(i + Math.floor(t / 700)) % 4]; c.style.fill = `color-mix(in srgb, var(--led) ${Math.round(a * 100)}%, var(--led-off))`; });
+  };
+  draw();
+  if (!reduce) anim = setInterval(draw, 50);
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setPage(t.dataset.page)));
+document.querySelector(".tabs").addEventListener("keydown", (e) => {
+  const tabs = [...document.querySelectorAll(".tab")], i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    n.focus(); setPage(n.dataset.page); e.preventDefault();
+  }
+});
+setPage("home");
+
+/* ---------------- voices and pieces ---------------- */
+const numPic = (n) => {      /* the number picture for 1..16 */
+  const i = n - 1, pos = i % 4, grp = Math.floor(i / 4);
+  const cls = ["on", "on a-blinkslow", "on a-blinkfast", "a-pulse"][grp];
+  return `<span class="ledrow">${[0, 1, 2, 3].map((k) => `<i class="${k === pos ? cls : ""}"></i>`).join("")}</span>`;
+};
+document.getElementById("voicegrid").innerHTML = VOICES.map((v, i) => `
+  <article class="card voice">
+    <h3><span class="num">${i + 1}</span>${v[0]}</h3>
+    <p>${v[1]}</p>
+    <div class="pic">${numPic(i + 1)} <span class="f4">F4: ${v[2]}</span></div>
+  </article>`).join("");
+document.getElementById("piecerows").innerHTML = PIECES.map((p, i) => {
+  const v = p[1].split(" ");
+  return `<tr><td>${numPic(i + 1)}</td><td><b>${p[0]}</b></td>${v.map((x) => `<td>${x}</td>`).join("")}<td class="g">${p[2]}</td></tr>`;
+}).join("");
+</script>
