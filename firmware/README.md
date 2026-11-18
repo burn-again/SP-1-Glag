@@ -9,7 +9,7 @@ reverb. You don't perform it, you tend it.
 It runs on [Wakes](https://github.com/Worldwave/Wakes)' SP-1 base (power, watchdog, standby,
 battery, controls, LEDs, audio bring-up), used unchanged except where marked `CONFIG_SP1_GLAG`.
 
-**Status: 0.3.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
+**Status: 0.3.1, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
 controls pass 67 tests on a computer, and the browser emulator runs the same engine and controls.
 The first hardware session decides the rest; see [Testing on the device](#testing-on-the-device).
 
@@ -45,7 +45,7 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 
 | Where | Control | Does |
 |---|---|---|
-| Home (at boot) | F1 F2 F3 F4 | tempo (30-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
+| Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
 | | •• + T1-T4 | the next voice on that channel (all fifteen, any channel, duplicates allowed) |
 | Channel page | F1 F2 F3 F4 | activity, tone, length, register (5 octave steps) |

@@ -86,7 +86,7 @@ int gl_gp_steps(int gp);
 /* Controls with a centre detent (pan, filter). */
 int gl_cp_centred(int cp);
 int gl_gp_centred(int gp);
-float gl_tempo_bpm(float v);        /* GP_TEMPO 0..1 -> 30..120 BPM */
+float gl_tempo_bpm(float v);        /* GP_TEMPO 0..1 -> 20..120 BPM */
 
 /* ---- main thread ---- */
 void gl_init(uint32_t seed);

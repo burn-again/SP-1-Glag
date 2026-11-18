@@ -361,7 +361,7 @@ function rows() {
   const voice = (k) => VOICES[patch.getUint8(k)] || "?";
   if (shift) return { title: "Levels (•• held)", r: [0, 1, 2, 3].map((k) => [`Level ${k + 1}`, voice(k), pct(ch(k, 8))]) };
   if (page === 0) return { title: "Home", r: [
-    ["Tempo", "", Math.round(30 + 90 * g(0)) + " BPM"], ["Delay", "", pct(g(1))], ["Reverb", "", pct(g(2))], ["Filter", "", filterText(g(3))]] };
+    ["Tempo", "", Math.round(20 + 100 * g(0)) + " BPM"], ["Delay", "", pct(g(1))], ["Reverb", "", pct(g(2))], ["Filter", "", filterText(g(3))]] };
   if (page === 1) return { title: `Channel ${c + 1}: ${voice(c)}`, r: [
     ["Activity", "", pct(ch(c, 0))], ["Tone", "", pct(ch(c, 1))], ["Length", "", pct(ch(c, 2))],
     ["Register", "", ((steps(ch(c, 3), 5) - 2) > 0 ? "+" : "") + (steps(ch(c, 3), 5) - 2) + " oct"]] };
