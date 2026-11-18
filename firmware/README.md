@@ -25,14 +25,14 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Drone | two FM pairs on the root and an interval, the index swelling over tens of seconds | interval: fifth, fourth, octave, ninth |
 | Kalimba | Karplus-Strong plucks | brightness |
 | Flute | one feedback-FM operator, slow attack, vibrato | vibrato |
-| Arp | glassy FM walking the chord | pattern: up, up-down, random, pedal |
+| Arp | glassy FM walking the chord, or looping a sequence | pattern: up, up-down, random, pedal, loops of 16, 7, 5 steps |
 | Swell | brass chord swells: two detuned carriers, brightness rising with the swell, vibrato arriving late | detune and vibrato depth |
 | EP | 1980s FM electric piano: a body modulator and a 14:1 tine that rings only on the attack; TONE is dull to bright, and harder notes are brighter | tine amount |
 | Gong | low inharmonic gongs, struck on each new chord: a pitch dip on the strike, the index blooming for 0.6 s and fading over seconds | metal: ratio 1.4, 1.73, 2.76, 3.14 |
 | Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
-| Pulse | a light pulse: soft kick, shaker (with air above 12 kHz, made at the full 48 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
+| Pulse | a light pulse: soft kick, shaker (its noise made at the full 48 kHz from its own generator, its body at 3-12 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -110,7 +110,7 @@ repeat comes back darker and thinner, with a little wow. Its output also feeds t
 
 The reverb takes its input at full scale in its 16-bit memory (a guard turns it down only if the memory runs hot), and the tape stores at three times its level: their grain sits near -81 dBFS.
 
-Both run below 48 kHz, so each sits between two-pole low-passes that keep what is above their reach from folding down or leaking up as a faint tinny noise.
+Both run below 48 kHz, so each sits between steep filters: elliptic low-passes either side of the tape (flat to 2.4 kHz, -55 dB from 5), and into the reverbs an elliptic low-pass (flat to 4.5 kHz, -60 dB from 6) and a half-band filter back up. Without them a note's upper harmonics fold back as faint off-pitch tones, a hiss on every hit above about C4 (until 0.6.2 they were simple averages). Shimmer's shifter is fed through its own low-pass at 2.7 kHz, so an octave up nothing passes 6 kHz and folds. The reverbs keep the tone they were voiced with: one pole and a zero at 12 kHz rebuild the old roll-off.
 
 **Four reverbs** (REVERB on Home sets how long they ring; •• + T1-T4 on Harmony picks one):
 
@@ -243,34 +243,36 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 
 | Four channels of (with the Hall, the heaviest reverb) | Model, normal settings | Model, worst block, everything at maximum | Hardware estimate (x1.4) |
 |---|---|---|---|
-| Pad, Bells, Bass, Flute (piece 1) | 44 % | 56 % | 61-79 % |
-| Pad x 4 | 49 % | 59 % | 68-83 % |
-| Bells x 4 | 43 % | 67 % | 60-93 % |
-| Bass x 4 | 45 % | 48 % | 63-68 % |
-| Piano x 4 | 37 % | 56 % | 51-78 % |
-| Marimba x 4 | 37 % | 56 % | 51-78 % |
-| Drone x 4 | 53 % | 54 % | 75 % |
-| Kalimba x 4 | 36 % | 55 % | 50-77 % |
-| Flute x 4 | 38 % | 46 % | 53-65 % |
-| Arp x 4 | 46 % | 63 % | 64-88 % |
-| Swell x 4 | 50 % | 58 % | 70-81 % |
-| EP x 4 | 36 % | 57 % | 51-80 % |
-| Gong x 4 | 46 % | 52 % | 64-72 % |
-| Pizz x 4 | 41 % | 60 % | 58-84 % |
-| Tails x 4 | 38 % | 59 % | 53-83 % |
-| Pulse x 4 | 46 % | 56 % | 65-79 % |
-| Arp, Swell, EP, Gong | 44 % | 57 % | 62-80 % |
-| Bells x 4 + distortion at 4 | | 68 % | 95 % |
+| Pad, Bells, Bass, Flute | 54 % | 64 % | 76-90 % |
+| Pad x 4 | 59 % | 70 % | 83-98 % |
+| Bells x 4 | 57 % | 74 % | 80-103 % |
+| Bass x 4 | 56 % | 59 % | 78-82 % |
+| Piano x 4 | 46 % | 66 % | 64-92 % |
+| Marimba x 4 | 46 % | 66 % | 64-92 % |
+| Drone x 4 | 63 % | 64 % | 89 % |
+| Kalimba x 4 | 45 % | 64 % | 63-90 % |
+| Flute x 4 | 48 % | 61 % | 67-85 % |
+| Arp x 4 | 55 % | 73 % | 77-102 % |
+| Swell x 4 | 60 % | 69 % | 84-96 % |
+| EP x 4 | 46 % | 67 % | 64-94 % |
+| Gong x 4 | 56 % | 62 % | 78-86 % |
+| Pizz x 4 | 51 % | 70 % | 72-98 % |
+| Tails x 4 | 47 % | 70 % | 66-97 % |
+| Pulse x 4 | 58 % | 86 % | 81-121 % |
+| Arp, Swell, EP, Gong | 54 % | 69 % | 76-96 % |
+| Bells x 4 + distortion at 4 | 62 %% | 77 %% | 87-108 %% |
+
+Numbers from 0.6.2 (the filters around the tape and reverbs, and the Pulse's noise at 48 kHz, cost about 3 points; the table had last been measured before 0.6.0). Worst blocks past about 70 % on the model lean on the governor below. Four Pulses all at maximum is the one case it can't help, since the Pulse has no notes to give way: on the device that could crackle.
 
 A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools.
 
-The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). The heaviest case is four
-Bells channels at full activity with distortion on, under the Hall: about 95 % on the estimate. If it
+The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). Among the FM voices, the heaviest case is four
+Bells channels at full activity with distortion on, under the Hall. If it
 overruns on the device, lower `FM_CAP`.
 
 Where it goes: the voices run at 24 kHz and are brought back up to 48 kHz after the mix (about half
 their cost at full rate); the tape echo runs at 8 kHz and the reverbs at 12 kHz, all in 16-bit
-memory. A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP,
+memory; the Pulse's noise alone runs at the full 48 kHz. A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP,
 with a third oscillator, count 1.5); the quietest decaying note gives way, and the pad, swell, drone
 and bass are never cut (a pad or swell breath waits instead). Controls run at 1 kHz.
 

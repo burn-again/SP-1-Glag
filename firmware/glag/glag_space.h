@@ -158,8 +158,10 @@ static struct {
 	float sh_p, sh_lp, sh_lp2, sh_hp, sh_amt;
 	float agc_env, agc_target, ag;
 	float ig;                             /* the input's gain: 1, less when the ring runs hot */
-	float acc, ol, or_, pl, pr;
-	int phase;
+	float ez[6];                          /* the elliptic low-pass before 12 kHz */
+	float sz[4];                          /* and before the shimmer's shifter */
+	float tz[2];                          /* the reverbs' tone: a pole and a zero at 12 kHz */
+	float ul[13], ur[13];                 /* the last 12 kHz outputs, for the half-band up */
 	float last_rv;
 } rv;
 
@@ -230,7 +232,12 @@ static void rv_layout(int type)
 	memset(rring, 0, sizeof rring);
 	for (int k = 0; k < 8; k++)
 		rv.lp[k] = rv.lo[k] = 0.0f;
-	rv.bw = rv.acc = rv.ol = rv.or_ = rv.pl = rv.pr = 0.0f;
+	rv.bw = 0.0f;
+	memset(rv.ez, 0, sizeof rv.ez);
+	memset(rv.sz, 0, sizeof rv.sz);
+	rv.tz[0] = rv.tz[1] = 0.0f;
+	memset(rv.ul, 0, sizeof rv.ul);
+	memset(rv.ur, 0, sizeof rv.ur);
 	rv.sh_p = rv.sh_lp = rv.sh_lp2 = rv.sh_hp = 0.0f;
 	rv.agc_env = rv.agc_target = 0.0f;
 	rv.ag = 1.0f;
@@ -333,9 +340,20 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 	if (rv.d->shimmer) {
 		/* the tail, shifted, back into the network: two taps sweeping a window half a window
 		 * apart and crossfaded; a tap whose delay falls (ratio - 1) samples a sample plays that
-		 * much faster. Two poles take the top off each new step, nothing below ~150 Hz goes
+		 * much faster. Two more poles soften each new step, nothing below ~150 Hz goes
 		 * back, and the servo reins it in while frozen. */
-		RWR(rv.o_sh, 0.5f * (d0 + d1 + d2 + d3));
+		/* what goes in is cut at 2.7 kHz first (elliptic, 4 poles: -47 dB at 4): shifted up an
+		 * octave, anything over 3 kHz would pass 6 and fold back down off-pitch */
+		{
+			float in = 0.5f * (d0 + d1 + d2 + d3), *z = rv.sz;
+			float y = 0.069917512f * in + z[0];
+			z[0] = 0.125911025f * in + 0.686835095f * y + z[1];
+			z[1] = 0.069917512f * in - 0.264994175f * y;
+			float y2 = y + z[2];
+			z[2] = 1.128872815f * y + 0.220904689f * y2 + z[3];
+			z[3] = y - 0.744281625f * y2;
+			RWR(rv.o_sh, y2);
+		}
 		const float r = SH_RATIO[rv.shim];
 		float pa = rv.sh_p, pb = rv.sh_p + 0.5f;
 		pb -= pb >= 1.0f ? 1.0f : 0.0f;
@@ -401,37 +419,100 @@ static inline __attribute__((always_inline)) void fdn8_tick(float in, float *ol,
 	*or_ = 0.5f * (d[1] - d[3] + d[5] - d[7]) * rv.mix;
 }
 
-/* every 24 kHz sample */
-static inline __attribute__((always_inline)) void rv_tick(float in, float *ol, float *or_)
+/* the half-band's odd taps, doubled (they sum to 0.5); its centre is 0.5 */
+static const float RHB[7] = {0.62557792f, -0.18066706f, 0.08055428f, -0.03579357f,
+	0.01376638f, -0.00389876f, 0.00046081f};
+
+/* one sub-block of the reverb: X, the send at 24 kHz (used up), into WL and WR at 24 kHz */
+static void rv_block(float *X, float *WL, float *WR)
 {
+	enum { N = GL_SUB / 2, M = GL_SUB / 4 };
 	/* in at full scale (it used to be half: 6 dB coarser in the 16-bit ring, a grain on quiet
 	 * tails), turned down by the guard only when the ring runs hot */
-	in *= rv.ig;
+	const float g = rv.ig;
 	if (rv.d->alg == ALG_FDN4_24) {
-		fdn4_tick(in, ol, or_);
+		for (uint32_t j = 0; j < N; j++)
+			fdn4_tick(X[j] * g, &WL[j], &WR[j]);
 		return;
 	}
-	rv.acc += in;                                 /* 12 kHz: every other call */
-	if ((rv.phase ^= 1)) {
-		*ol = rv.ol;
-		*or_ = rv.or_;
-		return;
+	/* 12 kHz: down through an elliptic low-pass (6 poles: flat to 4.5 kHz, -60 dB from 6), up
+	 * through a half-band (27 taps: -72 dB from 8 kHz). Averaging pairs, as it was, let a
+	 * note's upper harmonics fold back down as off-pitch tones (a 2093 Hz note's third
+	 * harmonic came back at 5721 Hz): a faint hiss on every hit above ~C4 */
+	float z0 = rv.ez[0], z1 = rv.ez[1], z2 = rv.ez[2], z3 = rv.ez[3], z4 = rv.ez[4], z5 = rv.ez[5];
+	for (uint32_t j = 0; j < N; j++) {
+		float in = X[j] * g;
+		float y = 0.013726642f * in + z0;
+		z0 = 0.022248823f * in + 1.165985614f * y + z1;
+		z1 = 0.013726642f * in - 0.421639763f * y;
+		float y2 = y + z2;
+		z2 = 0.394244539f * y + 0.886805138f * y2 + z3;
+		z3 = y - 0.679369305f * y2;
+		float d = y2 + z4;
+		z4 = -0.083017639f * y2 + 0.714510458f * d + z5;
+		z5 = y2 - 0.907053722f * d;
+		X[j] = d;
 	}
-	rv.pl = rv.ol;
-	rv.pr = rv.or_;
+	rv.ez[0] = z0; rv.ez[1] = z1; rv.ez[2] = z2; rv.ez[3] = z3; rv.ez[4] = z4; rv.ez[5] = z5;
+	float A[13 + M], B[13 + M];
+	for (uint32_t k = 0; k < 13; k++) {          /* (not memcpy: the M4's is byte by byte) */
+		A[k] = rv.ul[k];
+		B[k] = rv.ur[k];
+	}
+	/* the tone the reverbs were voiced with (-3.5 dB at 2 kHz, -11 at 4): what the filters
+	 * around the old pair-averaging gave, as one pole and a zero at 12 kHz */
+	float t0 = rv.tz[0], t1 = rv.tz[1];
+	for (uint32_t m = 0; m < M; m++) {
+		float x = X[2 * m + 1];
+		t0 += 0.68f * (0.5f * (x + t1) - t0);
+		t1 = x;
+		X[2 * m + 1] = t0;
+	}
+	rv.tz[0] = t0; rv.tz[1] = t1;
 	if (rv.d->alg == ALG_FDN8)
-		fdn8_tick(0.5f * rv.acc, &rv.ol, &rv.or_);
+		for (uint32_t m = 0; m < M; m++)
+			fdn8_tick(X[2 * m + 1], &A[13 + m], &B[13 + m]);
 	else
-		fdn4_tick(0.5f * rv.acc, &rv.ol, &rv.or_);
-	rv.acc = 0.0f;
-	*ol = 0.5f * (rv.pl + rv.ol);
-	*or_ = 0.5f * (rv.pr + rv.or_);
+		for (uint32_t m = 0; m < M; m++)
+			fdn4_tick(X[2 * m + 1], &A[13 + m], &B[13 + m]);
+	for (uint32_t m = 0; m < M; m++) {
+		const float *a = &A[m + 13], *b = &B[m + 13];
+		WL[2 * m] = a[-7];
+		WR[2 * m] = b[-7];
+		WL[2 * m + 1] = RHB[0] * (a[-7] + a[-6]) + RHB[1] * (a[-8] + a[-5]) + RHB[2] * (a[-9] + a[-4]) +
+			RHB[3] * (a[-10] + a[-3]) + RHB[4] * (a[-11] + a[-2]) + RHB[5] * (a[-12] + a[-1]) +
+			RHB[6] * (a[-13] + a[0]);
+		WR[2 * m + 1] = RHB[0] * (b[-7] + b[-6]) + RHB[1] * (b[-8] + b[-5]) + RHB[2] * (b[-9] + b[-4]) +
+			RHB[3] * (b[-10] + b[-3]) + RHB[4] * (b[-11] + b[-2]) + RHB[5] * (b[-12] + b[-1]) +
+			RHB[6] * (b[-13] + b[0]);
+	}
+	for (uint32_t k = 0; k < 13; k++) {
+		rv.ul[k] = A[M + k];
+		rv.ur[k] = B[M + k];
+	}
 }
 
 /* ================================================================ the block */
 
 static float sp_up[6];                            /* the last outputs, for interpolating up */
-static float sp_lp[12];                           /* the filters around the tape and reverb */
+static float sp_lp[12];                           /* the filters around the tape */
+
+/* the tape's elliptic low-pass, 2.4 kHz at 24 kHz, two sections (z: 4 states), over n samples */
+static void tb4(float *out, const float *x, float k, float *z, uint32_t n)
+{
+	float z0 = z[0], z1 = z[1], z2 = z[2], z3 = z[3];
+	for (uint32_t j = 0; j < n; j++) {
+		float in = x[j];
+		float y = 0.00863182f * in + z0;
+		z0 = 0.0098654f * in + 1.44647804f * y + z1;
+		z1 = 0.00863182f * in - 0.57178381f * y;
+		float y2 = y + z2;
+		z2 = -0.38875277f * y + 1.46156061f * y2 + z3;
+		z3 = y - 0.83106997f * y2;
+		out[j] = y2 * k;
+	}
+	z[0] = z0; z[1] = z1; z[2] = z2; z[3] = z3;
+}
 
 static void space_init(void)
 {
@@ -496,32 +577,19 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 {
 	float WL[GL_SUB / 2], WRr[GL_SUB / 2], EL[GL_SUB / 2], ER[GL_SUB / 2];
 	const float fi = freeze_in, fade = rv.fade;
-	/* Two-pole low-passes around the slower parts, at 24 kHz: before the tape (8 kHz) and the
-	 * reverb (12 kHz), so nothing above their reach folds down, and after them, so the images
-	 * their interpolation leaves (a faint tinny noise near 6 and 10 kHz) are taken off. Both
-	 * are darker than this already: the tape repeats under 1.8 kHz (so one pole a side does),
-	 * the reverbs under 5.5. */
-	const float kt = 0.48f, kr = 0.69f;          /* 2.5 kHz, 4.5 kHz */
-	float f0 = sp_lp[0], f3 = sp_lp[3], f5 = sp_lp[5];
-	float f6 = sp_lp[6], f7 = sp_lp[7], f8 = sp_lp[8], f9 = sp_lp[9], f10 = sp_lp[10], f11 = sp_lp[11];
-	for (uint32_t j = 0; j < GL_SUB / 2; j++) {
-		float el, er, wl, wr;
-		f0 += kt * (E[j] - f0);                  /* the tape is dark already: one pole a side */
-		tape_tick(f0 * 0.5f, &el, &er);
-		f3 += kt * (el - f3);
-		f5 += kt * (er - f5);
-		f6 += kr * ((0.5f * V[j] + (f3 + f5) * 0.25f) * fi - f6);
-		f7 += kr * (f6 - f7);
-		rv_tick(f7, &wl, &wr);
-		f8 += kr * (wl - f8); f9 += kr * (f8 - f9);
-		f10 += kr * (wr - f10); f11 += kr * (f10 - f11);
-		WL[j] = f9 * fade;
-		WRr[j] = f11 * fade;
-		EL[j] = f3;
-		ER[j] = f5;
-	}
-	sp_lp[0] = f0; sp_lp[3] = f3; sp_lp[5] = f5;
-	sp_lp[6] = f6; sp_lp[7] = f7; sp_lp[8] = f8; sp_lp[9] = f9; sp_lp[10] = f10; sp_lp[11] = f11;
+	/* The tape (8 kHz) between two elliptic low-passes (4 poles: flat to 2.4 kHz, -32 dB at 4,
+	 * -55 from 5): before it, so a note's upper harmonics can't fold back as off-pitch tones;
+	 * after it, for the mirror images its interpolation leaves (a 2093 Hz repeat had one at
+	 * 5907). The reverb does its own. */
+	float X[GL_SUB / 2];
+	tb4(X, E, 0.5f, sp_lp, GL_SUB / 2);
+	for (uint32_t j = 0; j < GL_SUB / 2; j++)
+		tape_tick(X[j], &EL[j], &ER[j]);
+	tb4(EL, EL, 1.0f, sp_lp + 4, GL_SUB / 2);
+	tb4(ER, ER, 1.0f, sp_lp + 8, GL_SUB / 2);
+	for (uint32_t j = 0; j < GL_SUB / 2; j++)
+		X[j] = (0.5f * V[j] + (EL[j] + ER[j]) * 0.25f) * fi;
+	rv_block(X, WL, WRr);
 	if (dist.amt && dist.post == 2) {            /* dirty tails, clean instruments */
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
@@ -530,7 +598,7 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 	const float emix = tp.mix;
 	float u0 = sp_up[0], u1 = sp_up[1], u2 = sp_up[2], u3 = sp_up[3], u4 = sp_up[4], u5 = sp_up[5];
 	for (uint32_t i = 0; i < GL_SUB; i += 2) {
-		float ol = EL[i >> 1] * emix + WL[i >> 1], or_ = ER[i >> 1] * emix + WRr[i >> 1];
+		float ol = EL[i >> 1] * emix + WL[i >> 1] * fade, or_ = ER[i >> 1] * emix + WRr[i >> 1] * fade;
 		L[i] += (9.0f * (u1 + u2) - u0 - ol) * (1.0f / 16.0f);
 		R[i] += (9.0f * (u4 + u5) - u3 - or_) * (1.0f / 16.0f);
 		L[i + 1] += u2;
