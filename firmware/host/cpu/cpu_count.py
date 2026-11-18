@@ -15,7 +15,7 @@ import capstone as cs
 
 ELF = sys.argv[1]
 TOOL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].endswith('-') else None
-configs = [a for a in sys.argv[2:] if a.replace('m','').isdigit()] or ['0127']
+configs = [a for a in sys.argv[2:] if all(ch in '0123456789abcdefm' for ch in a) and len(a.split('m')[0]) == 4] or ['0127']
 NM = TOOL + 'nm' if TOOL else 'arm-zephyr-eabi-nm'
 OBJCOPY = TOOL + 'objcopy' if TOOL else 'arm-zephyr-eabi-objcopy'
 
@@ -66,7 +66,7 @@ def run(voices):
     lma = lambda a: syms['_sidata'] + (a - syms['_sdata'])
     mute = int(voices.split('m')[1]) if 'm' in voices else 0
     voices = voices.split('m')[0]
-    mu.mem_write(lma(syms['cfg_voices']), bytes(int(ch) for ch in voices))
+    mu.mem_write(lma(syms['cfg_voices']), bytes(int(ch, 16) for ch in voices))
     mu.mem_write(lma(syms['cfg_mute']), bytes([mute | 0x80]))
     if 'cfg_stress' in syms:
         mu.mem_write(lma(syms['cfg_stress']), bytes([0x81 if STRESS else 0x80]))   # nonzero init keeps it in .data
@@ -106,11 +106,12 @@ def run(voices):
 
 PROF = {} if '--prof' in sys.argv else None
 STRESS = '--stress' in sys.argv
-names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp']
+names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp',
+         'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails']
 for v in configs:
     avg, worst = run(v)
     vv = v.split('m')[0]
-    print(f"{v:8s} {' + '.join(names[int(c)] for c in vv):40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
+    print(f"{v:8s} {' + '.join(names[int(c, 16)] for c in vv):40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
 
 if PROF is not None:
     funcs = sorted((a, n) for n, a in syms.items() if a < 0x100000)

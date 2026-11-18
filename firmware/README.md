@@ -3,13 +3,13 @@
 An easy-mode generative ambient firmware for the Teenage Engineering SP-1, inspired by Charles
 Vestal's [AMB-1](https://github.com/charlesvestal/fm1-amb) for the M-VAVE FM-1 and Brian Eno's
 *Music for Airports*. It plays itself from the moment it is switched on: four channels, each holding
-one of nine voices, drawing on one scale and one slowly drifting chord, through an echo and a
+one of fifteen voices, drawing on one scale and one slowly drifting chord, through an echo and a
 reverb. You don't perform it, you tend it.
 
 It runs on [Wakes](https://github.com/Worldwave/Wakes)' SP-1 base (power, watchdog, standby,
 battery, controls, LEDs, audio bring-up), used unchanged except where marked `CONFIG_SP1_GLAG`.
 
-**Status: 0.1.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
+**Status: 0.2.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
 controls pass 49 tests on a computer, and the browser emulator runs the same engine and controls.
 The first hardware session decides the rest; see [Testing on the device](#testing-on-the-device).
 
@@ -26,12 +26,20 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Kalimba | Karplus-Strong plucks | brightness |
 | Flute | one feedback-FM operator, slow attack, vibrato | vibrato |
 | Arp | glassy FM walking the chord | pattern: up, up-down, random, pedal |
+| Swell | brass chord swells: two detuned carriers, brightness rising with the swell, vibrato arriving late | detune and vibrato depth |
+| EP | 1980s FM electric piano: a body modulator and a 14:1 tine that rings only on the attack; TONE is dull to bright, and harder notes are brighter | tine amount |
+| Gong | low inharmonic gongs, struck on each new chord: a pitch dip on the strike, the index blooming for 0.6 s and fading over seconds | metal: ratio 1.4, 1.73, 2.76, 3.14 |
+| Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
+| Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
+| Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 
 Every channel page reads the same four faders: **activity, tone, length, register**. The extended
 page: **echo send, reverb send, pan, character**. A fader means the same thing on every voice.
 
-Boots on piece 1, *Terminal*: Pad, Bells, Bass, Flute. Eight pieces: Terminal, Gate Seven, Long
-Wait, Jet Lag, Tarmac, Night Flight, Arrivals, Lounge.
+Boots on piece 1, *Terminal*: Pad, Bells, Bass, Flute. Twelve pieces: Terminal, Gate Seven, Long
+Wait, Jet Lag, Tarmac, Night Flight, Arrivals, Lounge, and four built on the newer voices: Rain City
+(Swell, EP, Gong, Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swell)
+and Long Haul (Pizz, Tails, Swell, Gong).
 
 ## Controls
 
@@ -39,7 +47,7 @@ Wait, Jet Lag, Tarmac, Night Flight, Arrivals, Lounge.
 |---|---|---|
 | Home (at boot) | F1 F2 F3 F4 | tempo (30-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
-| | •• + T1-T4 | the next voice on that channel (all nine, any channel, duplicates allowed) |
+| | •• + T1-T4 | the next voice on that channel (all fifteen, any channel, duplicates allowed) |
 | Channel page | F1 F2 F3 F4 | activity, tone, length, register (5 octave steps) |
 | | •• + its own T | extended page (its LED blinks); again to come back |
 | | another T | that channel's page |
@@ -64,10 +72,10 @@ change; the play row blinks that value while you look for it.
 **LEDs.** The track LEDs say where you are: all four breathing on Home, one lit on a channel page,
 one blinking on its extended page, a slow chase on Harmony. The play row shows each channel's
 notes, a fader's value for a second while you move it, the voice or piece number when it changes
-(LED 1-4 lit = 1-4, blinking = 5-8, all four = 9), a still glow while frozen, three flashes on a
+(the LED gives 1-4; steady = 1-4, slow blink = 5-8, fast blink = 9-12, breathing = 13-15), a still glow while frozen, three flashes on a
 save, and the battery when •• goes down (Wakes').
 
-**Saves** are kept until power-off in 0.1.0. Keeping them on the eMMC across power cycles is the
+**Saves** are kept until power-off for now. Keeping them on the eMMC across power cycles is the
 next step (it will reuse Wakes' storage thread rather than write the nRF's flash, whose last page
 the bootloader may own).
 
@@ -123,7 +131,7 @@ west build -p always -b stem_player SP-1-Glag/firmware/app -- -DBOARD_ROOT=$PWD/
 python3 SP-1-Glag/firmware/tools/ci/check_image.py build
 ```
 
-Output: `build/zephyr/glag-sp1.bin` (about 109 KB of the 892 KB slot; 139 KB of RAM). Both Zephyr
+Output: `build/zephyr/glag-sp1.bin` (about 116 KB of the 892 KB slot; 140 KB of RAM). Both Zephyr
 patches are required and are lost on every `west update`. `check_image.py` refuses an image that
 could write below 0x20000 or into the reserved page, or that drops the watchdog.
 
@@ -149,7 +157,7 @@ audio thread's load: `cyc avg=` and `max=` are percent of the 2 ms block. Glag l
    `max` again for each voice. `fail=0` and `max` under ~90 % is the target.
 3. Try every gesture in the table above, and the power-off hold while the music plays.
 
-If a combination runs over, `FM_CAP` in `glag/glag_engine.c` (now 10 oscillator voices) is the knob.
+If a combination runs over, `FM_CAP` in `glag/glag_engine.c` (18 half-voices, i.e. 9 voices) is the knob.
 
 ## CPU
 
@@ -159,16 +167,24 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 
 | Four channels of | Model, normal settings | Model, worst block, everything at maximum | Hardware estimate (x1.4) |
 |---|---|---|---|
-| Pad, Bells, Bass, Flute (piece 1) | 31 % | 49 % | 44-69 % |
-| Pad x 4 | 39 % | 57 % | 54-80 % |
-| Bells x 4 | 40 % | 65 % | 56-90 % |
+| Pad, Bells, Bass, Flute (piece 1) | 32 % | 47 % | 45-66 % |
+| Pad x 4 | 40 % | 59 % | 56-82 % |
+| Bells x 4 | 37 % | 66 % | 52-92 % |
 | Drone x 4 | 49 % | 49 % | 69 % |
-| Arp x 4 | 36 % | 63 % | 50-88 % |
-| Kalimba x 4 | 20 % | 59 % | 28-82 % |
+| Arp x 4 | 37 % | 60 % | 51-84 % |
+| Kalimba x 4 | 21 % | 64 % | 29-89 % |
 | Flute x 4 | 23 % | 36 % | 32-50 % |
+| Swell x 4 | 42 % | 56 % | 59-79 % |
+| EP x 4 | 22 % | 55 % | 30-77 % |
+| Gong x 4 | 36 % | 47 % | 51-66 % |
+| Pizz x 4 | 36 % | 64 % | 50-89 % |
+| Shimmer x 4 | 24 % | 52 % | 34-72 % |
+| Tails x 4 | 24 % | 52 % | 33-73 % |
+| Swell, EP, Gong, Shimmer (Rain City) | 31 % | 48 % | 44-67 % |
 
-A voice budget keeps at most 10 FM oscillators sounding at once (the quietest decaying note gives
-way); the pad, drone and bass are never cut. Echo and reverb run at 24 kHz, controls at 1 kHz.
+A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP, with
+a third oscillator, count 1.5); the quietest decaying note gives way, and the pad, swell, drone and
+bass are never cut (a pad or swell breath waits instead). Echo and reverb run at 24 kHz, controls at 1 kHz.
 
 ## Layout
 

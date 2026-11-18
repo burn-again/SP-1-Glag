@@ -4,7 +4,7 @@
  * Inspired by AMB-1 (Charles Vestal, for the M-VAVE FM-1) and Brian Eno's Music for Airports,
  * written from scratch for the nRF52840 (64 MHz Cortex-M4F, 256 KB RAM). No code from AMB-1.
  *
- * Four channels. Each channel holds one of nine voices, and any voice can sit on any channel
+ * Four channels. Each channel holds one of fifteen voices, and any voice can sit on any channel
  * (duplicates allowed). They all draw on one scale and one chord that drifts slowly through it.
  *
  *   PAD       breathing chord: voices swell in and out on cycles of unequal length
@@ -16,6 +16,12 @@
  *   KALIMBA   Karplus-Strong plucks
  *   FLUTE     one feedback-FM operator, slow attack, vibrato
  *   ARP       glassy FM arpeggio over the chord
+ *   SWELL     brass chord swells: two detuned carriers, brightness following the swell, late vibrato
+ *   EP        1980s FM electric piano: body plus a 14:1 tine on the attack, dull to bright
+ *   GONG      low inharmonic gongs: a pitch dip on the strike, the index blooming then fading
+ *   PIZZ      pizzicato arp: short FM plucks over the chord, with octave jumps
+ *   SHIMMER   buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, an octave echo
+ *   TAILS     FM modulation tails: each note's index falls, blooms or rises over seconds
  *
  * Every voice reads the same eight controls, so a fader means the same thing on every page:
  *   page:      ACTIVITY  TONE  LENGTH  REGISTER
@@ -45,6 +51,7 @@ extern "C" {
 
 enum gl_voice {
 	GV_PAD, GV_BELLS, GV_BASS, GV_PIANO, GV_MARIMBA, GV_DRONE, GV_KALIMBA, GV_FLUTE, GV_ARP,
+	GV_SWELL, GV_EP, GV_GONG, GV_PIZZ, GV_SHIMMER, GV_TAILS,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];
@@ -103,7 +110,7 @@ extern volatile float gl_speed;          /* 1 = normal, less while slowing */
 extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
-#define GL_NPIECES 8
+#define GL_NPIECES 12
 const char *gl_piece_name(int i);
 void gl_piece(int i, gl_patch *out);
 /* A tasteful random patch, keeping the current voices and harmony root unless asked. */

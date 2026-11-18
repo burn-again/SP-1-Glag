@@ -190,16 +190,23 @@ static void bar(uint8_t *p, float v)           /* a bar filling from the •• 
 	}
 }
 
-/* 0..3: that LED solid; 4..7: that LED blinking; 8: all four */
+/* A number 1..16 on the play row: the LED (1-4) is idx % 4, and how it lights is the group of
+ * four: steady (1-4), slow blink (5-8), fast blink (9-12), breathing (13-16). */
 static void index_pic(uint8_t *p, int idx, uint32_t now)
 {
 	memset(p, 0, 4);
-	if (idx >= 8) {
-		memset(p, 255, 4);
-		return;
+	uint8_t v = 255;
+	switch ((idx >> 2) & 3) {
+	case 1: v = (now / 300u) & 1u ? 25 : 255; break;
+	case 2: v = (now / 90u) & 1u ? 25 : 255; break;
+	case 3: {
+		uint32_t t = now % 1200u;
+		v = (uint8_t)(30 + (t < 600u ? t : 1200u - t) * 225u / 600u);
+		break;
 	}
-	int blink = idx >= 4 && ((now / 150u) & 1u);
-	p[idx & 3] = blink ? 30 : 255;
+	default: break;
+	}
+	p[idx & 3] = v;
 }
 
 static void say(int what, uint32_t now, uint32_t ms)

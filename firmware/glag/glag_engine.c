@@ -71,7 +71,8 @@ static inline int rndi(int n) { return (int)((rnd32() >> 8) % (uint32_t)n); }
 /* ================================================================ names, steps */
 
 const char *const GL_VOICE_NAME[GV_COUNT] = {"Pad", "Bells", "Bass", "Piano", "Marimba",
-                                             "Drone", "Kalimba", "Flute", "Arp"};
+                                             "Drone", "Kalimba", "Flute", "Arp", "Swell",
+                                             "EP", "Gong", "Pizz", "Shimmer", "Tails"};
 const char *const GL_MODE_NAME[GL_NMODES] = {"Ionian", "Dorian", "Phrygian", "Lydian",
                                              "Mixolydian", "Aeolian", "Pent maj", "Pent min"};
 static const uint16_t MODE_POOL[GL_NMODES] = {
@@ -117,6 +118,10 @@ typedef struct {
 	float hold;                    /* flute: seconds left at full breath */
 	float fb;                      /* flute: feedback memory */
 	uint8_t stage;                 /* 0 idle, 1 attack, 2 decay / sustain, 3 release */
+	/* the newer voices: a second carrier (swell) or modulator (EP's tine), its index, the
+	 * seconds since the note began (gong, shimmer, tails) and a pitch bend in semitones */
+	uint32_t pc2, pm2, ic2, im2;
+	float idx2, iinc2, menv2, t, bend;
 } nvoice;
 enum { ST_IDLE, ST_ATT, ST_DEC, ST_REL };
 
@@ -129,8 +134,9 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
 /* Voices that spread their notes across two sides of the channel (pad, bells);
  * the rest are mono (their channel pan places them), which saves a buffer and half the mixing. SPREAD: how far each side sits
  * from the channel's pan. */
-static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0};
-static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f};
+static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1};
+static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
+                                       0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f};
 
 typedef struct {
 	uint8_t voice, want, fading;
@@ -152,10 +158,13 @@ typedef struct {
 	int16_t ks[KS_N][KS_LEN];
 	uint16_t ks_len[KS_N], ks_i[KS_N], ks_fill[KS_N];
 	float ks_g[KS_N], ks_a[KS_N], ks_ea[KS_N], ks_elp[KS_N], ks_vel[KS_N];
+	float ks_env[KS_N], ks_kd[KS_N];   /* an estimate of the string's level, for stopping it */
 	uint8_t ks_next;
 	float glow;
 	uint32_t seen_chord;
 	uint32_t lfo1, lfo2;           /* drone: index swell and breath */
+	/* shimmer: the octave echo waiting to sound */
+	float echo_at, echo_note, echo_vel;
 } chan;
 
 static gl_patch P;                         /* the patch the render plays */
@@ -179,7 +188,7 @@ static uint8_t chord_pending;
 static float step_acc;                     /* 16ths */
 static uint32_t step_n;
 static float speed = 1.0f, arc;
-static uint32_t lfo_vib, lfo_arc1, lfo_arc2;
+static uint32_t lfo_vib, lfo_arc1, lfo_arc2, lfo_trem;
 static uint8_t playing = 1, frozen, slowing;
 static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 while frozen */
 
@@ -278,7 +287,7 @@ static int place(int pc, float from, int lo, int hi)
 /* ================================================================ per-voice ranges */
 
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
-static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67};
+static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64};
 
 static int reg_base(const chan *c, int ch)
 {
@@ -300,6 +309,9 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 	v->side = (uint8_t)(side & 1);
 	v->stage = ST_ATT;
 	v->menv = 1.0f;
+	v->menv2 = 1.0f;
+	v->t = 0.0f;
+	v->bend = 0.0f;
 	/* the attack starts from where the amplitude is: no click on a retrigger */
 	v->env = v->amp > 0.0f ? v->amp / (vel > 0.01f ? vel : 0.01f) : 0.0f;
 	if (v->env > 1.0f)
@@ -312,7 +324,8 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
  * A new note past the cap fades out the quietest decaying note anywhere (over 1 ms); the
  * pad, the drone and the bass are never taken, but they count. This bounds the worst case
  * whatever four voices are chosen. */
-#define FM_CAP 10
+/* Counted in half-voices: a 2-op voice is 2, the three-oscillator swell and EP are 3. */
+#define FM_CAP 18
 static chan CH[GL_NCH];
 static int nslots(int voice)
 {
@@ -322,38 +335,58 @@ static int nslots(int voice)
 	case GV_BASS: return 1;
 	case GV_DRONE: return 2;
 	case GV_KALIMBA: return 0;
+	case GV_GONG: return 2;
+	case GV_SHIMMER: return 4;
 	default: return 3;
 	}
 }
+static int weight(int voice) { return voice == GV_SWELL || voice == GV_EP ? 3 : 2; }
 static inline int sounding(const nvoice *v) { return v->stage != ST_IDLE || v->amp > 0.0001f; }
 static int stealable(int voice)
 {
-	return voice == GV_BELLS || voice == GV_PIANO || voice == GV_MARIMBA || voice == GV_ARP || voice == GV_FLUTE;
+	return voice == GV_BELLS || voice == GV_PIANO || voice == GV_MARIMBA || voice == GV_ARP ||
+	       voice == GV_FLUTE || voice == GV_EP || voice == GV_GONG || voice == GV_PIZZ ||
+	       voice == GV_SHIMMER || voice == GV_TAILS;
 }
-static void make_room(const nvoice *keep)
+static int budget_used(void)
+{
+	int n = 0;
+	for (int c = 0; c < GL_NCH; c++) {
+		chan *ch = &CH[c];
+		int ns = nslots(ch->voice), w = weight(ch->voice);
+		for (int i = 0; i < ns; i++)
+			if (sounding(&ch->v[i]))
+				n += w;
+	}
+	return n;
+}
+/* a new note of weight w is about to sound in `keep`: fade the quietest stealable note out
+ * if the budget would overflow */
+static void make_room_w(const nvoice *keep, int w)
 {
 	int n = 0;
 	nvoice *q = 0;
 	float qa = 1e9f;
 	for (int c = 0; c < GL_NCH; c++) {
 		chan *ch = &CH[c];
-		int ns = nslots(ch->voice), st = stealable(ch->voice);
+		int ns = nslots(ch->voice), st = stealable(ch->voice), cw = weight(ch->voice);
 		for (int i = 0; i < ns; i++) {
 			nvoice *v = &ch->v[i];
 			if (!sounding(v))
 				continue;
-			n++;
+			n += cw;
 			if (st && v != keep && v->amp < qa) {
 				qa = v->amp;
 				q = v;
 			}
 		}
 	}
-	if (n >= FM_CAP && q) {
+	if (n + w > FM_CAP && q) {
 		q->stage = ST_IDLE;                    /* its amplitude ramps to 0 in the next ms */
 		q->env = 0.0f;
 	}
 }
+static void make_room(const nvoice *keep) { make_room_w(keep, 2); }
 
 /* set this sub-block's ramps toward amplitude `a` and index `i`. A voice that has faded
  * is snapped to exactly zero, or float rounding would leave it rendering forever. */
@@ -423,6 +456,71 @@ static void nv_render(nvoice *v, float *out)
 	v->pc = pc; v->pm = pm; v->amp = amp; v->idx = idx;
 }
 
+/* swell: one modulator shared by two detuned carriers (pc and pc2) */
+static void nv_render_dual(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc, pc2 = v->pc2, pm = v->pm, ic = v->ic, ic2 = v->ic2, im = v->im;
+	float amp = v->amp, ai = v->ainc, idx = v->idx, ii = v->iinc;
+	for (uint32_t i = 0; i < GL_SUB; i++) {
+		uint32_t m = (uint32_t)(int32_t)(SIN[pm >> TBL_SHIFT] * idx);
+		out[i] += (sin_u(pc + m) + sin_u(pc2 + m)) * amp;
+		pm += im;
+		pc += ic;
+		pc2 += ic2;
+		amp += ai;
+		idx += ii;
+	}
+	v->pc = pc; v->pc2 = pc2; v->pm = pm; v->amp = amp; v->idx = idx;
+}
+
+/* EP: the body modulator (1:1) and the tine (14:1) both modulating one carrier */
+static void nv_render_ep(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc, pm = v->pm, pm2 = v->pm2, ic = v->ic, im = v->im, im2 = v->im2;
+	float amp = v->amp, ai = v->ainc, idx = v->idx, ii = v->iinc, idx2 = v->idx2, ii2 = v->iinc2;
+	for (uint32_t i = 0; i < GL_SUB; i++) {
+		float m = SIN[pm >> TBL_SHIFT] * idx + SIN[pm2 >> TBL_SHIFT] * idx2;
+		out[i] += sin_u(pc + (uint32_t)(int32_t)m) * amp;
+		pm += im;
+		pm2 += im2;
+		pc += ic;
+		amp += ai;
+		idx += ii;
+		idx2 += ii2;
+	}
+	v->pc = pc; v->pm = pm; v->pm2 = pm2; v->amp = amp; v->idx = idx; v->idx2 = idx2;
+}
+
+/* shimmer: a modulator with self-feedback (the buzz, idx2) driving the carrier */
+static void nv_render_shimmer(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc, pm = v->pm, ic = v->ic, im = v->im;
+	float amp = v->amp, ai = v->ainc, idx = v->idx, ii = v->iinc, fbk = v->idx2, fb = v->fb;
+	for (uint32_t i = 0; i < GL_SUB; i++) {
+		float mo = SIN[(pm + (uint32_t)(int32_t)(fb * fbk)) >> TBL_SHIFT];
+		fb = mo;
+		out[i] += sin_u(pc + (uint32_t)(int32_t)(mo * idx)) * amp;
+		pm += im;
+		pc += ic;
+		amp += ai;
+		idx += ii;
+	}
+	v->pc = pc; v->pm = pm; v->amp = amp; v->idx = idx; v->fb = fb;
+}
+
+/* an idle voice among v[from .. from+n-1], else the quietest of them */
+static nvoice *alloc_from(chan *c, int from, int n)
+{
+	nvoice *best = &c->v[from];
+	for (int i = from; i < from + n; i++)
+		if (c->v[i].stage == ST_IDLE)
+			return &c->v[i];
+	for (int i = from + 1; i < from + n; i++)
+		if (c->v[i].amp < best->amp)
+			best = &c->v[i];
+	return best;
+}
+
 /* ================================================================ channel: voice logic */
 
 static void chan_reset(chan *c, int voice)
@@ -436,6 +534,8 @@ static void chan_reset(chan *c, int voice)
 		c->v[i].ratio = 1.0f;
 		c->v[i].pc = rnd32();
 		c->v[i].pm = rnd32();
+		c->v[i].pc2 = rnd32();
+		c->v[i].pm2 = rnd32();
 		c->gap[i] = 0.3f + 2.5f * (float)i * rnd();   /* the pad comes in one breath at a time */
 	}
 	c->glide_note = c->target_note = -1.0f;
@@ -532,11 +632,55 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		}
 		break;
 	}
+	case GV_GONG: {
+		/* a strike on each new chord's root (on the bar), and now and then between */
+		int strike = (step & 15) == 0 && c->seen_chord != chord_count;
+		if (!strike && rnd() >= act * act * 0.035f)
+			break;
+		c->seen_chord = chord_count;
+		int pc = strike || rnd() < 0.6f ? chord_pc[0] : chord_pc[1 + rndi(chord_n - 1)];
+		int note = place(pc, (float)base, base - 5, base + 7);
+		nvoice *v = alloc(c, 2);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, 0.75f + 0.2f * rnd(), 1.4f, 0);
+		c->glow = 1.0f;
+		break;
+	}
+	case GV_PIZZ: {
+		int div = act < 0.25f ? 4 : act < 0.5f ? 3 : act < 0.75f ? 2 : 1;
+		if (step % (uint32_t)div)
+			break;
+		/* up and down the chord over two octaves; CHARACTER adds octave jumps */
+		int notes[8], n = 0;
+		for (int o = 0; o < 2; o++)
+			for (int k = 0; k < chord_n; k++)
+				notes[n++] = place(chord_pc[k], (float)(base + 12 * o + 2 * k), base + 12 * o - 1, base + 12 * o + 11);
+		int per = 2 * n - 2, q = c->arp_i % per, i = q < n ? q : per - q;
+		int zone = stepped(P.ch[ch][CP_CHAR], 3), oct = 0;
+		if (zone == 1)
+			oct = (c->arp_i & 1) ? 12 : 0;
+		else if (zone == 2) {
+			static const int8_t JUMP[6] = {-12, 0, 0, 12, 12, 24};
+			oct = JUMP[rndi(6)];
+		}
+		c->arp_i++;
+		nvoice *v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)(notes[i] + oct), (((step & 3) == 0 ? 0.85f : 0.6f) + 0.15f * rnd()) * 1.5f, 1.0f, 0);
+		c->glow = 0.7f;
+		break;
+	}
 	case GV_PIANO:
 	case GV_MARIMBA:
 	case GV_FLUTE:
-	case GV_KALIMBA: {
-		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0};
+	case GV_KALIMBA:
+	case GV_EP:
+	case GV_SHIMMER:
+	case GV_TAILS: {
+		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
+		                                     0, 0.14f, 0, 0, 0.07f, 0.08f};
 		float p = act * act * PMAX[c->voice];
 		if (rnd() >= p)
 			break;
@@ -563,7 +707,31 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			/* decay per period: -60 dB over LENGTH (0.4..6 s) */
 			float T = expmap(P.ch[ch][CP_LENGTH], 0.4f, 6.0f);
 			c->ks_g[k] = fexp2(-9.9658f * (float)len / (GL_SR * T));
+			c->ks_env[k] = vel;
+			c->ks_kd[k] = fexp2(-9.9658f * (float)GL_SUB / (GL_SR * T));
 			c->ks_a[k] = 0.5f + 0.45f * P.ch[ch][CP_CHAR];
+		} else if (c->voice == GV_SHIMMER) {
+			/* a swoop up into the note, and its echo an octave higher a dotted eighth later */
+			nvoice *v = alloc_from(c, 0, 2);
+			if (!sounding(v))
+				make_room(v);
+			nv_trigger(v, (float)note, vel * 1.15f, 1.0f, 0);
+			v->bend = -3.0f;
+			c->echo_note = (float)(note + 12);
+			c->echo_vel = vel * 0.55f;
+			c->echo_at = 0.75f * 60.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+		} else if (c->voice == GV_TAILS) {
+			/* each tail its own ratio; now and then an octave up */
+			static const float TR[6] = {1.0f, 2.0f, 1.5f, 3.5f, 0.5f, 2.5f};
+			nvoice *v = alloc(c, 3);
+			if (!sounding(v))
+				make_room(v);
+			nv_trigger(v, (float)(note + (rnd() < 0.2f ? 12 : 0)), vel * 0.9f, TR[rndi(6)], vp);
+		} else if (c->voice == GV_EP) {
+			nvoice *v = alloc(c, 3);
+			if (!sounding(v))
+				make_room_w(v, 3);
+			nv_trigger(v, (float)note, vel, 1.0f, vp);
 		} else {
 			nvoice *v = alloc(c, 3);
 			if (c->voice == GV_FLUTE && v->stage != ST_IDLE)
@@ -621,17 +789,26 @@ static void chan_control(chan *c, int ch, float dt)
 	float sdt = dt * speed;                   /* time runs slower while slowing */
 	int base = reg_base(c, ch);
 	switch (c->voice) {
-	case GV_PAD: {
+	case GV_PAD:
+	case GV_SWELL: {
+		/* the swell is a pad that breathes like brass: a slow rise, a hold, a long fall, its
+		 * brightness following its loudness, vibrato arriving late */
+		const int sw = c->voice == GV_SWELL;
+		const float chr = P.ch[ch][CP_CHAR];
 		int nv = 2 + stepped(P.ch[ch][CP_ACTIVITY], 2);   /* 2 or 3 voices breathing */
-		float cycle = 4.0f + 26.0f * len;
-		float ratio = P.ch[ch][CP_CHAR] < 0.5f ? 1.0f : 2.0f;
-		float detune = 0.12f * P.ch[ch][CP_CHAR];
+		float cycle = sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
+		float ratio = sw ? 1.0f : (chr < 0.5f ? 1.0f : 2.0f);
+		float detune = sw ? 0.0f : 0.12f * chr;
+		float spread = fexp2((4.0f + 14.0f * chr) * (1.0f / 1200.0f));   /* swell's second carrier */
 		for (int i = 0; i < NV; i++) {
 			nvoice *v = &c->v[i];
 			if (!frozen) {
 				if (v->stage == ST_IDLE) {
 					c->gap[i] -= sdt;
-					if (c->gap[i] <= 0.0f && playing && i < nv) {
+					if (c->gap[i] <= 0.0f && playing && i < nv &&
+					    budget_used() + weight(c->voice) > FM_CAP) {
+						c->gap[i] = 0.5f;                /* no room: breathe a little later */
+					} else if (c->gap[i] <= 0.0f && playing && i < nv) {
 						/* breathe in on this voice's tone of the chord */
 						int pc = chord_pc[i % chord_n];
 						float from = v->note > 0.0f ? v->note : (float)(base + 3 * i);
@@ -651,14 +828,31 @@ static void chan_control(chan *c, int ch, float dt)
 					}
 				}
 			}
-			float s = v->stage == ST_IDLE ? 0.0f : sin_u((uint32_t)(c->cyc[i] * 2147483648.0f));
-			float e = s * s;
+			float x = c->cyc[i], e, idx, vib = 1.0f;
+			if (v->stage == ST_IDLE)
+				e = 0.0f;
+			else if (!sw) {
+				float s = sin_u((uint32_t)(x * 2147483648.0f));
+				e = s * s;
+			} else if (x < 0.45f) {
+				float u = x * (1.0f / 0.45f);
+				e = u * u;
+			} else if (x < 0.7f)
+				e = 1.0f;
+			else
+				e = 0.5f + 0.5f * sin_u((uint32_t)((0.25f + (x - 0.7f) * (0.5f / 0.3f)) * 4294967296.0f));
 			v->env = e;
-			float a = e * v->vel, idx = clampf(tone * 1.3f * (0.5f + 0.5f * e), 0.0f, 3.0f) * IDX_SCALE;
-			ramp(v, a, idx);
-			float hz = mtof(v->note + detune * (float)(i - 1)) * speed;
+			if (sw) {
+				idx = (0.15f + 2.2f * tone) * e * (0.4f + 0.6f * e);
+				float vd = clampf((x - 0.3f) * 3.0f, 0.0f, 1.0f) * (0.002f + 0.005f * chr);
+				vib = 1.0f + vd * sin_u(lfo_vib + (uint32_t)i * 0x40000000u);
+			} else
+				idx = tone * 1.3f * (0.5f + 0.5f * e);
+			ramp(v, e * v->vel * (sw ? 0.7f : 1.0f), clampf(idx, 0.0f, 3.0f) * IDX_SCALE);
+			float hz = mtof(v->note + detune * (float)(i - 1)) * speed * vib;
 			v->ic = hz_inc(hz);
 			v->im = hz_inc(hz * ratio);
+			v->ic2 = hz_inc(hz * spread);
 		}
 		break;
 	}
@@ -787,6 +981,112 @@ static void chan_control(chan *c, int ch, float dt)
 		}
 		break;
 	}
+	case GV_EP:
+		for (int i = 0; i < 3; i++) {
+			nvoice *v = &c->v[i];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = v->iinc2 = 0.0f;
+				continue;
+			}
+			/* TONE: dull to bright, and harder notes are brighter, as on the DX7 */
+			nv_perc(v, 0.002f, expmap(len, 1.0f, 10.0f) / speed, 0.6f / speed,
+			        (0.3f + 2.2f * tone) * (0.5f + 0.6f * v->vel), dt);
+			v->menv2 *= dcoef(0.09f / speed, dt);
+			float i2 = P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE;
+			v->iinc2 = (i2 - v->idx2) * (1.0f / GL_SUB);
+			nv_pitch(v, v->note);
+			v->im2 = hz_inc(mtof(v->note) * speed * 14.0f);
+		}
+		break;
+	case GV_GONG: {
+		static const float GR[4] = {1.4f, 1.73f, 2.76f, 3.14f};
+		float ratio = GR[stepped(P.ch[ch][CP_CHAR], 4)];
+		for (int k = 0; k < 2; k++) {
+			nvoice *v = &c->v[k];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = 0.0f;
+				continue;
+			}
+			v->t += sdt;
+			nv_perc(v, 0.003f, expmap(len, 4.0f, 25.0f) / speed, 1.0f, 1.0f, dt);
+			/* the index blooms for 0.6 s after the strike, then fades over seconds */
+			float b = v->t < 0.6f ? v->t * (1.0f / 0.6f)
+			                      : fexp2(-clampf(v->t - 0.6f, 0.0f, 60.0f) * (1.4427f / 5.0f));
+			float im = (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE;
+			v->iinc = (im - v->idx) * (1.0f / GL_SUB);
+			v->ratio = ratio;
+			nv_pitch(v, v->note + 0.7f * fexp2(-clampf(v->t, 0.0f, 5.0f) * (1.4427f / 0.12f)));
+		}
+		break;
+	}
+	case GV_PIZZ:
+		for (int i = 0; i < 3; i++) {
+			nvoice *v = &c->v[i];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = 0.0f;
+				continue;
+			}
+			nv_perc(v, 0.0005f, expmap(len, 0.08f, 0.7f) / speed, 0.03f / speed, 0.6f + 2.0f * tone, dt);
+			nv_pitch(v, v->note);
+		}
+		break;
+	case GV_SHIMMER: {
+		if (c->echo_at > 0.0f && !frozen) {
+			c->echo_at -= sdt;
+			if (c->echo_at <= 0.0f && playing) {
+				nvoice *v = alloc_from(c, 2, 2);
+				if (!sounding(v))
+					make_room(v);
+				nv_trigger(v, c->echo_note, c->echo_vel, 1.0f, 1);
+				v->bend = -2.0f;
+				c->glow = 0.5f;
+			}
+		}
+		float trem = 1.0f - 0.22f * (0.5f + 0.5f * sin_u(lfo_trem));
+		float fbk = (0.4f + 1.4f * P.ch[ch][CP_CHAR]) * IDX_SCALE;
+		for (int k = 0; k < 4; k++) {
+			nvoice *v = &c->v[k];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = 0.0f;
+				continue;
+			}
+			v->t += sdt;
+			nv_perc(v, 0.04f + 0.2f * len, expmap(len, 1.5f, 8.0f) / speed, 3.0f / speed, 1.0f, dt);
+			ramp(v, v->env * v->vel * trem, (0.3f + 1.8f * tone) * (0.4f + 0.6f * v->menv) * IDX_SCALE);
+			v->idx2 = fbk;
+			v->bend *= dcoef(0.15f, sdt);
+			float vib = 1.0f + 0.004f * sin_u(lfo_vib + (uint32_t)k * 0x40000000u);
+			float hz = mtof(v->note + v->bend) * speed * vib;
+			v->ic = hz_inc(hz);
+			v->im = hz_inc(hz);
+		}
+		break;
+	}
+	case GV_TAILS: {
+		int z = stepped(P.ch[ch][CP_CHAR], 3);
+		float dec = expmap(len, 2.0f, 14.0f), tau = 0.35f * dec;
+		for (int k = 0; k < 3; k++) {
+			nvoice *v = &c->v[k];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = 0.0f;
+				continue;
+			}
+			v->t += sdt;
+			nv_perc(v, 0.008f, dec / speed, 1.0f, 1.0f, dt);
+			/* the index tail: falls (bright to pure), blooms (rises, then falls) or rises */
+			float x = clampf(v->t / tau, 0.0f, 40.0f), sh;
+			if (z == 0)
+				sh = fexp2(-x * 1.4427f);
+			else if (z == 1)
+				sh = x < 0.5f ? x * 2.0f : fexp2(-(x - 0.5f) * 1.4427f * 1.5f);
+			else
+				sh = 1.0f - fexp2(-x * 1.4427f);
+			float im = (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE;
+			v->iinc = (im - v->idx) * (1.0f / GL_SUB);
+			nv_pitch(v, v->note);
+		}
+		break;
+	}
 	case GV_KALIMBA:
 	default:
 		break;
@@ -811,9 +1111,39 @@ static int chan_render(chan *c, float *A, float *B)
 				any = 1;
 			}
 		break;
+	case GV_SWELL:
+		for (int i = 0; i < 3; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render_dual(&c->v[i], c->v[i].side ? B : A);
+				any = 1;
+			}
+		break;
+	case GV_EP:
+		for (int i = 0; i < 3; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render_ep(&c->v[i], A);
+				any = 1;
+			}
+		break;
+	case GV_SHIMMER:
+		for (int i = 0; i < 4; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render_shimmer(&c->v[i], c->v[i].side ? B : A);
+				any = 1;
+			}
+		break;
+	case GV_GONG:
+		for (int i = 0; i < 2; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render(&c->v[i], A);
+				any = 1;
+			}
+		break;
 	case GV_PIANO:
 	case GV_MARIMBA:
 	case GV_ARP:
+	case GV_PIZZ:
+	case GV_TAILS:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f)
 				{
@@ -879,7 +1209,6 @@ static int chan_render(chan *c, float *A, float *B)
 			int i = c->ks_i[k];
 			float g = c->ks_g[k] * (1.0f / 16000.0f), a = c->ks_a[k], na = 1.0f - a;
 			float *out = (k & 1) ? B : A;
-			float peak = 1.0f;                       /* still exciting: not silent */
 			uint32_t n = 0;
 			if (c->ks_fill[k]) {
 				float ea = c->ks_ea[k], lp = c->ks_elp[k], vel = c->ks_vel[k];
@@ -894,20 +1223,22 @@ static int chan_render(chan *c, float *A, float *B)
 				c->ks_elp[k] = lp;
 				c->ks_fill[k] = (uint16_t)(c->ks_fill[k] - m);
 			}
-			if (n < GL_SUB)
-				peak = 0.0f;
+			float y = (float)b[i];                     /* carried: one load per sample */
 			for (; n < GL_SUB; n++) {
 				int j = i + 1 == len ? 0 : i + 1;
-				float y = (float)b[i];
-				float nx = (a * y + na * (float)b[j]) * g;
+				float yj = (float)b[j];
+				float nx = (a * y + na * yj) * g;
 				b[i] = (int16_t)(nx * 16000.0f);
+				y = yj;
 				i = j;
-				peak = nx > peak ? nx : -nx > peak ? -nx : peak;
 				out[n] += nx * 1.8f;
 			}
 			c->ks_i[k] = (uint16_t)i;
-			if (peak < 0.00005f)
-				c->ks_len[k] = 0;                    /* silent: stop spending on it */
+			/* the string's level, estimated once per block (its filter only makes it quieter
+			 * sooner): below -70 dB it stops costing anything */
+			c->ks_env[k] *= c->ks_kd[k];
+			if (!c->ks_fill[k] && c->ks_env[k] < 0.0003f)
+				c->ks_len[k] = 0;
 		}
 		break;
 	default:
@@ -1089,6 +1420,7 @@ static void control(float dt)
 	}
 	gl_speed = speed;
 	lfo_vib += sub_inc(5.1f, speed);
+	lfo_trem += sub_inc(7.3f, speed);
 	lfo_arc1 += sub_inc(1.0f / 170.0f, speed);
 	lfo_arc2 += sub_inc(1.0f / 47.0f, speed);
 
@@ -1374,6 +1706,22 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{45, 30, 70, 50, 40, 60, 40, 0, 60}, {25, 25, 45, 75, 50, 70, 65, 70, 40},
 	  {35, 40, 70, 50, 20, 70, 50, 30, 55}, {25, 50, 60, 75, 55, 75, 50, 50, 45}},
 	 {36, 45, 70, 50, 5, 0, 30, 50}},
+	{"Rain City", {GV_SWELL, GV_EP, GV_GONG, GV_SHIMMER},
+	 {{45, 55, 75, 50, 25, 85, 50, 60, 65}, {35, 25, 55, 50, 50, 65, 40, 40, 60},
+	  {30, 45, 70, 50, 10, 70, 50, 25, 55}, {25, 50, 60, 50, 70, 80, 60, 50, 45}},
+	 {30, 60, 85, 50, 4, 5, 30, 55}},
+	{"Deep Water", {GV_SHIMMER, GV_TAILS, GV_GONG, GV_PAD},
+	 {{35, 45, 70, 50, 75, 85, 40, 30, 55}, {35, 55, 70, 50, 50, 75, 60, 50, 55},
+	  {25, 40, 80, 50, 15, 80, 50, 75, 50}, {40, 25, 85, 25, 15, 85, 50, 20, 50}},
+	 {20, 65, 90, 50, 2, 1, 25, 60}},
+	{"Lobby 84", {GV_EP, GV_PIZZ, GV_BASS, GV_SWELL},
+	 {{45, 75, 55, 50, 40, 55, 45, 70, 75}, {45, 45, 30, 50, 45, 45, 60, 50, 70},
+	  {40, 40, 50, 50, 5, 20, 50, 30, 65}, {40, 45, 60, 50, 20, 70, 50, 40, 60}},
+	 {55, 40, 55, 50, 5, 0, 35, 45}},
+	{"Long Haul", {GV_PIZZ, GV_TAILS, GV_SWELL, GV_GONG},
+	 {{55, 40, 25, 75, 60, 55, 40, 100, 70}, {30, 50, 75, 50, 40, 75, 60, 50, 68},
+	  {40, 40, 80, 50, 20, 80, 50, 70, 62}, {25, 45, 75, 50, 10, 70, 50, 0, 65}},
+	 {45, 55, 75, 50, 9, 7, 40, 60}},
 };
 
 const char *gl_piece_name(int i) { return PIECES[(unsigned)i < GL_NPIECES ? i : 0].name; }

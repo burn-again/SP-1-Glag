@@ -1,4 +1,4 @@
-/* Render a piece to a WAV on a computer: render PIECE SECONDS OUT.wav [voices e.g. 0127] */
+/* Render a piece to a WAV on a computer: render PIECE SECONDS OUT.wav [voices in hex, e.g. 0127 or 9abe] */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,14 +24,19 @@ int main(int argc, char **argv)
 	gl_piece(piece, &p);
 	if (argc > 4)
 		for (int c = 0; c < GL_NCH && argv[4][c]; c++)
-			p.voice[c] = (uint8_t)(argv[4][c] - '0');
+			p.voice[c] = (uint8_t)(argv[4][c] <= '9' ? argv[4][c] - '0' : (argv[4][c] | 0x20) - 'a' + 10);   /* hex: 0-9, a-e */
 	if (argc > 5)   /* channel mask, e.g. 0100 keeps channel 2 only */
 		for (int c = 0; c < GL_NCH && argv[5][c]; c++)
 			if (argv[5][c] == '0')
 				p.ch[c][CP_LEVEL] = 0.0f;
 	if (getenv("DRY")) { p.g[GP_REVERB] = 0; p.g[GP_DELAY] = 0; for (int c = 0; c < GL_NCH; c++) p.ch[c][CP_VERB] = p.ch[c][CP_ECHO] = 0; }
-	if (getenv("ACT"))   /* channel 1's activity, for auditioning a voice */
+	/* channel 1's activity, tone and character, for auditioning a voice */
+	if (getenv("ACT"))
 		p.ch[0][CP_ACTIVITY] = (float)atof(getenv("ACT"));
+	if (getenv("TONE"))
+		p.ch[0][CP_TONE] = (float)atof(getenv("TONE"));
+	if (getenv("CHAR"))
+		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	gl_post_patch(&p);
 	uint32_t frames = (uint32_t)(secs * 48000.0f) / 96u * 96u;
 	FILE *f = fopen(argv[3], "wb");

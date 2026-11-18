@@ -6,7 +6,7 @@
  *   HOME (at boot)       F1 tempo   F2 delay   F3 reverb   F4 DJ filter (centre = off)
  *                        •• held + F1..F4: the four channel levels (on every page)
  *                        T1..T4: open that channel's page
- *                        •• + T1..T4: the next voice on that channel (any voice, any channel)
+ *                        •• + T1..T4: the next voice on that channel (15 voices, any channel)
  *   CHANNEL page         F1 activity  F2 tone  F3 length  F4 register (5 octave steps)
  *                        •• + its own T: extended page (blinking LED), again to come back
  *   EXTENDED page        F1 echo send  F2 reverb send  F3 pan (centre detent)  F4 character

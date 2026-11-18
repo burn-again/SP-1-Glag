@@ -100,12 +100,12 @@ int main(void)
 	down(GB_FN); tap(GB_T4); up(GB_FN);
 	CHECK(glui_patch()->voice[3] == GV_ARP, "•• + T4: Flute -> Arp (%d)", glui_patch()->voice[3]);
 	down(GB_FN); tap(GB_T4); up(GB_FN);
-	CHECK(glui_patch()->voice[3] == GV_PAD, "•• + T4 again: wraps to Pad (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_SWELL, "•• + T4 again: Swell (%d)", glui_patch()->voice[3]);
 	CHECK(out.page == PG_HOME, "rotating stays on HOME");
-	for (int k = 0; k < 7; k++) {
+	for (int k = 0; k < GV_COUNT - 2; k++) {
 		down(GB_FN); tap(GB_T4); up(GB_FN);
 	}
-	CHECK(glui_patch()->voice[3] == GV_FLUTE, "all nine voices, back to Flute (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_FLUTE, "all %d voices, back to Flute (%d)", GV_COUNT, glui_patch()->voice[3]);
 	run(500);
 
 	/* •• + PLAY once: HARMONY */
@@ -184,10 +184,10 @@ int main(void)
 	/* a saved piece comes back when it is chosen again */
 	gl_patch mine = *glui_patch();
 	down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
-	for (int k = 0; k < 7; k++) {
+	for (int k = 0; k < GL_NPIECES - 1; k++) {
 		down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
 	}
-	CHECK(out.piece == 0, "eight steps wrap to piece 1 (%d)", out.piece);
+	CHECK(out.piece == 0, "%d steps wrap to piece 1 (%d)", GL_NPIECES, out.piece);
 	CHECK(memcmp(glui_patch(), &mine, sizeof mine) == 0, "piece 1 comes back as saved");
 
 	/* VOL */
