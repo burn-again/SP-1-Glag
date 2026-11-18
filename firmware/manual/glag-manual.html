@@ -106,6 +106,10 @@ td.g { white-space: nowrap; }
 .voice h3 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .voice .num { font-family: var(--mono); font-size: 12px; color: var(--led-ink); }
 .voice .f4 { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.term h3 { display: grid; gap: 2px; }
+.term .where { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; font-weight: 400; color: var(--muted); letter-spacing: .02em; }
+.term .try { font-size: 13.5px; color: var(--muted); }
+h3.group { margin-top: 18px; }
 .note { font-size: 13.5px; color: var(--muted); max-width: 72ch; }
 .flow svg { width: 100%; height: auto; display: block; max-width: 900px; }
 .flow-box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
@@ -125,7 +129,7 @@ td.g { white-space: nowrap; }
     <h1>Glag manual</h1>
     <p class="lede">Glag turns the SP-1 into a generative ambient instrument. It plays itself from the moment it is switched on: four channels, each holding one of fifteen voices, drawing on one scale and one slowly drifting chord, through an echo and a reverb. You tend it rather than play it. This manual covers every control, every page and every light.</p>
     <nav class="toc" aria-label="Chapters">
-      <a href="#controls">Control map</a><a href="#pages">Getting around</a><a href="#anywhere">Anywhere</a>
+      <a href="#controls">Control map</a><a href="#pages">Getting around</a><a href="#meaning">What each control does</a><a href="#anywhere">Anywhere</a>
       <a href="#distortion">Distortion</a><a href="#lights">Reading the lights</a><a href="#voices">Voices</a>
       <a href="#pieces">Pieces</a><a href="#power">Power</a>
     </nav>
@@ -216,10 +220,73 @@ td.g { white-space: nowrap; }
     <p class="note"><b>Faders pick up.</b> When you change page, a fader does nothing until it reaches the value it would change. Move it and the play lights blink that value, so you can find it. Once it passes through, it takes over. The emulator draws this as a dashed line on each fader.</p>
   </section>
 
+
+  <!-- ============================================================ glossary -->
+  <section class="chapter" id="meaning" aria-labelledby="h-meaning">
+    <header>
+      <div class="eyebrow">3 · In plain words</div>
+      <h2 id="h-meaning">What each control does</h2>
+      <p>Glag writes the notes itself. You don't play it so much as tend it: the faders set how busy, bright and spacious it is, and which notes it is allowed to use. You can't play a wrong note. Every fader is safe to move at any time.</p>
+    </header>
+    <h3 class="group">Home: the room everything plays in</h3>
+    <p class="note">These four affect all four channels at once.</p>
+    <div class="grid">
+      <article class="card term"><h3>Tempo<span class="where">F1 on Home</span></h3><p>The speed of the music's pulse, from 20 to 120 beats per minute. It sets how often each channel gets a chance to play and how fast the arpeggios and loops move. Ambient music sits low: most pieces are between 48 and 86.</p><p class="try"><b>Try:</b> pull it all the way down to 20 for long, slow, spacious music.</p></article>
+      <article class="card term"><h3>Delay<span class="where">F2 on Home</span></h3><p>An echo that repeats what the channels play, each repeat darker and quieter, like an old tape echo. Higher means louder echoes and more of them. The echo time follows the tempo, so the repeats land in rhythm. All the way down turns it off.</p><p class="try"><b>Try:</b> raise it with only Kalimba or Pizz playing, and listen to the plucks bounce.</p></article>
+      <article class="card term"><h3>Reverb<span class="where">F3 on Home</span></h3><p>The size of the space the music is in, from a small room to a long hall. Higher makes it bigger, longer and louder. Each channel chooses how much of itself to put in it (Reverb send, below).</p><p class="try"><b>Try:</b> turn it right up, then tap FFWD to freeze: the space holds the chord forever.</p></article>
+      <article class="card term"><h3>DJ filter<span class="where">F4 on Home</span></h3><p>A tone sweep over the whole mix. In the middle it does nothing (there is a detent). To the left it removes the high notes, so the music sounds muffled, as if through a wall. To the right it removes the low notes, so it thins out like a small radio.</p><p class="try"><b>Try:</b> sweep it slowly left and back to fade the music into the distance and out again.</p></article>
+    </div>
+    <h3 class="group">Channel page: how one instrument plays</h3>
+    <p class="note">Each channel has its own four. On each voice they mean the same kind of thing, though each voice reads them in its own way.</p>
+    <div class="grid">
+      <article class="card term"><h3>Activity<span class="where">F1 on a channel page</span></h3><p>How busy the instrument is: how often it plays a new note. Low leaves long gaps, high plays most beats. On voices that hold notes, such as Pad and Drone, it sets how often they breathe in and out instead.</p><p class="try"><b>Try:</b> two busy channels and two sparse ones usually sounds better than four in the middle.</p></article>
+      <article class="card term"><h3>Tone<span class="where">F2 on a channel page</span></h3><p>How bright or dark the sound is. Down is soft and round; up is brighter, with more edge and shimmer. On the FM voices it changes how strongly one wave bends another, which is where the brightness comes from.</p><p class="try"><b>Try:</b> keep the bass and pad dark and give one bell or piano the bright tone.</p></article>
+      <article class="card term"><h3>Length<span class="where">F3 on a channel page</span></h3><p>How long each note rings after it is played, from a short tap to many seconds. On held voices it is how long a note is held before it fades.</p><p class="try"><b>Try:</b> long notes with low activity give the most ambient sound: few notes, each one ringing for a long time.</p></article>
+      <article class="card term"><h3>Register<span class="where">F4 on a channel page</span></h3><p>Which octave the instrument plays in. It has five steps: two octaves down, one down, home, one up and two up. Home is a sensible range for that voice, so Bass starts low and Bells high. It moves the whole instrument; the notes it chooses stay the same.</p><p class="try"><b>Try:</b> put two channels with the same voice in different registers so they don't crowd each other.</p></article>
+    </div>
+    <h3 class="group">Extended page: where it sits, and its own colour</h3>
+    <p class="note">Hold •• and tap the channel's own T to get here.</p>
+    <div class="grid">
+      <article class="card term"><h3>Echo send<span class="where">F1 on the extended page</span></h3><p>How much of this channel goes into the delay. The Delay fader on Home sets what the echo sounds like; this sets who uses it. At zero this channel has no echo, however high Delay is.</p><p class="try"><b>Try:</b> send only one channel to the echo so it has a part to itself.</p></article>
+      <article class="card term"><h3>Reverb send<span class="where">F2 on the extended page</span></h3><p>How much of this channel goes into the reverb. Higher sounds further away and more blurred; lower sounds close and dry.</p><p class="try"><b>Try:</b> keep the bass low here, or it turns to mud, and the bells and pads high.</p></article>
+      <article class="card term"><h3>Pan<span class="where">F3 on the extended page</span></h3><p>Where the channel sits between your left and right ear. The middle has a detent. Some voices are already stereo; pan moves their whole spread.</p><p class="try"><b>Try:</b> pan two plucked voices opposite each other.</p></article>
+      <article class="card term"><h3>Character<span class="where">F4 on the extended page</span></h3><p>The one control that is different for every voice: the thing that makes that voice itself. On Bells it picks the kind of metal, on Arp the pattern, on Drone the interval, on Shimmer the buzz. The Voices chapter lists all fifteen.</p><p class="try"><b>Try:</b> change it slowly while the voice plays to hear what it does.</p></article>
+    </div>
+    <h3 class="group">Mixer</h3>
+    <p class="note">Hold •• on any page and the faders become the four channel volumes.</p>
+    <div class="grid">
+      <article class="card term"><h3>Level<span class="where">•• held + F1-F4</span></h3><p>How loud each channel is in the mix. All the way down silences that channel, which also stops it costing any processing.</p><p class="try"><b>Try:</b> bring a channel down to zero and back up slowly, as a fade in or out.</p></article>
+    </div>
+    <h3 class="group">Harmony: which notes Glag may use</h3>
+    <p class="note">Hold •• and press PLAY once. All four channels share one key and one chord, so they always agree.</p>
+    <div class="grid">
+      <article class="card term"><h3>Root<span class="where">F1 on Harmony</span></h3><p>The home note of the key, in 12 steps from C up to B. Moving it shifts everything up or down together; the mood stays the same.</p><p class="try"><b>Try:</b> change it between pieces, or step it up slowly for a lift.</p></article>
+      <article class="card term"><h3>Mode<span class="where">F2 on Harmony</span></h3><p>Which seven (or five) notes the key uses, and so its mood. Some are bright, some sad, some dreamy. The table below describes each one.</p><p class="try"><b>Try:</b> try Lydian for floating and Aeolian for melancholy, on the same root.</p></article>
+      <article class="card term"><h3>Drift<span class="where">F3 on Harmony</span></h3><p>How often the chord changes. All four channels follow the chord, so this is the music's slowest clock. Left changes it every 4 minutes or so, which is almost still; right changes it about every 10 seconds.</p><p class="try"><b>Try:</b> keep it low for drones, and raise it when you want a sense of travel.</p></article>
+      <article class="card term"><h3>Motion<span class="where">F4 on Harmony</span></h3><p>How much the music changes by itself over time. Glag has a slow tide, a couple of minutes long, that makes everything a little busier and brighter, then sparser and darker. Motion sets how deep that tide is and how often the loops change one of their notes. At zero the music holds steady. Up high it keeps evolving.</p><p class="try"><b>Try:</b> turn it up and leave Glag alone for ten minutes.</p></article>
+    </div>
+    <h3 class="group">The eight modes</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Mode</th><th scope="col">Sounds</th></tr></thead>
+        <tbody>
+          <tr><td class="g">Ionian</td><td>The major scale: open, bright, settled</td></tr>
+          <tr><td class="g">Dorian</td><td>Minor but warm, with a hopeful note in it</td></tr>
+          <tr><td class="g">Phrygian</td><td>Dark and tense, a little Spanish or Middle Eastern</td></tr>
+          <tr><td class="g">Lydian</td><td>Major with a raised fourth: floating, dreamy, film-like</td></tr>
+          <tr><td class="g">Mixolydian</td><td>Major but relaxed, slightly bluesy</td></tr>
+          <tr><td class="g">Aeolian</td><td>The natural minor: sad, reflective</td></tr>
+          <tr><td class="g">Pent maj</td><td>Five notes, no clashes at all: simple and sunny</td></tr>
+          <tr><td class="g">Pent min</td><td>Five notes, minor: calm and spacious</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- ============================================================ anywhere -->
   <section class="chapter" id="anywhere" aria-labelledby="h-anywhere">
     <header>
-      <div class="eyebrow">3 · On every page</div>
+      <div class="eyebrow">4 · On every page</div>
       <h2 id="h-anywhere">Anywhere</h2>
       <p>These work the same on every page. •• is the shift button: hold it, then press the other control.</p>
     </header>
@@ -248,7 +315,7 @@ td.g { white-space: nowrap; }
   <!-- ============================================================ distortion -->
   <section class="chapter" id="distortion" aria-labelledby="h-dist">
     <header>
-      <div class="eyebrow">4 · Colour</div>
+      <div class="eyebrow">5 · Colour</div>
       <h2 id="h-dist">Distortion</h2>
       <p>Five shapers on the volume rocker with •• held. They sit outside the pieces, so changing piece or randomizing leaves them as they are.</p>
     </header>
@@ -286,7 +353,7 @@ td.g { white-space: nowrap; }
   <!-- ============================================================ lights -->
   <section class="chapter" id="lights" aria-labelledby="h-lights">
     <header>
-      <div class="eyebrow">5 · No screen</div>
+      <div class="eyebrow">6 · No screen</div>
       <h2 id="h-lights">Reading the lights</h2>
       <p>The <b>track lights</b> say where you are. The <b>play lights</b> show the music, or for a moment whatever you just touched. Lights numbered here run from the •• end to the PLAY end.</p>
     </header>
@@ -319,7 +386,7 @@ td.g { white-space: nowrap; }
   <!-- ============================================================ voices -->
   <section class="chapter" id="voices" aria-labelledby="h-voices">
     <header>
-      <div class="eyebrow">6 · Fifteen voices</div>
+      <div class="eyebrow">7 · Fifteen voices</div>
       <h2 id="h-voices">Voices</h2>
       <p>Any voice can sit on any channel, and two channels can share one. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads its page's faders the same way (activity, tone, length, register); <b>Character</b>, F4 on the extended page, is the one control that differs.</p>
     </header>
@@ -329,7 +396,7 @@ td.g { white-space: nowrap; }
   <!-- ============================================================ pieces -->
   <section class="chapter" id="pieces" aria-labelledby="h-pieces">
     <header>
-      <div class="eyebrow">7 · Twelve recipes</div>
+      <div class="eyebrow">8 · Twelve recipes</div>
       <h2 id="h-pieces">Pieces</h2>
       <p>A piece sets every voice, value and harmony at once. Hold •• and press PLAY twice for the next one. Glag starts on Terminal.</p>
     </header>
@@ -344,7 +411,7 @@ td.g { white-space: nowrap; }
   <!-- ============================================================ power -->
   <section class="chapter" id="power" aria-labelledby="h-power">
     <header>
-      <div class="eyebrow">8 · On, off, recovery</div>
+      <div class="eyebrow">9 · On, off, recovery</div>
       <h2 id="h-power">Power</h2>
       <p>The power gestures come from Wakes, the SP-1 base Glag runs on, unchanged.</p>
     </header>
