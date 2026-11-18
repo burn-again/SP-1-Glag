@@ -173,7 +173,7 @@ typedef struct {
 	/* shimmer: the octave echo waiting to sound */
 	float echo_at, echo_note, echo_vel;
 	/* pulse: kick (phase, pitch, its fall's end, level, decay), shaker, click; a swung hit waiting */
-	float pk_ph, pk_f, pk_fend, pk_a, pk_k, ps_a, ps_k, ps_x, pc_ph, pc_inc, pc_a;
+	float pk_ph, pk_f, pk_fend, pk_a, pk_k, ps_a, ps_k, ps_x, pc_a, pc_k, pc_x;
 	float pend_t;
 	uint8_t pend;
 	/* bells: a note waiting to sound, per loop */
@@ -456,8 +456,24 @@ static void make_room(const nvoice *keep) { make_room_w(keep, 2); }
 
 /* set this sub-block's ramps toward amplitude `a` and index `i`. A voice that has faded
  * is snapped to exactly zero, or float rounding would leave it rendering forever. */
+/* An FM voice's partials reach about fc + (index + 1) fm (Carson). The voices run at 24 kHz,
+ * so anything past 12 kHz would fold back down as aliasing (a tinny edge on high bells, piano,
+ * pad): cap each note's index so its partials stay under 11 kHz. Low notes are never touched;
+ * the highest, brightest ones lose only what would have aliased. */
+#define HZ_PER_INC (1.0f / (89478.485f * (float)(1 << VOICE_HALF)))
+static inline float idx_cap(const nvoice *v, float i, uint32_t im)
+{
+	float fc = (float)v->ic * HZ_PER_INC, fm = (float)im * HZ_PER_INC;
+	if (fm < 1.0f)
+		return i;
+	float cap = ((11000.0f - fc) / fm - 1.0f) * IDX_SCALE;
+	cap = cap > 0.0f ? cap : 0.0f;
+	return i < cap ? i : cap;
+}
+
 static inline void ramp(nvoice *v, float a, float i)
 {
+	i = idx_cap(v, i, v->im);
 	if (a <= 0.0f && v->amp < 0.0002f && v->amp > -0.0002f)
 		v->amp = v->ainc = 0.0f;
 	else
@@ -655,9 +671,9 @@ static void bells_beat(chan *c, int ch)
 			int note = base + 12 * oct + ((scale_pc[deg] - root_pc + 12) % 12) + root_pc % 12;
 			while (note < base)
 				note += 12;
-			/* a human hand: each bell up to 40 ms late (it also keeps four loops landing on
-			 * one sixteenth from all starting in the same millisecond) */
-			c->bp_t[k] = 0.04f * rnd();
+			/* a human hand: each bell up to 60 ms late, as AMB-1's (it also keeps four loops
+			 * landing on one beat from all starting in the same millisecond) */
+			c->bp_t[k] = 0.06f * rnd();
 			c->bp_note[k] = (float)note;
 			c->bp_vel[k] = 0.45f + 0.35f * rnd();
 			c->bp_ratio[k] = BELL_RATIO[zone][k];
@@ -676,42 +692,49 @@ static void bells_beat(chan *c, int ch)
 	}
 }
 
-/* ---- pulse: three euclidean rings of 16, 12 and 7 sixteenths ----
- * ACTIVITY the hits, TONE the shaker's and click's brightness, LENGTH the decays, REGISTER the
- * kick's pitch (half an octave a step), CHARACTER the swing (the off sixteenths up to half a
- * step late). The click's ring is turned a little against the others. */
+/* ---- pulse: three euclidean rings of 16, 12 and 7 sixteenths, after AMB-1's ----
+ * a thump on the chord's root (falling from 2.2 times its pitch into place), a closed hat that
+ * chokes the open one, and a long, soft open hat. ACTIVITY the hits (up to 5, 7 and 3 a ring),
+ * TONE the hats (dark and long to bright and crisp), LENGTH the thump's decay, REGISTER its
+ * octave, CHARACTER the swing (the off sixteenths up to half a step late). */
+static const uint8_t PULSE_N[3] = {16, 12, 7}, PULSE_KMAX[3] = {5, 7, 3}, PULSE_ROT[3] = {0, 2, 3};
 static int euclid_hit(int k, int n, int i) { return k > 0 && ((i * k) % n) < k; }
 static void pulse_fire(chan *c, int ch, int mask)
 {
 	float t = eff_tone(ch), l = P.ch[ch][CP_LENGTH];
-	float kp = fexp2((float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2) * 0.5f);
 	if (mask & 1) {
-		c->pk_a = (mask & 8 ? 1.0f : 0.7f) * (0.85f + 0.15f * rnd());
-		c->pk_f = 120.0f * kp;
-		c->pk_fend = 48.0f * kp;
+		float f = mtof((float)(36 + chord_pc[0])) * fexp2((float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2));
+		c->pk_a = (mask & 8 ? 0.95f : 0.6f) + 0.25f * rnd();
+		c->pk_f = f * 2.2f;
+		c->pk_fend = f;
 		c->pk_ph = 0.0f;
-		c->pk_k = fexp2(-9.9658f / ((0.12f + 0.33f * l) * VSR));
+		c->pk_k = fexp2(-9.9658f / ((0.2f + 0.5f * l) * VSR));
 		c->glow = 1.0f;
 	}
-	if (mask & 2) {
-		c->ps_a = (mask & 16 ? 0.6f : 0.35f) * (0.7f + 0.3f * rnd());
-		c->ps_k = fexp2(-9.9658f / ((0.02f + 0.07f * l) * VSR));
+	if (mask & 2) {                               /* the closed hat chokes the open one */
+		c->ps_a = (mask & 16 ? 0.95f : 0.6f) * (0.7f + 0.3f * rnd());
+		c->ps_k = fexp2(-9.9658f / (0.06f * VSR));
+		c->pc_k = fexp2(-9.9658f / (0.02f * VSR));
 	}
-	if (mask & 4) {
+	if (mask & 4) {                               /* the open hat: a long, soft "tss" */
 		c->pc_a = 0.5f + 0.2f * rnd();
-		c->pc_ph = 0.0f;
-		c->pc_inc = (1100.0f + 1400.0f * t) / VSR;
+		c->pc_k = fexp2(-9.9658f / ((0.6f - 0.35f * t) * VSR));
 	}
 }
 static void pulse_step(chan *c, int ch, uint32_t step)
 {
 	float h = eff_activity(ch);
-	int kk = 1 + (int)(h * 3.0f + 0.5f), hk = 2 + (int)(h * 6.0f + 0.5f), ck = (int)(h * 3.0f + 0.5f);
-	int s16 = (int)(step % 16u), s12 = (int)(step % 12u), s7 = (int)((step + 3u) % 7u);
-	int mask = (euclid_hit(kk, 16, s16) ? 1 : 0) | (euclid_hit(hk, 12, s12) ? 2 : 0) |
-	           (euclid_hit(ck, 7, s7) ? 4 : 0) | (s16 == 0 ? 8 : 0) | (s12 & 1 ? 0 : 16);
-	if (!(mask & 7))
+	int mask = 0;
+	for (int d = 0; d < 3; d++) {
+		int k = (int)(h * (float)PULSE_KMAX[d] + 0.5f);
+		int pos = (int)((step + PULSE_ROT[d]) % PULSE_N[d]);
+		if (euclid_hit(k, PULSE_N[d], pos))
+			mask |= 1 << d;
+	}
+	if (!mask)
 		return;
+	mask |= (step % 16u) == 0 ? 8 : 0;           /* accents: the bar, and the 12's start */
+	mask |= (step % 12u) == 0 ? 16 : 0;
 	float swing = 0.5f * P.ch[ch][CP_CHAR];
 	if ((step & 1u) && swing > 0.01f) {      /* an off sixteenth: late */
 		float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
@@ -729,7 +752,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	int base = reg_base(c, ch);
 	switch (c->voice) {
 	case GV_BELLS:
-		bells_beat(c, ch);                /* every sixteenth: loops of 13 to 29 of them */
+		if ((step & 3) == 0)
+			bells_beat(c, ch);            /* the loops step in quarter notes, as AMB-1's */
 		break;
 	case GV_PULSE:
 		pulse_step(c, ch, step);
@@ -1134,7 +1158,7 @@ static void chan_control(chan *c, int ch, float dt)
 			nv_perc(v, 0.002f, expmap(len, 1.0f, 10.0f) / speed, 0.6f / speed,
 			        (0.3f + 2.2f * tone) * (0.5f + 0.6f * v->vel), dt);
 			v->menv2 *= dcoef(0.09f / speed, dt);
-			float i2 = P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE;
+			float i2 = idx_cap(v, P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE, v->im2);
 			v->iinc2 = (i2 - v->idx2) * (1.0f / VSUB);
 			nv_pitch(v, v->note);
 			v->im2 = hz_inc(mtof(v->note) * speed * 14.0f);
@@ -1154,7 +1178,7 @@ static void chan_control(chan *c, int ch, float dt)
 			/* the index blooms for 0.6 s after the strike, then fades over seconds */
 			float b = v->t < 0.6f ? v->t * (1.0f / 0.6f)
 			                      : fexp2(-clampf(v->t - 0.6f, 0.0f, 60.0f) * (1.4427f / 5.0f));
-			float im = (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE;
+			float im = idx_cap(v, (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE, v->im);
 			v->iinc = (im - v->idx) * (1.0f / VSUB);
 			v->ratio = ratio;
 			nv_pitch(v, v->note + 0.7f * fexp2(-clampf(v->t, 0.0f, 5.0f) * (1.4427f / 0.12f)));
@@ -1223,7 +1247,7 @@ static void chan_control(chan *c, int ch, float dt)
 				sh = x < 0.5f ? x * 2.0f : fexp2(-(x - 0.5f) * 1.4427f * 1.5f);
 			else
 				sh = 1.0f - fexp2(-x * 1.4427f);
-			float im = (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE;
+			float im = idx_cap(v, (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE, v->im);
 			v->iinc = (im - v->idx) * (1.0f / VSUB);
 			nv_pitch(v, v->note);
 		}
@@ -1259,33 +1283,25 @@ static int chan_render(chan *c, float *A, float *B)
 			}
 			c->pk_ph = kph; c->pk_f = kf; c->pk_a = ka;
 		}
-		if (c->ps_a > 1e-4f) {                    /* the shaker: noise, its lows taken off */
+		if (c->ps_a > 1e-4f || c->pc_a > 1e-4f) { /* the hats: noise, its lows taken off */
 			any = 1;
-			float sa = c->ps_a, sx = c->ps_x;
-			const float sk = c->ps_k, br = 0.3f + 0.7f * eff_tone((int)(c - CH));
+			float sa = c->ps_a, sx = c->ps_x, oa = c->pc_a, ox = c->pc_x;
+			const float sk = c->ps_k, ok = c->pc_k, br = 0.4f + 0.6f * eff_tone((int)(c - CH));
 			uint32_t r = rng;
 			for (uint32_t i = 0; i < VSUB; i++) {
 				r = r * 1664525u + 1013904223u;
-				float w = (float)(int32_t)r * (1.0f / 2147483648.0f), sh = (w - br * sx) * sa;
+				float w = (float)(int32_t)r * (1.0f / 2147483648.0f);
+				float hc = (w - br * sx) * sa;        /* closed: brighter */
+				float ho = (w - 0.85f * ox) * oa;     /* open: softer */
 				sx = w;
-				A[i] += sh * 1.0f;
-				B[i] += sh * 0.7f;
+				ox += 0.5f * (w - ox);
+				A[i] += hc * 0.9f + ho * 0.35f;
+				B[i] += hc * 0.6f + ho * 0.5f;
 				sa *= sk;
+				oa *= ok;
 			}
 			rng ^= r;
-			c->ps_a = sa; c->ps_x = sx;
-		}
-		if (c->pc_a > 1e-4f) {                    /* the click: ~15 ms of a high sine */
-			any = 1;
-			float cph = c->pc_ph, ca = c->pc_a;
-			const float ci = c->pc_inc;
-			for (uint32_t i = 0; i < VSUB; i++) {
-				cph += ci;
-				cph -= cph >= 1.0f ? 1.0f : 0.0f;
-				B[i] += sin_u((uint32_t)(cph * 4294967296.0f)) * ca * 1.3f;
-				ca *= 0.992f;
-			}
-			c->pc_ph = cph; c->pc_a = ca;
+			c->ps_a = sa; c->ps_x = sx; c->pc_a = oa; c->pc_x = ox;
 		}
 		break;
 	}
@@ -1982,46 +1998,47 @@ typedef struct {
 
 static const recipe PIECES[GL_NPIECES] = {
 	/* ---- after AMB-1's eight stock pieces (Charles Vestal), in Glag's voices: its pad, bells,
-	 * bass and pulse are channels 1 to 4, its numbers mapped onto Glag's controls ---- */
+	 * bass and pulse are channels 1 to 4, its numbers mapped onto Glag's controls (the pad's
+	 * breaths as long as AMB-1's: LENGTH = 0.12 x Swell / 26) ---- */
 	/* Garden: everything, gently */
 	{"Garden", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 40, 60, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 50, 65},
-	  {35, 30, 60, 50, 9, 26, 50, 35, 45}, {35, 50, 40, 50, 14, 26, 50, 0, 40}},
+	 {{75, 40, 28, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 50, 65},
+	  {35, 30, 60, 50, 9, 26, 50, 35, 45}, {35, 50, 50, 50, 14, 26, 50, 0, 40}},
 	 {52, 45, 68, 50, 2, 1, 57, 52}, {GR_HALL, GS_OCTAVE, 3}},
 	/* Departures: slowed bells an octave down over a quiet pad, as 1/1 */
 	{"Departures", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 20, 55, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 5, 75},
-	  {35, 30, 60, 50, 6, 28, 50, 25, 0}, {0, 40, 40, 50, 9, 28, 50, 0, 0}},
+	 {{75, 20, 25, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 5, 75},
+	  {35, 30, 60, 50, 6, 28, 50, 25, 0}, {0, 40, 50, 50, 9, 28, 50, 0, 0}},
 	 {40, 30, 77, 50, 1, 0, 44, 45}, {GR_BLOOM, GS_OCTAVE, 3}},
 	/* Voices: only the sung pad on unequal loops and a low bass, as 2/1 */
 	{"Voices", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 67, 70, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 30, 0},
-	  {35, 30, 60, 25, 4, 32, 50, 30, 25}, {0, 40, 40, 50, 6, 32, 50, 0, 0}},
+	 {{75, 67, 32, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 30, 0},
+	  {35, 30, 60, 25, 4, 32, 50, 30, 25}, {0, 40, 50, 50, 6, 32, 50, 0, 0}},
 	 {36, 20, 85, 50, 5, 5, 36, 52}, {GR_SHIMMER, GS_FIFTH, 4}},
 	/* Afternoon: a bright pad, busier bells, a light pulse */
 	{"Afternoon", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 60, 50, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 60, 65},
-	  {35, 30, 60, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 15, 25}},
+	 {{75, 60, 23, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 60, 65},
+	  {35, 30, 60, 50, 10, 24, 50, 40, 35}, {30, 65, 50, 50, 15, 24, 50, 15, 25}},
 	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}},
 	/* Night Bus: the pulse forward, metallic bells, short echoes */
 	{"Night Bus", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 35, 40, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 75, 55},
-	  {35, 30, 60, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 30, 60}},
+	 {{75, 35, 18, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 75, 55},
+	  {35, 30, 60, 50, 11, 22, 50, 45, 55}, {55, 70, 50, 50, 16, 22, 50, 30, 60}},
 	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}},
 	/* Shoreline: dark, round bells lost in long echoes, as 2/2 */
 	{"Shoreline", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 30, 80, 50, 51, 55, 50, 20, 40}, {30, 10, 55, 50, 85, 55, 50, 0, 60},
-	  {35, 30, 60, 50, 17, 22, 50, 20, 30}, {0, 30, 40, 50, 26, 22, 50, 0, 0}},
+	 {{75, 30, 37, 50, 51, 55, 50, 20, 40}, {30, 10, 55, 50, 85, 55, 50, 0, 60},
+	  {35, 30, 60, 50, 17, 22, 50, 20, 30}, {0, 30, 50, 50, 26, 22, 50, 0, 0}},
 	 {44, 85, 94, 50, 4, 6, 44, 72}, {GR_BLOOM, GS_OCTAVE, 4}},
 	/* Glass: clangy bells an octave up, dense */
 	{"Glass", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 55, 45, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 90, 80},
-	  {35, 30, 60, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 10, 20}},
+	 {{75, 55, 21, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 90, 80},
+	  {35, 30, 60, 75, 9, 26, 50, 30, 30}, {25, 85, 50, 50, 14, 26, 50, 10, 20}},
 	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}},
 	/* Tides: the most changeable */
 	{"Tides", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 60, 60, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 55, 60},
-	  {35, 30, 60, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 10, 35}},
+	 {{75, 60, 28, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 55, 60},
+	  {35, 30, 60, 50, 10, 26, 50, 55, 40}, {40, 50, 50, 50, 15, 26, 50, 10, 35}},
 	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}},
 	/* ---- Glag's own ---- */
 	{"Gate Seven", {GV_PAD, GV_PIANO, GV_DRONE, GV_BELLS},

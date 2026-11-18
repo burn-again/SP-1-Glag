@@ -396,7 +396,8 @@ static inline __attribute__((always_inline)) void rv_tick(float in, float *ol, f
 
 /* ================================================================ the block */
 
-static float sp_pl, sp_pr;                        /* the last output, for interpolating up */
+static float sp_up[6];                            /* the last outputs, for interpolating up */
+static float sp_lp[12];                           /* the filters around the tape and reverb */
 
 static void space_init(void)
 {
@@ -409,7 +410,7 @@ static void space_init(void)
 	rv_layout(P.space[GL_SP_REVERB] % GR_COUNT);
 	rv.fade = 1.0f;
 	rv_derive(P.g[GP_REVERB]);
-	sp_pl = sp_pr = 0.0f;
+	memset(sp_up, 0, sizeof sp_up);
 }
 
 static void space_settle(void) { tp.len = tp.len_want; }
@@ -453,30 +454,47 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 {
 	float WL[GL_SUB / 2], WRr[GL_SUB / 2], EL[GL_SUB / 2], ER[GL_SUB / 2];
 	const float fi = freeze_in, fade = rv.fade;
+	/* Two-pole low-passes around the slower parts, at 24 kHz: before the tape (8 kHz) and the
+	 * reverb (12 kHz), so nothing above their reach folds down, and after them, so the images
+	 * their interpolation leaves (a faint tinny noise near 6 and 10 kHz) are taken off. Both
+	 * are darker than this already: the tape repeats under 1.8 kHz (so one pole a side does),
+	 * the reverbs under 5.5. */
+	const float kt = 0.48f, kr = 0.69f;          /* 2.5 kHz, 4.5 kHz */
+	float f0 = sp_lp[0], f3 = sp_lp[3], f5 = sp_lp[5];
+	float f6 = sp_lp[6], f7 = sp_lp[7], f8 = sp_lp[8], f9 = sp_lp[9], f10 = sp_lp[10], f11 = sp_lp[11];
 	for (uint32_t j = 0; j < GL_SUB / 2; j++) {
 		float el, er, wl, wr;
-		tape_tick(E[j] * 0.5f, &el, &er);
-		rv_tick((0.5f * V[j] + (el + er) * 0.25f) * fi, &wl, &wr);
-		WL[j] = wl * fade;
-		WRr[j] = wr * fade;
-		EL[j] = el;
-		ER[j] = er;
+		f0 += kt * (E[j] - f0);                  /* the tape is dark already: one pole a side */
+		tape_tick(f0 * 0.5f, &el, &er);
+		f3 += kt * (el - f3);
+		f5 += kt * (er - f5);
+		f6 += kr * ((0.5f * V[j] + (f3 + f5) * 0.25f) * fi - f6);
+		f7 += kr * (f6 - f7);
+		rv_tick(f7, &wl, &wr);
+		f8 += kr * (wl - f8); f9 += kr * (f8 - f9);
+		f10 += kr * (wr - f10); f11 += kr * (f10 - f11);
+		WL[j] = f9 * fade;
+		WRr[j] = f11 * fade;
+		EL[j] = f3;
+		ER[j] = f5;
 	}
+	sp_lp[0] = f0; sp_lp[3] = f3; sp_lp[5] = f5;
+	sp_lp[6] = f6; sp_lp[7] = f7; sp_lp[8] = f8; sp_lp[9] = f9; sp_lp[10] = f10; sp_lp[11] = f11;
 	if (dist.amt && dist.post == 2) {            /* dirty tails, clean instruments */
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
 	}
+	/* back up to 48 kHz as the voices are: each new sample, and a 4-point midpoint before it */
 	const float emix = tp.mix;
-	float pl = sp_pl, pr = sp_pr;
+	float u0 = sp_up[0], u1 = sp_up[1], u2 = sp_up[2], u3 = sp_up[3], u4 = sp_up[4], u5 = sp_up[5];
 	for (uint32_t i = 0; i < GL_SUB; i += 2) {
 		float ol = EL[i >> 1] * emix + WL[i >> 1], or_ = ER[i >> 1] * emix + WRr[i >> 1];
-		L[i] += 0.5f * (pl + ol);
-		R[i] += 0.5f * (pr + or_);
-		L[i + 1] += ol;
-		R[i + 1] += or_;
-		pl = ol;
-		pr = or_;
+		L[i] += (9.0f * (u1 + u2) - u0 - ol) * (1.0f / 16.0f);
+		R[i] += (9.0f * (u4 + u5) - u3 - or_) * (1.0f / 16.0f);
+		L[i + 1] += u2;
+		R[i + 1] += u5;
+		u0 = u1; u1 = u2; u2 = ol;
+		u3 = u4; u4 = u5; u5 = or_;
 	}
-	sp_pl = pl;
-	sp_pr = pr;
+	sp_up[0] = u0; sp_up[1] = u1; sp_up[2] = u2; sp_up[3] = u3; sp_up[4] = u4; sp_up[5] = u5;
 }

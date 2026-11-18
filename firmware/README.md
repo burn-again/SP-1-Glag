@@ -18,7 +18,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Voice | What it does | Character (channel page F1) |
 |---|---|---|
 | Pad | 2 or 3 voices breathing in and out on unequal cycles, each taking its note of the chord | warm (1:1) to hollow (2:1), detune |
-| Bells | four loops of 13, 17, 23 and 29 sixteenths, up to five notes each (AMB-1's density), soft FM bells, each up to 40 ms late like a human hand | ratio set: harmonic, bell, glass |
+| Bells | four loops of 13, 17, 23 and 29 beats, up to five notes each (as AMB-1's), soft FM bells, each up to 60 ms late like a human hand | ratio set: harmonic, bell, glass |
 | Bass | sine and sub-octave on the chord's root, gliding | glide time and how often it takes the fifth |
 | Piano | sparse 2-op FM electric piano | tine: 1:1, 2:1, 3:1 |
 | Marimba | short inharmonic FM | ratio 2.5 to 5 |
@@ -32,7 +32,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
-| Pulse | a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits, tone the brightness, length the decays, register the kick's pitch | swing (the off sixteenths up to half a step late) |
+| Pulse | a light pulse, as AMB-1's: a thump on the chord's root, a closed hat and a long open hat on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits (up to 5, 7 and 3), tone the hats, length the thump's decay, register its octave | swing (the off sixteenths up to half a step late) |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -107,6 +107,8 @@ the bootloader may own).
 echo time (a dotted quarter, a half, a dotted half, a bar, or two bars; a bar in most pieces),
 halved until it fits. Two heads, the loop on the left and three quarters of it on the right; each
 repeat comes back darker and thinner, with a little wow. Its output also feeds the reverb.
+
+Both run below 48 kHz, so each sits between two-pole low-passes that keep what is above their reach from folding down or leaking up as a faint tinny noise.
 
 **Four reverbs** (REVERB on Home sets how long they ring; •• + T1-T4 on Harmony picks one):
 

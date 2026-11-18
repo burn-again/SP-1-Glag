@@ -8,7 +8,7 @@
  * (duplicates allowed). They all draw on one scale and one chord that drifts slowly through it.
  *
  *   PAD       breathing chord: voices swell in and out on cycles of unequal length
- *   BELLS     four tape loops of 13, 17, 23 and 29 beats, each a soft FM bell
+ *   BELLS     four loops of 13, 17, 23 and 29 beats, up to five notes each, soft FM bells
  *   BASS      sine + sub-octave on the chord root, gliding
  *   PIANO     sparse 2-op FM electric piano
  *   MARIMBA   inharmonic 2-op FM, short and glassy
@@ -22,7 +22,7 @@
  *   PIZZ      pizzicato arp: short FM plucks over the chord, with octave jumps
  *   SHIMMER   buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, an octave echo
  *   TAILS     FM modulation tails: each note's index falls, blooms or rises over seconds
- *   PULSE     a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7
+ *   PULSE     a light pulse: a thump on the root, closed and open hats on euclidean rings of 16, 12, 7
  *
  * Every voice reads the same eight controls, so a fader means the same thing on every page:
  *   page:      ACTIVITY  TONE  LENGTH  REGISTER
