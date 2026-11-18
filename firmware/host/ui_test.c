@@ -46,8 +46,8 @@ int main(void)
 	const gl_patch *p = glui_patch();
 	CHECK(out.page == PG_HOME, "boots on HOME (page %d)", out.page);
 	CHECK(out.piece == 0, "boots on piece 1");
-	CHECK(p->voice[0] == GV_PAD && p->voice[1] == GV_BELLS && p->voice[2] == GV_BASS && p->voice[3] == GV_FLUTE,
-	      "default voices Pad Bells Bass Flute");
+	CHECK(p->voice[0] == GV_PAD && p->voice[1] == GV_BELLS && p->voice[2] == GV_BASS && p->voice[3] == GV_PULSE,
+	      "default voices Pad Bells Bass Pulse (Garden)");
 
 	/* soft takeover on HOME: F1 is tempo (0.47 in the piece); the fader sits at 0 */
 	float tempo = p->g[GP_TEMPO];
@@ -133,14 +133,14 @@ int main(void)
 
 	/* •• + T4 on HOME rotates channel 4's voice */
 	down(GB_FN); tap(GB_T4); up(GB_FN);
-	CHECK(glui_patch()->voice[3] == GV_ARP, "•• + T4: Flute -> Arp (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_PAD, "•• + T4: Pulse -> Pad, round to the first (%d)", glui_patch()->voice[3]);
 	down(GB_FN); tap(GB_T4); up(GB_FN);
-	CHECK(glui_patch()->voice[3] == GV_SWELL, "•• + T4 again: Swell (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_BELLS, "•• + T4 again: Bells (%d)", glui_patch()->voice[3]);
 	CHECK(out.page == PG_HOME, "rotating stays on HOME");
 	for (int k = 0; k < GV_COUNT - 2; k++) {
 		down(GB_FN); tap(GB_T4); up(GB_FN);
 	}
-	CHECK(glui_patch()->voice[3] == GV_FLUTE, "all %d voices, back to Flute (%d)", GV_COUNT, glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_PULSE, "all %d voices, back to Pulse (%d)", GV_COUNT, glui_patch()->voice[3]);
 	run(500);
 
 	/* •• + PLAY once: HARMONY */
@@ -153,7 +153,7 @@ int main(void)
 	CHECK(glui_patch()->g[GP_ROOT] == 1.0f, "root steps to B");
 
 	/* the reverb, on HARMONY: •• + T1..T4, and Shimmer's interval with its T again */
-	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_HALL, "Terminal starts with the Hall");
+	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_HALL, "Garden starts with the Hall");
 	down(GB_FN); tap(GB_T2); up(GB_FN);
 	CHECK(out.page == PG_HARMONY && glui_patch()->space[GL_SP_REVERB] == GR_CHAMBER, "•• + T2 on HARMONY: Chamber, and stays on HARMONY");
 	CHECK(out.led_t[1] == 255 && out.led_t[0] == 0, "the track row shows the reverb");

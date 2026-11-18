@@ -67,9 +67,9 @@ typedef struct {
 	uint8_t led_t[4];        /* track LEDs T1..T4, 0..255 */
 	uint8_t led_p[4];        /* play row, from the •• end to the PLAY end, 0..255 */
 	float volume;            /* 0..1: pass to gl_render() */
-	uint8_t save_slot;       /* 1..8: persist glui_saved(save_slot - 1) now; 0 = nothing */
+	uint8_t save_slot;       /* 1..16: persist glui_saved(save_slot - 1) now; 0 = nothing */
 	uint8_t page, channel;   /* where the UI is (enum gl_page, 0..3) */
-	uint8_t piece;           /* 0..11 */
+	uint8_t piece;           /* 0..15 */
 	uint8_t dist_type, dist_amt, dist_post;   /* enum gl_dist, 0 off .. 4; 0 before the effects, 1 after, 2 the reverb only */
 	uint8_t reverb, shimmer;  /* enum gl_reverb, enum gl_shimmer */
 	uint8_t macro[4];        /* each channel's macro depth, 0 off .. 4 */

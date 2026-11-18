@@ -310,7 +310,7 @@ h3.group { margin-top: 18px; }
         <tbody>
           <tr><td class="g"><span class="key">PLAY</span></td><td>Grow or rest. Resting stops new notes; what is ringing rings on.</td><td>The play lights go quiet with the notes</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> once</td><td>Harmony page</td><td><span class="ledrow chase"><i></i><i></i><i></i><i></i></span> on the track lights</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> twice</td><td>Next piece (12, then back to 1)</td><td>The piece number on the play lights</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> twice</td><td>Next piece (16, then back to 1)</td><td>The piece number on the play lights</td></tr>
           <tr><td class="g"><span class="key">••</span> held + faders</td><td>The four channel levels: F1 channel 1 … F4 channel 4</td><td>The level as a bar while you move</td></tr>
           <tr><td class="g"><span class="key">••</span> twice</td><td>Home</td><td><span class="ledrow"><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i></span> breathing</td></tr>
           <tr><td class="g"><span class="key">FFWD</span> tap <small>Home, Harmony</small></td><td>Freeze, latched: the chord holds, no new notes, the reverb rings forever. Tap again to let go.</td><td><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</td></tr>
@@ -414,9 +414,9 @@ h3.group { margin-top: 18px; }
   <!-- ============================================================ pieces -->
   <section class="chapter" id="pieces" aria-labelledby="h-pieces">
     <header>
-      <div class="eyebrow">8 · Twelve recipes</div>
+      <div class="eyebrow">8 · Sixteen recipes</div>
       <h2 id="h-pieces">Pieces</h2>
-      <p>A piece sets every voice, value and harmony at once. Hold •• and press PLAY twice for the next one. Glag starts on Terminal.</p>
+      <p>A piece sets every voice, value, harmony and space at once. Hold •• and press PLAY twice for the next one. The first eight follow AMB-1's stock pieces (by Charles Vestal) in Glag's voices: its pad, bells, bass and pulse on channels 1 to 4, its settings mapped onto Glag's, with a reverb chosen for each. A layer AMB-1 leaves out sits on its channel at level zero, ready to bring in. The last eight are Glag's own. Glag starts on Garden.</p>
     </header>
     <div class="table-wrap">
       <table>
@@ -471,12 +471,22 @@ const VOICES = [
   ["Pulse", "A light pulse: a soft kick, a shaker and a wood click on rings of 16, 12 and 7 steps. Activity sets the hits, Tone the brightness, Length the decays, Register the kick's pitch.", "swing"],
 ];
 const PIECES = [
-  ["Terminal", "Pad Bells Bass Flute", "72 BPM · D Dorian · Hall"], ["Gate Seven", "Pad Piano Drone Bells", "60 BPM · C Ionian · Bloom"],
-  ["Long Wait", "Drone Flute Pad Kalimba", "50 BPM · A Aeolian · Bloom"], ["Jet Lag", "Arp Pad Bass Marimba", "80 BPM · G Lydian · Chamber"],
-  ["Tarmac", "Bass Drone Bells Piano", "66 BPM · F pentatonic major · Chamber"], ["Night Flight", "Pad Kalimba Flute Drone", "52 BPM · E pentatonic minor · Bloom"],
-  ["Arrivals", "Bells Arp Pad Bass", "86 BPM · G Lydian · Hall"], ["Lounge", "Piano Marimba Pad Flute", "62 BPM · F Ionian · Chamber"],
-  ["Rain City", "Swell EP Gong Shimmer", "57 BPM · E Aeolian · Shimmer (fifth)"], ["Deep Water", "Shimmer Tails Gong Pad", "48 BPM · D Dorian · Shimmer"],
-  ["Lobby 84", "EP Pizz Bass Swell", "80 BPM · F Ionian · Chamber"], ["Long Haul", "Pizz Tails Swell Gong", "70 BPM · A pentatonic minor · Hall"],
+  ["Garden", "Pad Bells Bass Pulse", "72 BPM · D Dorian · Hall"],
+  ["Departures", "Pad Bells (Bass, Pulse off)", "60 BPM · C# Ionian · Bloom"],
+  ["Voices", "Pad Bass (Bells, Pulse off)", "56 BPM · F Aeolian · Shimmer, fifth"],
+  ["Afternoon", "Pad Bells Bass Pulse", "84 BPM · G Lydian · Hall"],
+  ["Night Bus", "Pad Bells Bass Pulse", "96 BPM · A Aeolian · Chamber"],
+  ["Shoreline", "Pad Bells Bass (Pulse off)", "64 BPM · E pentatonic major · Bloom"],
+  ["Glass", "Pad Bells Bass Pulse", "76 BPM · Eb pentatonic minor · Shimmer"],
+  ["Tides", "Pad Bells Bass Pulse", "70 BPM · Bb Mixolydian · Hall"],
+  ["Gate Seven", "Pad Piano Drone Bells", "60 BPM · C Ionian · Bloom"],
+  ["Long Wait", "Drone Flute Pad Kalimba", "50 BPM · A Aeolian · Bloom"],
+  ["Night Flight", "Pad Kalimba Flute Drone", "52 BPM · E pentatonic minor · Bloom"],
+  ["Lounge", "Piano Marimba Pad Flute", "62 BPM · F Ionian · Chamber"],
+  ["Rain City", "Swell EP Gong Shimmer", "57 BPM · E Aeolian · Shimmer, fifth"],
+  ["Deep Water", "Shimmer Tails Gong Pad", "48 BPM · D Dorian · Shimmer"],
+  ["Lobby 84", "EP Pizz Bass Swell", "80 BPM · F Ionian · Chamber"],
+  ["Long Haul", "Pizz Tails Swell Gong", "70 BPM · A pentatonic minor · Hall"],
 ];
 const PAGES = {
   home: { name: "Home", how: "Where Glag starts. Tap •• twice from anywhere to return.",

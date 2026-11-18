@@ -1969,7 +1969,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 
 /* ================================================================ pieces */
 
-/* Eight recipes. Values are percent (0..100). Columns per channel:
+/* Sixteen recipes. Values are percent (0..100). Columns per channel:
  *   ACT TONE LEN REG ECHO VERB PAN CHAR LEVEL      REG: 0,25,50,75,100 = -2..+2 octaves
  * Globals: TEMPO DELAY REVERB FILTER ROOT(0..11) MODE(0..7) DRIFT MOTION */
 typedef struct {
@@ -1981,10 +1981,49 @@ typedef struct {
 } recipe;
 
 static const recipe PIECES[GL_NPIECES] = {
-	{"Terminal", {GV_PAD, GV_BELLS, GV_BASS, GV_FLUTE},
-	 {{50, 45, 55, 50, 30, 70, 50, 20, 70}, {40, 45, 55, 50, 45, 65, 50, 50, 65},
-	  {30, 30, 60, 50, 10, 30, 50, 30, 55}, {35, 40, 50, 50, 50, 70, 60, 30, 55}},
-	 {52, 45, 65, 50, 2, 1, 35, 50}, {GR_HALL, GS_OCTAVE, 3}},
+	/* ---- after AMB-1's eight stock pieces (Charles Vestal), in Glag's voices: its pad, bells,
+	 * bass and pulse are channels 1 to 4, its numbers mapped onto Glag's controls ---- */
+	/* Garden: everything, gently */
+	{"Garden", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 40, 60, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 50, 65},
+	  {35, 30, 60, 50, 9, 26, 50, 35, 45}, {35, 50, 40, 50, 14, 26, 50, 0, 40}},
+	 {52, 45, 68, 50, 2, 1, 57, 52}, {GR_HALL, GS_OCTAVE, 3}},
+	/* Departures: slowed bells an octave down over a quiet pad, as 1/1 */
+	{"Departures", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 20, 55, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 5, 75},
+	  {35, 30, 60, 50, 6, 28, 50, 25, 0}, {0, 40, 40, 50, 9, 28, 50, 0, 0}},
+	 {40, 30, 77, 50, 1, 0, 44, 45}, {GR_BLOOM, GS_OCTAVE, 3}},
+	/* Voices: only the sung pad on unequal loops and a low bass, as 2/1 */
+	{"Voices", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 67, 70, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 30, 0},
+	  {35, 30, 60, 25, 4, 32, 50, 30, 25}, {0, 40, 40, 50, 6, 32, 50, 0, 0}},
+	 {36, 20, 85, 50, 5, 5, 36, 52}, {GR_SHIMMER, GS_FIFTH, 4}},
+	/* Afternoon: a bright pad, busier bells, a light pulse */
+	{"Afternoon", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 60, 50, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 60, 65},
+	  {35, 30, 60, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 15, 25}},
+	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}},
+	/* Night Bus: the pulse forward, metallic bells, short echoes */
+	{"Night Bus", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 35, 40, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 75, 55},
+	  {35, 30, 60, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 30, 60}},
+	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* Shoreline: dark, round bells lost in long echoes, as 2/2 */
+	{"Shoreline", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 30, 80, 50, 51, 55, 50, 20, 40}, {30, 10, 55, 50, 85, 55, 50, 0, 60},
+	  {35, 30, 60, 50, 17, 22, 50, 20, 30}, {0, 30, 40, 50, 26, 22, 50, 0, 0}},
+	 {44, 85, 94, 50, 4, 6, 44, 72}, {GR_BLOOM, GS_OCTAVE, 4}},
+	/* Glass: clangy bells an octave up, dense */
+	{"Glass", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 55, 45, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 90, 80},
+	  {35, 30, 60, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 10, 20}},
+	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}},
+	/* Tides: the most changeable */
+	{"Tides", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
+	 {{75, 60, 60, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 55, 60},
+	  {35, 30, 60, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 10, 35}},
+	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}},
+	/* ---- Glag's own ---- */
 	{"Gate Seven", {GV_PAD, GV_PIANO, GV_DRONE, GV_BELLS},
 	 {{40, 30, 75, 50, 20, 80, 50, 10, 60}, {35, 35, 60, 50, 55, 70, 45, 0, 65},
 	  {40, 35, 30, 50, 0, 60, 50, 0, 45}, {25, 30, 70, 75, 50, 75, 50, 50, 50}},
@@ -1993,22 +2032,10 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{30, 45, 50, 50, 10, 70, 50, 0, 60}, {25, 35, 80, 50, 60, 80, 40, 40, 55},
 	  {30, 25, 90, 75, 10, 80, 50, 60, 45}, {30, 40, 40, 50, 60, 60, 65, 50, 45}},
 	 {30, 55, 85, 50, 9, 5, 15, 55}, {GR_BLOOM, GS_OCTAVE, 4}},
-	{"Jet Lag", {GV_ARP, GV_PAD, GV_BASS, GV_MARIMBA},
-	 {{35, 30, 40, 50, 60, 60, 50, 25, 50}, {50, 50, 50, 50, 20, 70, 50, 70, 65},
-	  {45, 40, 50, 50, 10, 25, 50, 40, 55}, {30, 40, 40, 75, 50, 60, 60, 40, 45}},
-	 {60, 55, 60, 50, 7, 3, 30, 60}, {GR_CHAMBER, GS_OCTAVE, 2}},
-	{"Tarmac", {GV_BASS, GV_DRONE, GV_BELLS, GV_PIANO},
-	 {{25, 50, 80, 25, 0, 30, 50, 60, 60}, {50, 55, 40, 50, 10, 60, 50, 25, 50},
-	  {50, 60, 50, 50, 40, 60, 50, 90, 55}, {40, 50, 50, 50, 50, 65, 55, 35, 55}},
-	 {46, 50, 60, 50, 5, 6, 40, 65}, {GR_CHAMBER, GS_OCTAVE, 3}},
 	{"Night Flight", {GV_PAD, GV_KALIMBA, GV_FLUTE, GV_DRONE},
 	 {{45, 20, 85, 25, 20, 85, 50, 0, 60}, {40, 30, 60, 50, 65, 70, 35, 30, 50},
 	  {20, 30, 90, 50, 60, 85, 65, 60, 50}, {25, 20, 40, 25, 0, 50, 50, 0, 40}},
 	 {32, 60, 80, 50, 4, 7, 20, 45}, {GR_BLOOM, GS_OCTAVE, 3}},
-	{"Arrivals", {GV_BELLS, GV_ARP, GV_PAD, GV_BASS},
-	 {{60, 60, 50, 50, 40, 60, 50, 50, 60}, {50, 50, 30, 75, 45, 55, 50, 75, 40},
-	  {60, 55, 45, 50, 20, 60, 50, 60, 60}, {50, 30, 40, 50, 0, 20, 50, 20, 55}},
-	 {66, 40, 55, 50, 7, 3, 45, 70}, {GR_HALL, GS_OCTAVE, 2}},
 	{"Lounge", {GV_PIANO, GV_MARIMBA, GV_PAD, GV_FLUTE},
 	 {{45, 30, 70, 50, 40, 60, 40, 0, 60}, {25, 25, 45, 75, 50, 70, 65, 70, 40},
 	  {35, 40, 70, 50, 20, 70, 50, 30, 55}, {25, 50, 60, 75, 55, 75, 50, 50, 45}},

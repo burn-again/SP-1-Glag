@@ -44,10 +44,14 @@ adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
 wide as at half, with two-octave leaps. It sits outside the piece: saving or randomizing leaves it.
 
-Boots on piece 1, *Terminal*: Pad, Bells, Bass, Flute. Twelve pieces: Terminal, Gate Seven, Long
-Wait, Jet Lag, Tarmac, Night Flight, Arrivals, Lounge, and four built on the newer voices: Rain City
-(Swell, EP, Gong, Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swell)
-and Long Haul (Pizz, Tails, Swell, Gong).
+Boots on piece 1, *Garden*. Sixteen pieces. The first eight follow the stock pieces of
+[AMB-1](https://github.com/charlesvestal/fm1-amb) (Charles Vestal, MPL-2.0), in Glag's voices: its
+pad, bells, bass and pulse as channels 1 to 4, its settings mapped onto Glag's controls (the numbers
+only; no AMB-1 code), each with a reverb chosen for it: Garden, Departures, Voices, Afternoon, Night
+Bus, Shoreline, Glass and Tides. A layer AMB-1 leaves out sits at level zero, ready to bring in. Then
+eight of Glag's own: Gate Seven, Long Wait, Night Flight, Lounge, Rain City (Swell, EP, Gong,
+Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swell) and Long Haul
+(Pizz, Tails, Swell, Gong).
 
 ## Controls
 
@@ -70,7 +74,7 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 | Anywhere | •• held + F1-F4 | the four channel levels |
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
-| | •• + PLAY twice | next piece |
+| | •• + PLAY twice | next piece (16, then back to 1) |
 | Home and Harmony | FFWD tap | freeze, latched; tap again to let go |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
@@ -166,7 +170,7 @@ Open `firmware/web/build/glag-emulator.html`. Keyboard: 1-4 = T1-T4, Shift = •
 sh firmware/host/run_tests.sh
 ```
 
-Runs the 67 control tests and renders all twelve pieces to WAVs in `firmware/host/build/`.
+Runs the 87 control tests and renders all sixteen pieces to WAVs in `firmware/host/build/`.
 `firmware/host/cpu/` runs the engine, cross-compiled for the Cortex-M4F, under an emulator and
 counts cycles (see [CPU](#cpu)).
 

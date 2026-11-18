@@ -27,7 +27,7 @@ const { chromium } = require('playwright');
       expect((await title()) === 'Home', '•• twice: Home');
       await p.keyboard.down('Shift'); await p.keyboard.press('$'); await p.keyboard.up('Shift'); await p.waitForTimeout(300);
       const chans = (await p.textContent('#chans')).replace(/\s+/g, ' ');
-      expect(chans.includes('T4Arp'), '•• + T4 on Home: Flute -> Arp (' + chans + ')');
+      expect(chans.includes('T4Pad'), '•• + T4 on Home: Pulse -> Pad (' + chans + ')');
       console.log('     cpu estimate', await p.textContent('#cpu'), await p.textContent('#cpupill'));
       await p.keyboard.press(']'); await p.waitForTimeout(400);
       expect((await p.textContent('#piece')).includes('frozen'), 'FFWD tap freezes');

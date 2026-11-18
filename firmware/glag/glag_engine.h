@@ -133,7 +133,7 @@ extern volatile float gl_speed;          /* 1 = normal, less while slowing */
 extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
-#define GL_NPIECES 12
+#define GL_NPIECES 16
 const char *gl_piece_name(int i);
 void gl_piece(int i, gl_patch *out);
 /* A tasteful random patch, keeping the current voices and harmony root unless asked. */
