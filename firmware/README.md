@@ -9,13 +9,13 @@ reverb. You don't perform it, you tend it.
 It runs on [Wakes](https://github.com/Worldwave/Wakes)' SP-1 base (power, watchdog, standby,
 battery, controls, LEDs, audio bring-up), used unchanged except where marked `CONFIG_SP1_GLAG`.
 
-**Status: 0.3.1, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
-controls pass 67 tests on a computer, and the browser emulator runs the same engine and controls.
+**Status: 0.4.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
+controls pass 78 tests on a computer, and the browser emulator runs the same engine and controls.
 The first hardware session decides the rest; see [Testing on the device](#testing-on-the-device).
 
 ## The voices
 
-| Voice | What it does | Character (extended F4) |
+| Voice | What it does | Character (channel page F1) |
 |---|---|---|
 | Pad | 2 or 3 voices breathing in and out on unequal cycles, each taking its note of the chord | warm (1:1) to hollow (2:1), detune |
 | Bells | four tape loops of 13, 17, 23 and 29 beats, soft FM bells that drift against each other | ratio set: harmonic, bell, glass |
@@ -33,8 +33,15 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 
-Every channel page reads the same four faders: **activity, tone, length, register**. The extended
-page: **echo send, reverb send, pan, character**. A fader means the same thing on every voice.
+Every channel page reads the same four faders: **character, tone, length, register**. The extended
+page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
+character, which is each voice's own.
+
+**The channel macro.** On a channel or extended page the rocker drives that channel's macro: a slow
+random glide that pushes the voice's own controls around (tone, character, length, activity) and
+adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
+leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
+wide as at half, with two-octave leaps. It sits outside the piece: saving or randomizing leaves it.
 
 Boots on piece 1, *Terminal*: Pad, Bells, Bass, Flute. Twelve pieces: Terminal, Gate Seven, Long
 Wait, Jet Lag, Tarmac, Night Flight, Arrivals, Lounge, and four built on the newer voices: Rain City
@@ -48,19 +55,23 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 | Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
 | | •• + T1-T4 | the next voice on that channel (all fifteen, any channel, duplicates allowed) |
-| Channel page | F1 F2 F3 F4 | activity, tone, length, register (5 octave steps) |
+| Channel page | F1 F2 F3 F4 | character, tone, length, register (5 octave steps) |
+| | FFWD tap | one step more of this channel's macro (4 steps) |
+| | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |
+| | RWD double tap | the macro off, its glide back to 8 s |
 | | •• + its own T | extended page (its LED blinks); again to come back |
 | | another T | that channel's page |
-| Extended page | F1 F2 F3 F4 | echo send, reverb send, pan (centre detent), character |
+| Extended page | F1 F2 F3 F4 | echo send, reverb send, pan (centre detent), activity |
+| | FFWD / RWD | the macro, as on the channel page |
 | Harmony page | •• + PLAY once | F1 root, F2 mode (8), F3 drift (10 s to 4 min per chord), F4 motion |
 | Anywhere | •• held + F1-F4 | the four channel levels |
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
 | | •• + PLAY twice | next piece |
-| | FFWD tap | freeze, latched; tap again to let go |
+| Home and Harmony | FFWD tap | freeze, latched; tap again to let go |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
-| | •• + FFWD | randomize the piece (voices kept, filter left open) |
+| Anywhere | •• + FFWD | randomize the piece (voices kept, filter left open) |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
 | | •• + RWD held 2 s | save the piece to its slot |
 | | VOL+ / VOL- | output level (Wakes' 3 dB steps) |

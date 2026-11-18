@@ -13,6 +13,10 @@
 #define CATCH 0.02f          /* soft takeover: this close counts as reached */
 #define MOVE 0.008f          /* a fader moved more than this is being used */
 #define VOL_STEPS 16
+#define MAC_STEPS 4          /* FFWD on a channel page: macro depth in quarters */
+#define MAC_PERIOD 8.0f      /* seconds per glide, at first */
+#define MAC_SLOWEST 64.0f
+#define MAC_SLOW_MS 1500.0f  /* RWD held on a channel page: the glide takes twice as long every 1.5 s */
 
 static gl_patch cur, undo_patch;
 static int undo_valid, undo_piece;
@@ -41,6 +45,13 @@ static uint8_t rwd_shift, rwd_saved, ffwd_froze, started;
 static int dist_type, dist_amt, dist_post;
 static uint8_t vol_shift[2], vol_done[2];                /* [0] VOL-, [1] VOL+ */
 static int vol = 11;
+/* the channel macro, per channel: depth in steps, and how slow its glide is */
+static int mac_step[4];
+static float mac_period[4] = {MAC_PERIOD, MAC_PERIOD, MAC_PERIOD, MAC_PERIOD};
+static float rwd_from;                          /* the period when RWD went down */
+static uint8_t rwd_mac;                         /* this RWD press is the macro's (channel pages) */
+static uint32_t rwd_tap_at;
+static int rwd_taps;
 static uint32_t seed = 0x2545F491u;
 
 /* what the play row is showing */
@@ -74,15 +85,19 @@ static target map(int f, int shift)
 		t.centred = gl_gp_centred(G[f]);
 		break;
 	}
-	case PG_CH:
-		t.val = &cur.ch[chan][CP_ACTIVITY + f];
-		t.steps = gl_cp_steps(CP_ACTIVITY + f);
+	case PG_CH: {
+		static const int C[4] = {CP_CHAR, CP_TONE, CP_LENGTH, CP_REGISTER};
+		t.val = &cur.ch[chan][C[f]];
+		t.steps = gl_cp_steps(C[f]);
 		break;
-	case PG_EXT:
-		t.val = &cur.ch[chan][CP_ECHO + f];
-		t.steps = gl_cp_steps(CP_ECHO + f);
-		t.centred = gl_cp_centred(CP_ECHO + f);
+	}
+	case PG_EXT: {
+		static const int C[4] = {CP_ECHO, CP_VERB, CP_PAN, CP_ACTIVITY};
+		t.val = &cur.ch[chan][C[f]];
+		t.steps = gl_cp_steps(C[f]);
+		t.centred = gl_cp_centred(C[f]);
 		break;
+	}
 	case PG_HARMONY: {
 		static const int G[4] = {GP_ROOT, GP_MODE, GP_DRIFT, GP_MOTION};
 		t.val = &cur.g[G[f]];
@@ -184,7 +199,17 @@ void glui_init(void)
 	vol = 11;
 	dist_type = dist_amt = dist_post = 0;
 	gl_dist(0, 0, 0);
+	for (int c = 0; c < 4; c++) {
+		mac_step[c] = 0;
+		mac_period[c] = MAC_PERIOD;
+		gl_macro(c, 0.0f, MAC_PERIOD);
+	}
+	rwd_mac = 0;
+	rwd_taps = 0;
 }
+
+static int on_channel(void) { return page == PG_CH || page == PG_EXT; }
+static void macro_post(int c) { gl_macro(c, (float)mac_step[c] / MAC_STEPS, mac_period[c]); }
 
 /* ---------------------------------------------------------------- play row pictures */
 
@@ -314,7 +339,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		go(PG_HARMONY, chan, in);
 	}
 
-	/* ---- FFWD: freeze (tap latches, hold is momentary); •• + FFWD: randomize ---- */
+	/* ---- FFWD: freeze (tap latches, hold is momentary) on Home and Harmony; on a channel page,
+	 * one step more of that channel's macro; •• + FFWD: randomize, everywhere ---- */
 	if (PRESSED(GB_FFWD)) {
 		if (fn) {
 			used_with_fn = 1;
@@ -327,6 +353,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			uncatch_all(in);
 			show_dir = 1;
 			say(SH_SWEEP, now, 400);
+		} else if (on_channel()) {
+			if (mac_step[chan] < MAC_STEPS)
+				mac_step[chan]++;
+			macro_post(chan);
+			show_val = (float)mac_step[chan] / MAC_STEPS;
+			say(SH_VALUE, now, SHOW_MS);
 		} else {
 			freeze_on = 1;
 			gl_freeze(1);
@@ -347,17 +379,41 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		gl_freeze(freeze_on);
 	}
 
-	/* ---- RWD: the slowdown; •• + RWD: undo (tap) or save (held 2 s) ---- */
+	/* ---- RWD: the slowdown on Home and Harmony; on a channel page, held slows that channel's
+	 * macro and a double tap turns it off; •• + RWD: undo (tap) or save (held 2 s) ---- */
 	if (PRESSED(GB_RWD)) {
+		rwd_mac = 0;
 		if (fn) {
 			used_with_fn = 1;
 			rwd_shift = 1;
 			rwd_saved = 0;
+		} else if (on_channel()) {
+			rwd_shift = 0;
+			rwd_mac = 1;
+			rwd_from = mac_period[chan];
 		} else {
 			rwd_shift = 0;
 			slow_on = 1;
 			gl_slow(1);
 		}
+	}
+	if (DOWN(GB_RWD) && rwd_mac && now - down_at[GB_RWD] >= TAP_MS) {
+		/* held: the glide doubles in length every 1.5 s, down to one every 64 s */
+		float k = (float)(now - down_at[GB_RWD] - TAP_MS) / MAC_SLOW_MS, p = rwd_from;
+		for (; k >= 1.0f && p < MAC_SLOWEST; k -= 1.0f)
+			p *= 2.0f;
+		p *= 1.0f + k;                        /* (roughly 2^k between doublings) */
+		p = p > MAC_SLOWEST ? MAC_SLOWEST : p;
+		if (p != mac_period[chan]) {
+			mac_period[chan] = p;
+			macro_post(chan);
+		}
+		/* how slow, as a bar: 8 s empty .. 64 s full, a third per doubling */
+		float lv = 0.0f, q = MAC_PERIOD;
+		for (; q * 2.0f <= p; q *= 2.0f)
+			lv += 1.0f;
+		show_val = (lv + p / q - 1.0f) / 3.0f;
+		say(SH_VALUE, now, SHOW_MS);
 	}
 	if (DOWN(GB_RWD) && rwd_shift && !rwd_saved && now - down_at[GB_RWD] >= SAVE_HOLD_MS) {
 		rwd_saved = 1;
@@ -381,6 +437,22 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				say(SH_SWEEP, now, 400);
 			}
 			rwd_shift = 0;
+		} else if (rwd_mac) {
+			rwd_mac = 0;
+			if (now - down_at[GB_RWD] < TAP_MS) {
+				if (rwd_taps && now - rwd_tap_at <= DOUBLE_MS) {
+					rwd_taps = 0;                   /* double tap: the macro off */
+					mac_step[chan] = 0;
+					mac_period[chan] = MAC_PERIOD;
+					macro_post(chan);
+					show_val = 0.0f;
+					say(SH_VALUE, now, SHOW_MS);
+				} else {
+					rwd_taps = 1;
+					rwd_tap_at = now;
+				}
+			} else
+				rwd_taps = 0;
 		} else if (slow_on) {
 			slow_on = 0;
 			gl_slow(0);
@@ -554,5 +626,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->dist_type = (uint8_t)dist_type;
 	out->dist_amt = (uint8_t)dist_amt;
 	out->dist_post = (uint8_t)dist_post;
+	for (int c = 0; c < 4; c++) {
+		out->macro[c] = (uint8_t)mac_step[c];
+		out->macro_period[c] = mac_period[c];
+	}
 	prev_btn = btn;
 }

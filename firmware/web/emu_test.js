@@ -44,6 +44,14 @@ const { chromium } = require('playwright');
       await p.mouse.up(); await p.waitForTimeout(300);
       const fmap = (await p.textContent('#fmap')).replace(/\s+/g, ' ');
       expect(/^F1Tempo\d+ BPMF2/.test(fmap), 'F1 drag picks up and sets the tempo (' + fmap + ')');
+      // on a channel page the rocker is the macro, and F1 is character
+      await p.evaluate(() => document.activeElement && document.activeElement.blur());
+      await p.keyboard.press('2'); await p.waitForTimeout(300);
+      expect((await p.textContent('#fmap')).replace(/\s+/g, ' ').startsWith('F1Character'), 'channel page: F1 is character');
+      await p.keyboard.press(']'); await p.waitForTimeout(400);
+      expect((await title()).includes('macro 1/4') && !(await p.textContent('#piece')).includes('frozen'), 'FFWD on a channel page: macro, no freeze (' + await title() + ')');
+      await p.keyboard.press('['); await p.waitForTimeout(80); await p.keyboard.press('['); await p.waitForTimeout(400);
+      expect(!(await title()).includes('macro'), 'RWD double tap: macro off (' + await title() + ')');
     }
     expect(errs.length === 0, `${scheme}: no console errors ${errs.join(' / ')}`);
     await p.screenshot({ path: `${out}/emu-${scheme}.png`, fullPage: true });

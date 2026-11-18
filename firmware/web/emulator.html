@@ -128,11 +128,12 @@ details summary { cursor: pointer; font-weight: 500; }
           <summary>The whole control map</summary>
           <div class="map">
             <div><b>Home</b>: F1 tempo, F2 delay, F3 reverb, F4 DJ filter. T1 to T4 open a channel. •• + T changes that channel's voice.</div>
-            <div><b>Channel</b>: F1 activity, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, character).</div>
+            <div><b>Channel</b>: F1 character, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, activity).</div>
+            <div><b>Macro</b>, on a channel or extended page: FFWD tap adds a step (four), RWD held slows its glide (8 s up to 64 s), RWD double tap turns it off.</div>
             <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion.</div>
             <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
             <div><b>Distortion</b>: •• + VOL− steps the amount (off, 1 to 4), •• + VOL+ the type (Chebyshev, overdrive, fuzz, fold, XOR). Held 3 s: VOL− turns it off and resets it, VOL+ moves it before or after the delay and reverb. The track LEDs show the type, the play row the amount, filling from the •• end before the effects and from the PLAY end after.</div>
-            <div><b>Rocker</b>: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
+            <div><b>Rocker</b>, on Home and Harmony: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. Anywhere: •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
           </div>
         </details>
       </section>
@@ -213,8 +214,8 @@ for (let t = 0; t < 4; t++) makeBtn(tb, "T" + (t + 1), "", t, String(t + 1));
 const br = document.getElementById("btnrow");
 makeBtn(br, "••", "shift", B.FN, "Shift");
 makeBtn(br, "PLAY", "", B.PLAY, " ");
-makeBtn(br, "RWD", "slow", B.RWD, "[");
-makeBtn(br, "FFWD", "freeze", B.FFWD, "]");
+makeBtn(br, "RWD", "slow · glide", B.RWD, "[");
+makeBtn(br, "FFWD", "freeze · macro", B.FFWD, "]");
 makeBtn(br, "VOL−", "", B.VOLDN, "-");
 makeBtn(br, "VOL+", "", B.VOLUP, "=");
 
@@ -271,7 +272,7 @@ class GlagCore {
     }
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
-    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 80).slice();
+    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 100).slice();
     const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), 180).slice();
     const msg = { t: "st", st: st.buffer, pt: pt.buffer };
     const slot = st[13];
@@ -362,11 +363,12 @@ function rows() {
   if (shift) return { title: "Levels (•• held)", r: [0, 1, 2, 3].map((k) => [`Level ${k + 1}`, voice(k), pct(ch(k, 8))]) };
   if (page === 0) return { title: "Home", r: [
     ["Tempo", "", Math.round(20 + 100 * g(0)) + " BPM"], ["Delay", "", pct(g(1))], ["Reverb", "", pct(g(2))], ["Filter", "", filterText(g(3))]] };
-  if (page === 1) return { title: `Channel ${c + 1}: ${voice(c)}`, r: [
-    ["Activity", "", pct(ch(c, 0))], ["Tone", "", pct(ch(c, 1))], ["Length", "", pct(ch(c, 2))],
-    ["Register", "", ((steps(ch(c, 3), 5) - 2) > 0 ? "+" : "") + (steps(ch(c, 3), 5) - 2) + " oct"]] };
-  if (page === 2) { const vi = patch.getUint8(c); return { title: `Channel ${c + 1}: ${voice(c)}, extended`, r: [
-    ["Echo send", "", pct(ch(c, 4))], ["Reverb send", "", pct(ch(c, 5))], ["Pan", "", panText(ch(c, 6))], ["Character", CHAR[vi] || "", pct(ch(c, 7))]] }; }
+  const mac = (k) => { const m = state.getUint8(80 + k); return m ? `  ·  macro ${m}/4, ${Math.round(state.getFloat32(84 + k * 4, true))} s glide` : ""; };
+  if (page === 1) { const vi = patch.getUint8(c); return { title: `Channel ${c + 1}: ${voice(c)}` + mac(c), r: [
+    ["Character", CHAR[vi] || "", pct(ch(c, 7))], ["Tone", "", pct(ch(c, 1))], ["Length", "", pct(ch(c, 2))],
+    ["Register", "", ((steps(ch(c, 3), 5) - 2) > 0 ? "+" : "") + (steps(ch(c, 3), 5) - 2) + " oct"]] }; }
+  if (page === 2) return { title: `Channel ${c + 1}: ${voice(c)}, extended` + mac(c), r: [
+    ["Echo send", "", pct(ch(c, 4))], ["Reverb send", "", pct(ch(c, 5))], ["Pan", "", panText(ch(c, 6))], ["Activity", "", pct(ch(c, 0))]] };
   return { title: "Harmony", r: [
     ["Root", "", NOTES[steps(g(4), 12)]], ["Mode", "", MODES[steps(g(5), 8)]], ["Drift", "", driftText(g(6))], ["Motion", "", pct(g(7))]] };
 }

@@ -101,6 +101,11 @@ enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_FOLD, GD_XOR, GD_COUNT };
 extern const char *const GL_DIST_NAME[GD_COUNT];
 void gl_dist(int type, int amount, int post);
 void gl_panic(void);
+/* The channel macro: a slow random glide that pushes channel ch's own controls around (tone,
+ * character, length, activity) plus tremolo and octave leaps, each weighted to suit its voice.
+ * depth 0 = off .. 1 = full (twice as wide as half); period_s: seconds per glide. Outside the
+ * patch: the posted controls are the centre it moves around. */
+void gl_macro(int ch, float depth, float period_s);
 
 /* ---- audio thread ---- */
 /* n stereo frames, interleaved int16, n a multiple of GL_SUB. gain 0..1 (volume). */

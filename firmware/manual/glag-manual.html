@@ -125,7 +125,7 @@ h3.group { margin-top: 18px; }
 
 <main>
   <header>
-    <div class="eyebrow">SP-1 firmware · version 0.3</div>
+    <div class="eyebrow">SP-1 firmware · version 0.4</div>
     <h1>Glag manual</h1>
     <p class="lede">Glag turns the SP-1 into a generative ambient instrument. It plays itself from the moment it is switched on: four channels, each holding one of fifteen voices, drawing on one scale and one slowly drifting chord, through an echo and a reverb. You tend it rather than play it. This manual covers every control, every page and every light.</p>
     <nav class="toc" aria-label="Chapters">
@@ -192,12 +192,12 @@ h3.group { margin-top: 18px; }
         <text class="flow-s" x="110" y="198" text-anchor="middle">reverb · filter</text>
         <rect class="flow-box" x="370" y="40" width="200" height="96" rx="14"/>
         <text class="flow-t" x="470" y="75" text-anchor="middle">Channel 1-4</text>
-        <text class="flow-s" x="470" y="97" text-anchor="middle">activity · tone</text>
+        <text class="flow-s" x="470" y="97" text-anchor="middle">character · tone</text>
         <text class="flow-s" x="470" y="113" text-anchor="middle">length · register</text>
         <rect class="flow-box" x="680" y="40" width="200" height="96" rx="14"/>
         <text class="flow-t" x="780" y="75" text-anchor="middle">Extended 1-4</text>
         <text class="flow-s" x="780" y="97" text-anchor="middle">echo · reverb</text>
-        <text class="flow-s" x="780" y="113" text-anchor="middle">pan · character</text>
+        <text class="flow-s" x="780" y="113" text-anchor="middle">pan · activity</text>
         <rect class="flow-box" x="370" y="215" width="200" height="96" rx="14"/>
         <text class="flow-t" x="470" y="250" text-anchor="middle">Harmony</text>
         <text class="flow-s" x="470" y="272" text-anchor="middle">root · mode</text>
@@ -237,9 +237,9 @@ h3.group { margin-top: 18px; }
       <article class="card term"><h3>DJ filter<span class="where">F4 on Home</span></h3><p>A tone sweep over the whole mix. In the middle it does nothing (there is a detent). To the left it removes the high notes, so the music sounds muffled, as if through a wall. To the right it removes the low notes, so it thins out like a small radio.</p><p class="try"><b>Try:</b> sweep it slowly left and back to fade the music into the distance and out again.</p></article>
     </div>
     <h3 class="group">Channel page: how one instrument plays</h3>
-    <p class="note">Each channel has its own four. On each voice they mean the same kind of thing, though each voice reads them in its own way.</p>
+    <p class="note">Each channel has its own four. Character is the voice's own control; the other three mean the same kind of thing on every voice, though each reads them in its own way.</p>
     <div class="grid">
-      <article class="card term"><h3>Activity<span class="where">F1 on a channel page</span></h3><p>How busy the instrument is: how often it plays a new note. Low leaves long gaps, high plays most beats. On voices that hold notes, such as Pad and Drone, it sets how often they breathe in and out instead.</p><p class="try"><b>Try:</b> two busy channels and two sparse ones usually sounds better than four in the middle.</p></article>
+      <article class="card term"><h3>Character<span class="where">F1 on a channel page</span></h3><p>The one control that is different for every voice: the thing that makes that voice itself. On Bells it picks the kind of metal, on Arp the pattern, on Drone the interval, on Shimmer the buzz. The Voices chapter lists all fifteen.</p><p class="try"><b>Try:</b> change it slowly while the voice plays to hear what it does.</p></article>
       <article class="card term"><h3>Tone<span class="where">F2 on a channel page</span></h3><p>How bright or dark the sound is. Down is soft and round; up is brighter, with more edge and shimmer. On the FM voices it changes how strongly one wave bends another, which is where the brightness comes from.</p><p class="try"><b>Try:</b> keep the bass and pad dark and give one bell or piano the bright tone.</p></article>
       <article class="card term"><h3>Length<span class="where">F3 on a channel page</span></h3><p>How long each note rings after it is played, from a short tap to many seconds. On held voices it is how long a note is held before it fades.</p><p class="try"><b>Try:</b> long notes with low activity give the most ambient sound: few notes, each one ringing for a long time.</p></article>
       <article class="card term"><h3>Register<span class="where">F4 on a channel page</span></h3><p>Which octave the instrument plays in. It has five steps: two octaves down, one down, home, one up and two up. Home is a sensible range for that voice, so Bass starts low and Bells high. It moves the whole instrument; the notes it chooses stay the same.</p><p class="try"><b>Try:</b> put two channels with the same voice in different registers so they don't crowd each other.</p></article>
@@ -250,7 +250,13 @@ h3.group { margin-top: 18px; }
       <article class="card term"><h3>Echo send<span class="where">F1 on the extended page</span></h3><p>How much of this channel goes into the delay. The Delay fader on Home sets what the echo sounds like; this sets who uses it. At zero this channel has no echo, however high Delay is.</p><p class="try"><b>Try:</b> send only one channel to the echo so it has a part to itself.</p></article>
       <article class="card term"><h3>Reverb send<span class="where">F2 on the extended page</span></h3><p>How much of this channel goes into the reverb. Higher sounds further away and more blurred; lower sounds close and dry.</p><p class="try"><b>Try:</b> keep the bass low here, or it turns to mud, and the bells and pads high.</p></article>
       <article class="card term"><h3>Pan<span class="where">F3 on the extended page</span></h3><p>Where the channel sits between your left and right ear. The middle has a detent. Some voices are already stereo; pan moves their whole spread.</p><p class="try"><b>Try:</b> pan two plucked voices opposite each other.</p></article>
-      <article class="card term"><h3>Character<span class="where">F4 on the extended page</span></h3><p>The one control that is different for every voice: the thing that makes that voice itself. On Bells it picks the kind of metal, on Arp the pattern, on Drone the interval, on Shimmer the buzz. The Voices chapter lists all fifteen.</p><p class="try"><b>Try:</b> change it slowly while the voice plays to hear what it does.</p></article>
+      <article class="card term"><h3>Activity<span class="where">F4 on the extended page</span></h3><p>How busy the instrument is: how often it plays a new note. Low leaves long gaps, high plays most beats. On voices that hold notes, such as Pad and Drone, it sets how often they breathe in and out instead.</p><p class="try"><b>Try:</b> two busy channels and two sparse ones usually sounds better than four in the middle.</p></article>
+    </div>
+    <h3 class="group">The channel macro: the rocker on a channel page</h3>
+    <p class="note">On a channel page or its extended page, FFWD and RWD work that channel's macro instead of freeze and slow-down (those stay on Home and Harmony).</p>
+    <div class="grid">
+      <article class="card term"><h3>Macro<span class="where">FFWD on a channel page</span></h3><p>A slow, wandering hand on the channel's own controls. It glides tone, character, length and activity to new random places, and adds tremolo and octave leaps, each in the way that suits the voice: EP gets a suitcase tremolo, Pizz and Arp leap octaves, Bells change their metal, Shimmer's buzz wanders. Each FFWD tap adds a step, up to four; at full it swings twice as wide as at half, with leaps of two octaves.</p><p class="try"><b>Try:</b> one step on a single channel, and let the rest of the piece stay put.</p></article>
+      <article class="card term"><h3>Macro speed<span class="where">RWD held on a channel page</span></h3><p>Each glide starts at 8 seconds. Hold RWD and they get slower, twice as long every second and a half, down to one glide a minute. The play lights fill as it slows. A double tap on RWD turns the macro off and puts its speed back.</p><p class="try"><b>Try:</b> full macro, slowed right down: the voice changes so slowly you only notice after a while.</p></article>
     </div>
     <h3 class="group">Mixer</h3>
     <p class="note">Hold •• on any page and the faders become the four channel volumes.</p>
@@ -288,7 +294,7 @@ h3.group { margin-top: 18px; }
     <header>
       <div class="eyebrow">4 · On every page</div>
       <h2 id="h-anywhere">Anywhere</h2>
-      <p>These work the same on every page. •• is the shift button: hold it, then press the other control.</p>
+      <p>These work the same on every page, except the rocker on its own, which is freeze and slow-down on Home and Harmony and the channel macro on channel pages. •• is the shift button: hold it, then press the other control.</p>
     </header>
     <div class="table-wrap">
       <table>
@@ -299,12 +305,15 @@ h3.group { margin-top: 18px; }
           <tr><td class="g"><span class="key">••</span> + <span class="key">PLAY</span> twice</td><td>Next piece (12, then back to 1)</td><td>The piece number on the play lights</td></tr>
           <tr><td class="g"><span class="key">••</span> held + faders</td><td>The four channel levels: F1 channel 1 … F4 channel 4</td><td>The level as a bar while you move</td></tr>
           <tr><td class="g"><span class="key">••</span> twice</td><td>Home</td><td><span class="ledrow"><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i><i class="a-breathe"></i></span> breathing</td></tr>
-          <tr><td class="g"><span class="key">FFWD</span> tap</td><td>Freeze, latched: the chord holds, no new notes, the reverb rings forever. Tap again to let go.</td><td><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</td></tr>
-          <tr><td class="g"><span class="key">FFWD</span> held</td><td>Freeze until you let go</td><td>A still glow</td></tr>
-          <tr><td class="g"><span class="key">RWD</span> held</td><td>The record slows to 10 BPM over 10 s, pitch and tempo together. Let go and it springs back.</td><td>The play lights dim as it slows</td></tr>
+          <tr><td class="g"><span class="key">FFWD</span> tap <small>Home, Harmony</small></td><td>Freeze, latched: the chord holds, no new notes, the reverb rings forever. Tap again to let go.</td><td><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</td></tr>
+          <tr><td class="g"><span class="key">FFWD</span> held <small>Home, Harmony</small></td><td>Freeze until you let go</td><td>A still glow</td></tr>
+          <tr><td class="g"><span class="key">RWD</span> held <small>Home, Harmony</small></td><td>The record slows to 10 BPM over 10 s, pitch and tempo together. Let go and it springs back.</td><td>The play lights dim as it slows</td></tr>
+          <tr><td class="g"><span class="key">FFWD</span> tap <small>channel pages</small></td><td>One step more of that channel's macro (four steps)</td><td>The step as a bar</td></tr>
+          <tr><td class="g"><span class="key">RWD</span> held <small>channel pages</small></td><td>The macro glides more slowly, from 8 s down to 64 s</td><td>A bar filling as it slows</td></tr>
+          <tr><td class="g"><span class="key">RWD</span> twice <small>channel pages</small></td><td>The macro off</td><td>An empty bar</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span></td><td>Randomize the piece. Voices are kept and the DJ filter left open.</td><td><span class="ledrow sweep-up"><i></i><i></i><i></i><i></i></span> sweeps up</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span></td><td>Undo the last randomize or piece change. Again redoes it.</td><td><span class="ledrow sweep-down"><i></i><i></i><i></i><i></i></span> sweeps down</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 2 s</td><td>Save the piece to its slot. It comes back whenever you step to that piece (until power-off in 0.3).</td><td>All eight lights flash three times</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 2 s</td><td>Save the piece to its slot. It comes back whenever you step to that piece (until power-off, for now).</td><td>All eight lights flash three times</td></tr>
           <tr><td class="g"><span class="key">VOL−</span> <span class="key">VOL+</span></td><td>Output level, 3 dB steps</td><td>The level as a bar for a second</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> / <span class="key">VOL+</span></td><td>Distortion (next chapter)</td><td>Type and amount</td></tr>
         </tbody>
@@ -388,7 +397,7 @@ h3.group { margin-top: 18px; }
     <header>
       <div class="eyebrow">7 · Fifteen voices</div>
       <h2 id="h-voices">Voices</h2>
-      <p>Any voice can sit on any channel, and two channels can share one. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads its page's faders the same way (activity, tone, length, register); <b>Character</b>, F4 on the extended page, is the one control that differs.</p>
+      <p>Any voice can sit on any channel, and two channels can share one. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads tone, length, register and activity the same way; <b>Character</b>, F1 on its channel page, is the one control that differs.</p>
     </header>
     <div class="grid" id="voicegrid"></div>
   </section>
@@ -463,19 +472,19 @@ const PAGES = {
   home: { name: "Home", how: "Where Glag starts. Tap •• twice from anywhere to return.",
     f: [["Tempo", "20-120 BPM"], ["Delay", "echo amount"], ["Reverb", "space and size"], ["DJ filter", "left low-pass · centre off · right high-pass"]],
     t: "breathe", hot: [0, 1, 2, 3],
-    b: [["T1-T4", "<b>Open that channel's page</b>"], ["•• + T1-T4", "<b>That channel's next voice</b> <span>(all fifteen, in order)</span>"], ["•• + PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"]] },
+    b: [["T1-T4", "<b>Open that channel's page</b>"], ["•• + T1-T4", "<b>That channel's next voice</b> <span>(all fifteen, in order)</span>"], ["•• + PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["FFWD / RWD", "<b>Freeze / slow down</b>"]] },
   ch: { name: "Channel page", how: "Tap a channel's T on Home. Shown here for channel 2.",
-    f: [["Activity", "how often it plays"], ["Tone", "dark to bright"], ["Length", "how long notes ring"], ["Register", "five octave steps"]],
+    f: [["Character", "the voice's own control"], ["Tone", "dark to bright"], ["Length", "how long notes ring"], ["Register", "five octave steps"]],
     t: "one", hot: [1],
-    b: [["Another T", "<b>That channel's page</b>"], ["•• + its own T", "<b>Its extended page</b>"], ["•• + another T", "<b>That channel's extended page</b>"]] },
+    b: [["Another T", "<b>That channel's page</b>"], ["•• + its own T", "<b>Its extended page</b>"], ["•• + another T", "<b>That channel's extended page</b>"], ["FFWD / RWD", "<b>The channel macro</b>: FFWD a step more · RWD held slower · RWD twice off"]] },
   ext: { name: "Extended page", how: "Hold •• and tap the channel's own T on its page. Again to go back.",
-    f: [["Echo send", "how much goes to the delay"], ["Reverb send", "how much goes to the reverb"], ["Pan", "centre detent"], ["Character", "the voice's own control"]],
+    f: [["Echo send", "how much goes to the delay"], ["Reverb send", "how much goes to the reverb"], ["Pan", "centre detent"], ["Activity", "how often it plays"]],
     t: "blink", hot: [1],
-    b: [["•• + its own T", "<b>Back to its channel page</b>"], ["T1-T4", "<b>That channel's page</b>"]] },
+    b: [["•• + its own T", "<b>Back to its channel page</b>"], ["T1-T4", "<b>That channel's page</b>"], ["FFWD / RWD", "<b>The channel macro</b>, as on the channel page"]] },
   har: { name: "Harmony", how: "Hold •• and press PLAY once, then wait a moment. One page for the whole instrument.",
     f: [["Root", "12 steps, C to B"], ["Mode", "8 steps: Ionian … pentatonic minor"], ["Drift", "a new chord every 10 s to 4 min"], ["Motion", "the slow tide, and how much it evolves"]],
     t: "chase", hot: [0, 1, 2, 3],
-    b: [["T1-T4", "<b>That channel's page</b>"], ["•• twice", "<b>Home</b>"]] },
+    b: [["T1-T4", "<b>That channel's page</b>"], ["•• twice", "<b>Home</b>"], ["FFWD / RWD", "<b>Freeze / slow down</b>"]] },
   shift: { name: "•• held", how: "While •• is held, on any page, the faders are the mixer.",
     f: [["Level 1", "channel 1"], ["Level 2", "channel 2"], ["Level 3", "channel 3"], ["Level 4", "channel 4"]],
     t: "breathe", hot: [],
@@ -512,7 +521,7 @@ const tBtn = X.map((x, i) => {
   return r;
 });
 const pLed = [0, 1, 2, 3].map((i) => el("circle", { cx: 300 + i * 36, cy: 444, r: 7, class: "svg-led" }, pl));
-const BTN = [["••", "shift"], ["PLAY", ""], ["RWD", "slow"], ["FFWD", "freeze"], ["VOL−", ""], ["VOL+", ""]];
+const BTN = [["••", "shift"], ["PLAY", ""], ["RWD", "slow/glide"], ["FFWD", "freeze/macro"], ["VOL−", ""], ["VOL+", ""]];
 const bBtn = BTN.map((b, i) => {
   const x = 34 + i * 70;
   const r = el("rect", { x, y: 476, width: 62, height: 48, rx: 10, class: "svg-btn" }, br);

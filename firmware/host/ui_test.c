@@ -91,6 +91,41 @@ int main(void)
 	sweep(3, 0.9f);
 	CHECK(glui_patch()->ch[2][CP_REGISTER] == 1.0f, "register snaps to its top step (%.3f)", glui_patch()->ch[2][CP_REGISTER]);
 
+	/* F1 on a channel page is character; F4 on the extended page is activity */
+	float chr = glui_patch()->ch[2][CP_CHAR];
+	sweep(0, chr);
+	sweep(0, 0.9f);
+	CHECK(fabsf(glui_patch()->ch[2][CP_CHAR] - 0.9f) < 0.02f, "F1 on a channel page sets character (%.3f)", glui_patch()->ch[2][CP_CHAR]);
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	float act = glui_patch()->ch[2][CP_ACTIVITY];
+	sweep(3, act);
+	sweep(3, 0.1f);
+	CHECK(fabsf(glui_patch()->ch[2][CP_ACTIVITY] - 0.1f) < 0.02f, "F4 on the extended page sets activity (%.3f)", glui_patch()->ch[2][CP_ACTIVITY]);
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	run(500);
+
+	/* the rocker on a channel page is that channel's macro, not freeze or slow */
+	tap(GB_FFWD); run(50);
+	CHECK(!gl_frozen, "FFWD on a channel page does not freeze");
+	CHECK(out.macro[2] == 1, "FFWD on a channel page: macro step 1 (%d)", out.macro[2]);
+	for (int k = 0; k < 5; k++) { tap(GB_FFWD); run(100); }
+	CHECK(out.macro[2] == 4, "the macro stops at its fourth step (%d)", out.macro[2]);
+	CHECK(out.macro[0] == 0 && out.macro[1] == 0 && out.macro[3] == 0, "only this channel's macro moved");
+	down(GB_RWD); run(3500);
+	CHECK(gl_speed > 0.99f, "RWD held on a channel page does not slow the record (speed %.2f)", gl_speed);
+	CHECK(out.macro_period[2] > 15.0f, "RWD held slows the macro's glide (%.1f s)", out.macro_period[2]);
+	up(GB_RWD); run(100);
+	float per = out.macro_period[2];
+	run(1000);
+	CHECK(out.macro_period[2] == per && out.macro[2] == 4, "letting go of RWD keeps the macro as it was");
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	tap(GB_FFWD); run(50);
+	CHECK(!gl_frozen && out.macro[2] == 4, "the extended page works the macro too");
+	tap(GB_RWD); run(80); tap(GB_RWD); run(50);
+	CHECK(out.macro[2] == 0 && out.macro_period[2] == 8.0f, "RWD double tap turns the macro off (%d, %.1f s)", out.macro[2], out.macro_period[2]);
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	run(500);
+
 	/* double tap •• : HOME */
 	tap(GB_FN); run(60); tap(GB_FN);
 	CHECK(out.page == PG_HOME, "•• double tap returns HOME");

@@ -289,9 +289,47 @@ static int place(int pc, float from, int lo, int hi)
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
 static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64};
 
+/* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
+ * Per voice, how far the macro moves:   tone  char  trem  oct   len   act */
+static const uint8_t MW[GV_COUNT][6] = {
+	{60, 50, 40,  0, 30, 20},   /* pad: brightness, detune, breathing tremolo */
+	{50, 70,  0, 50, 30, 30},   /* bells: metal, octave leaps */
+	{40, 60,  0, 30, 30, 20},   /* bass: glide and fifths, the odd octave */
+	{60, 60, 20, 40, 40, 30},   /* piano: tine, octaves */
+	{50, 80,  0, 50, 30, 40},   /* marimba: ratio, octaves */
+	{80, 30, 30,  0,  0, 30},   /* drone: the index opens wider, interval shifts */
+	{60, 60,  0, 50, 40, 40},   /* kalimba */
+	{50, 80, 30, 30, 30, 20},   /* flute: vibrato */
+	{50, 60, 20, 60, 40, 30},   /* arp: pattern, octave range */
+	{60, 70, 30,  0, 30, 20},   /* swell: detune, vibrato */
+	{60, 60, 60, 30, 30, 30},   /* ep: suitcase tremolo, tine */
+	{50, 80,  0, 20, 30, 20},   /* gong: metal */
+	{50, 60,  0, 60, 40, 40},   /* pizz: octave jumps */
+	{50, 90, 30, 30, 30, 20},   /* shimmer: buzz */
+	{50, 90,  0, 40, 40, 30},   /* tails: tail shape */
+};
+static float mac_depth[GL_NCH], mac_period[GL_NCH] = {8.0f, 8.0f, 8.0f, 8.0f};
+static float mac_ph[GL_NCH][2], mac_from[GL_NCH][2], mac_to[GL_NCH][2], mac_u[GL_NCH][2];
+static float mac_trem_ph[GL_NCH];
+static gl_patch Pb;                    /* the patch as posted, before the macro moves it */
+void gl_macro(int ch, float depth, float period_s)
+{
+	if ((unsigned)ch < GL_NCH) {
+		mac_depth[ch] = depth;
+		mac_period[ch] = period_s;
+	}
+}
 static int reg_base(const chan *c, int ch)
 {
-	return HOME[c->voice] + 12 * (stepped(P.ch[ch][CP_REGISTER], 5) - 2);
+	int jump = 0;
+	float d = mac_depth[ch];
+	float pj = d * (1.0f + d) * MW[c->voice][3] * 0.006f;   /* up to ~0.7 of notes leap at full */
+	if (d > 0.0f && rnd() < pj) {
+		jump = rnd() < 0.6f ? 12 : -12;
+		if (d > 0.7f && rnd() < 0.4f)
+			jump *= 2;                                       /* two octaves, near full */
+	}
+	return HOME[c->voice] + 12 * (stepped(P.ch[ch][CP_REGISTER], 5) - 2) + jump;
 }
 
 static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
@@ -1513,11 +1551,58 @@ static void derive(void)
 	filter_setup(P.g[GP_FILTER]);
 }
 
+static void macro_tick(float dt)
+{
+	static uint8_t was_on[GL_NCH];
+	for (int c = 0; c < GL_NCH; c++) {
+		const uint8_t *w = MW[CH[c].voice];
+		float d = mac_depth[c];
+		if (d <= 0.0f) {                      /* off: put the controls back once, then cost nothing */
+			if (was_on[c]) {
+				for (int p = 0; p < GL_NCP; p++)
+					P.ch[c][p] = Pb.ch[c][p];
+				was_on[c] = 0;
+			}
+			continue;
+		}
+		was_on[c] = 1;
+		for (int k = 0; k < 2; k++) {
+			/* a cosine glide from one random value to the next, once per (slightly uneven) period */
+			mac_ph[c][k] += dt / (mac_period[c] * (k ? 1.37f : 1.0f));
+			if (mac_ph[c][k] >= 1.0f) {
+				mac_ph[c][k] -= 1.0f;
+				mac_from[c][k] = mac_to[c][k];
+				mac_to[c][k] = 2.0f * rnd() - 1.0f;
+			}
+			float x = 0.5f - 0.5f * sin_u((uint32_t)(mac_ph[c][k] * 2147483648.0f) + 0x40000000u);
+			mac_u[c][k] = mac_from[c][k] + (mac_to[c][k] - mac_from[c][k]) * x;
+		}
+		float u1 = mac_u[c][0], u2 = mac_u[c][1];
+		d *= 1.0f + d;                       /* gentle at the first steps, twice as wide at full */
+		P.ch[c][CP_TONE] = clampf(Pb.ch[c][CP_TONE] + d * w[0] * 0.006f * u1, 0.0f, 1.0f);
+		P.ch[c][CP_CHAR] = clampf(Pb.ch[c][CP_CHAR] + d * w[1] * 0.007f * u2, 0.0f, 1.0f);
+		P.ch[c][CP_LENGTH] = clampf(Pb.ch[c][CP_LENGTH] + d * w[4] * 0.005f * u2, 0.0f, 1.0f);
+		P.ch[c][CP_ACTIVITY] = clampf(Pb.ch[c][CP_ACTIVITY] + d * w[5] * 0.005f * u1, 0.0f, 1.0f);
+		mac_trem_ph[c] += dt * (3.0f + 2.0f * u2);   /* 1..5 Hz, wandering */
+		if (mac_trem_ph[c] >= 1.0f)
+			mac_trem_ph[c] -= 1.0f;
+	}
+}
+static inline float macro_trem(int c)
+{
+	if (mac_depth[c] <= 0.0f)
+		return 1.0f;
+	float d = mac_depth[c] * (1.0f + mac_depth[c]) * 0.5f;
+	float t = d * MW[CH[c].voice][2] * 0.01f;
+	return 1.0f - t * 0.5f * (1.0f + sin_u((uint32_t)(mac_trem_ph[c] * 4294967295.0f)));
+}
+
 static void control(float dt)
 {
 	uint32_t s = post_seq;
 	if (s != post_seen) {
 		P = post_buf[s & 1u];
+		Pb = P;
 		post_seen = s;
 		harmony_update();
 		derive();
@@ -1527,6 +1612,7 @@ static void control(float dt)
 	if (cmd_dist_type != dist.type || cmd_dist_amt != dist.amt || cmd_dist_post != dist.post)
 		dist_setup();
 	slowing = cmd_slow;
+	macro_tick(dt);
 	if (cmd_panic != seen_panic) {
 		seen_panic = cmd_panic;
 		for (int c = 0; c < GL_NCH; c++) {
@@ -1712,7 +1798,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		for (uint32_t i = 0; i < GL_SUB / 2; i++)
 			E[i] = V[i] = 0.0f;
 		for (int c = 0; c < GL_NCH; c++) {
-			float g = lvl_ch[c] * 0.5f;
+			float g = lvl_ch[c] * 0.5f * macro_trem(c);
 			if (g <= 0.0f)
 				continue;                   /* silent: its envelopes still run in control() */
 			int st = STEREO[CH[c].voice];

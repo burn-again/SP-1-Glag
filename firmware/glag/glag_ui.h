@@ -7,16 +7,22 @@
  *                        •• held + F1..F4: the four channel levels (on every page)
  *                        T1..T4: open that channel's page
  *                        •• + T1..T4: the next voice on that channel (15 voices, any channel)
- *   CHANNEL page         F1 activity  F2 tone  F3 length  F4 register (5 octave steps)
+ *   CHANNEL page         F1 character  F2 tone  F3 length  F4 register (5 octave steps)
  *                        •• + its own T: extended page (blinking LED), again to come back
- *   EXTENDED page        F1 echo send  F2 reverb send  F3 pan (centre detent)  F4 character
+ *   EXTENDED page        F1 echo send  F2 reverb send  F3 pan (centre detent)  F4 activity
  *                        another T jumps straight to that channel's page
+ *   CHANNEL + EXTENDED   the rocker is that channel's macro (a slow random glide over its own
+ *                        controls, tremolo and octave leaps):
+ *                        FFWD tap: one step more (4 steps, shown as a bar)
+ *                        RWD held: the glide slows, doubling every 1.5 s, down to one per 64 s
+ *                        RWD double tap: the macro off, its speed back to the start
  *   HARMONY page         •• + PLAY once: F1 root (12 steps)  F2 mode (8)  F3 drift  F4 motion
  *   anywhere             •• double tap: HOME
  *                        PLAY: grow / rest
  *                        •• + PLAY twice: next piece
- *                        FFWD tap: freeze on/off (latched); FFWD held: freeze until released
+ *   HOME + HARMONY       FFWD tap: freeze on/off (latched); FFWD held: freeze until released
  *                        RWD held: the record slows to 10 BPM over 10 s; release springs back
+ *   anywhere
  *                        •• + FFWD: randomize the piece        •• + RWD: undo (randomize or piece)
  *                        •• + RWD held 2 s: save the piece to its slot
  *                        VOL+ / VOL-: volume
@@ -60,6 +66,8 @@ typedef struct {
 	uint8_t page, channel;   /* where the UI is (enum gl_page, 0..3) */
 	uint8_t piece;           /* 0..11 */
 	uint8_t dist_type, dist_amt, dist_post;   /* enum gl_dist, 0 off .. 4, 1 = after the effects */
+	uint8_t macro[4];        /* each channel's macro depth, 0 off .. 4 */
+	float macro_period[4];   /* and its glide, in seconds */
 } gl_ui_out;
 
 void glui_init(void);
