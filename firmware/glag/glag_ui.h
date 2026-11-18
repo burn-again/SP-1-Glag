@@ -6,7 +6,7 @@
  *   HOME (at boot)       F1 tempo   F2 delay   F3 reverb   F4 DJ filter (centre = off)
  *                        •• held + F1..F4: the four channel levels (on every page)
  *                        T1..T4: open that channel's page
- *                        •• + T1..T4: the next voice on that channel (15 voices, any channel)
+ *                        •• + T1..T4: the next voice on that channel (16 voices, any channel)
  *   CHANNEL page         F1 character  F2 tone  F3 length  F4 register (5 octave steps)
  *                        •• + its own T: extended page (blinking LED), again to come back
  *   EXTENDED page        F1 echo send  F2 reverb send  F3 pan (centre detent)  F4 activity
@@ -17,6 +17,9 @@
  *                        RWD held: the glide slows, doubling every 1.5 s, down to one per 64 s
  *                        RWD double tap: the macro off, its speed back to the start
  *   HARMONY page         •• + PLAY once: F1 root (12 steps)  F2 mode (8)  F3 drift  F4 motion
+ *                        •• + T1..T4: the reverb: Hall, Chamber, Shimmer, Bloom (saved with the
+ *                        piece); •• + T3 again on Shimmer: its interval, octave / fifth / seventh
+ *                        (the track row shows the reverb, the play row Shimmer's interval)
  *   anywhere             •• double tap: HOME
  *                        PLAY: grow / rest
  *                        •• + PLAY twice: next piece
@@ -29,9 +32,11 @@
  *                        •• + VOL- tap: distortion amount, off then 1-4
  *                        •• + VOL+ tap: distortion type (Chebyshev, overdrive, fuzz, fold, XOR)
  *                        •• + VOL- held 3 s: distortion off, the stack back to default
- *                        •• + VOL+ held 3 s: distortion before / after the delay and reverb
+ *                        •• + VOL+ held 3 s: distortion before the delay and reverb, after them,
+ *                        or on the reverb only (in turn)
  *                        (each click shows the type on the track row and the amount on the
- *                        play row, filling from the •• end before the effects, PLAY end after)
+ *                        play row, filling from the •• end before the effects, PLAY end after,
+ *                        blinking on the reverb only)
  *
  * Not here, on purpose: the power gestures (•• held 3 s, the 30 s backstop) and the battery
  * picture belong to the firmware's power code and are never routed through this file.
@@ -65,7 +70,8 @@ typedef struct {
 	uint8_t save_slot;       /* 1..8: persist glui_saved(save_slot - 1) now; 0 = nothing */
 	uint8_t page, channel;   /* where the UI is (enum gl_page, 0..3) */
 	uint8_t piece;           /* 0..11 */
-	uint8_t dist_type, dist_amt, dist_post;   /* enum gl_dist, 0 off .. 4, 1 = after the effects */
+	uint8_t dist_type, dist_amt, dist_post;   /* enum gl_dist, 0 off .. 4; 0 before the effects, 1 after, 2 the reverb only */
+	uint8_t reverb, shimmer;  /* enum gl_reverb, enum gl_shimmer */
 	uint8_t macro[4];        /* each channel's macro depth, 0 off .. 4 */
 	float macro_period[4];   /* and its glide, in seconds */
 } gl_ui_out;

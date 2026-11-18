@@ -2378,15 +2378,24 @@ int main(void)
 				}
 				if (g_glag_out.dist_type != was.dist_type || g_glag_out.dist_amt != was.dist_amt ||
 				    g_glag_out.dist_post != was.dist_post) {
+					static const char *const where[3] = {"before the effects", "after the effects",
+					                                     "on the reverb only"};
 					if (g_glag_out.dist_amt == 0) {
-						printk("GLAG distortion off (%s, %s the effects)\n",
+						printk("GLAG distortion off (%s, %s)\n",
 						       GL_DIST_NAME[g_glag_out.dist_type % GD_COUNT],
-						       g_glag_out.dist_post ? "after" : "before");
+						       where[g_glag_out.dist_post % 3u]);
 					} else {
-						printk("GLAG distortion %s %d, %s the effects\n",
+						printk("GLAG distortion %s %d, %s\n",
 						       GL_DIST_NAME[g_glag_out.dist_type % GD_COUNT], g_glag_out.dist_amt,
-						       g_glag_out.dist_post ? "after" : "before");
+						       where[g_glag_out.dist_post % 3u]);
 					}
+				}
+				if (g_glag_out.reverb != was.reverb || g_glag_out.shimmer != was.shimmer) {
+					if (g_glag_out.reverb == GR_SHIMMER)
+						printk("GLAG reverb Shimmer, %s\n",
+						       GL_SHIMMER_NAME[g_glag_out.shimmer % GS_COUNT]);
+					else
+						printk("GLAG reverb %s\n", GL_REVERB_NAME[g_glag_out.reverb % GR_COUNT]);
 				}
 				if (g_glag_out.save_slot) {
 					printk("GLAG piece %d saved (kept until power-off)\n", g_glag_out.save_slot);

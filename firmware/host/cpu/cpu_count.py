@@ -113,7 +113,7 @@ def run(voices):
 PROF = {} if '--prof' in sys.argv else None
 STRESS = '--stress' in sys.argv
 names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp',
-         'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails']
+         'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails', 'Pulse']
 for v in configs:
     avg, worst = run(v)
     vv = v.split('m')[0].split('d')[0]

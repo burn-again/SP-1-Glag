@@ -151,6 +151,22 @@ int main(void)
 	sweep(0, root);
 	sweep(0, 1.0f);
 	CHECK(glui_patch()->g[GP_ROOT] == 1.0f, "root steps to B");
+
+	/* the reverb, on HARMONY: •• + T1..T4, and Shimmer's interval with its T again */
+	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_HALL, "Terminal starts with the Hall");
+	down(GB_FN); tap(GB_T2); up(GB_FN);
+	CHECK(out.page == PG_HARMONY && glui_patch()->space[GL_SP_REVERB] == GR_CHAMBER, "•• + T2 on HARMONY: Chamber, and stays on HARMONY");
+	CHECK(out.led_t[1] == 255 && out.led_t[0] == 0, "the track row shows the reverb");
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_SHIMMER && glui_patch()->space[GL_SP_SHIMMER] == GS_OCTAVE, "•• + T3: Shimmer, an octave");
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	CHECK(glui_patch()->space[GL_SP_SHIMMER] == GS_FIFTH, "•• + T3 again: a fifth");
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	down(GB_FN); tap(GB_T3); up(GB_FN);
+	CHECK(glui_patch()->space[GL_SP_SHIMMER] == GS_OCTAVE, "seventh, then round to the octave");
+	down(GB_FN); tap(GB_T1); up(GB_FN);
+	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_HALL, "•• + T1: back to the Hall");
+	run(1600);
 	tap(GB_FN); run(60); tap(GB_FN);
 	run(500);
 
@@ -250,6 +266,10 @@ int main(void)
 	CHECK(out.dist_type == GD_OVERDRIVE, "the hold is not also a tap (type unchanged)");
 	CHECK(out.led_p[3] == 255 && out.led_p[2] == 255 && out.led_p[0] == 0, "after the effects: the bar fills from the PLAY end");
 	CHECK(out.page == pg0, "•• held with VOL is not a •• tap");
+	down(GB_FN); down(GB_VOLUP); run(3200); up(GB_VOLUP); up(GB_FN);
+	CHECK(out.dist_post == 2, "•• + VOL+ held again: on the reverb only");
+	down(GB_FN); down(GB_VOLUP); run(3200); up(GB_VOLUP); up(GB_FN);
+	CHECK(out.dist_post == 0, "and again: before the effects");
 	down(GB_FN); down(GB_VOLDN); run(1500);
 	CHECK(out.led_p[0] > 0 && out.led_p[3] == 0, "holding: the play row fills toward 3 s");
 	run(1700);

@@ -55,7 +55,7 @@ static int rwd_taps;
 static uint32_t seed = 0x2545F491u;
 
 /* what the play row is showing */
-enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD };
+enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD, SH_REVERB };
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -305,6 +305,15 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				dirty = 1;
 				show_idx = cur.voice[t];
 				say(SH_INDEX, now, 1200);
+			} else if (page == PG_HARMONY) {
+				/* the reverb: T1 Hall, T2 Chamber, T3 Shimmer, T4 Bloom; Shimmer's T again
+				 * steps its interval (octave, fifth, seventh) */
+				if (t == GR_SHIMMER && cur.space[GL_SP_REVERB] == GR_SHIMMER)
+					cur.space[GL_SP_SHIMMER] = (uint8_t)((cur.space[GL_SP_SHIMMER] + 1) % GS_COUNT);
+				else
+					cur.space[GL_SP_REVERB] = (uint8_t)t;
+				dirty = 1;
+				say(SH_REVERB, now, 1500);
 			} else if ((page == PG_CH || page == PG_EXT) && t == chan) {
 				go(page == PG_CH ? PG_EXT : PG_CH, t, in);
 			} else {
@@ -483,7 +492,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			if (held >= DIST_HOLD_MS) {
 				vol_done[k] = 1;
 				if (k) {
-					dist_post = !dist_post;
+					dist_post = (dist_post + 1) % 3;   /* before, after, the reverb only */
 				} else {
 					dist_type = 0;
 					dist_amt = 0;
@@ -591,9 +600,18 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			p[0] = 30;
 		}
 		for (int i = 0; i < 4; i++)
-			out->led_p[i] = dist_post ? p[3 - i] : p[i];
+			out->led_p[i] = dist_post == 1 ? p[3 - i] : p[i];
+		if (dist_post == 2 && ((now / 250u) & 1u))   /* the reverb only: the bar blinks */
+			memset(out->led_p, 0, 4);
 		break;
 	}
+	case SH_REVERB:                                 /* the reverb on the track row, Shimmer's interval below */
+		memset(out->led_t, 0, 4);
+		out->led_t[cur.space[GL_SP_REVERB] & 3] = 255;
+		memset(out->led_p, 0, 4);
+		if (cur.space[GL_SP_REVERB] == GR_SHIMMER)
+			index_pic(out->led_p, cur.space[GL_SP_SHIMMER], now);
+		break;
 	case SH_HOLD:                                   /* •• + VOL held: filling toward 3 s */
 		index_pic(out->led_t, dist_type, now);
 		bar(out->led_p, show_val);
@@ -626,6 +644,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->dist_type = (uint8_t)dist_type;
 	out->dist_amt = (uint8_t)dist_amt;
 	out->dist_post = (uint8_t)dist_post;
+	out->reverb = cur.space[GL_SP_REVERB];
+	out->shimmer = cur.space[GL_SP_SHIMMER];
 	for (int c = 0; c < 4; c++) {
 		out->macro[c] = (uint8_t)mac_step[c];
 		out->macro_period[c] = mac_period[c];

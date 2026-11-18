@@ -3,14 +3,14 @@
 An easy-mode generative ambient firmware for the Teenage Engineering SP-1, inspired by Charles
 Vestal's [AMB-1](https://github.com/charlesvestal/fm1-amb) for the M-VAVE FM-1 and Brian Eno's
 *Music for Airports*. It plays itself from the moment it is switched on: four channels, each holding
-one of fifteen voices, drawing on one scale and one slowly drifting chord, through an echo and a
-reverb. You don't perform it, you tend it.
+one of sixteen voices, drawing on one scale and one slowly drifting chord, through a long tape echo
+and one of four reverbs. You don't perform it, you tend it.
 
 It runs on [Wakes](https://github.com/Worldwave/Wakes)' SP-1 base (power, watchdog, standby,
 battery, controls, LEDs, audio bring-up), used unchanged except where marked `CONFIG_SP1_GLAG`.
 
-**Status: 0.4.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
-controls pass 78 tests on a computer, and the browser emulator runs the same engine and controls.
+**Status: 0.5.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
+controls pass 87 tests on a computer, and the browser emulator runs the same engine and controls.
 The first hardware session decides the rest; see [Testing on the device](#testing-on-the-device).
 
 ## The voices
@@ -18,7 +18,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Voice | What it does | Character (channel page F1) |
 |---|---|---|
 | Pad | 2 or 3 voices breathing in and out on unequal cycles, each taking its note of the chord | warm (1:1) to hollow (2:1), detune |
-| Bells | four tape loops of 13, 17, 23 and 29 beats, soft FM bells that drift against each other | ratio set: harmonic, bell, glass |
+| Bells | four loops of 13, 17, 23 and 29 sixteenths, up to five notes each (AMB-1's density), soft FM bells, each up to 40 ms late like a human hand | ratio set: harmonic, bell, glass |
 | Bass | sine and sub-octave on the chord's root, gliding | glide time and how often it takes the fifth |
 | Piano | sparse 2-op FM electric piano | tine: 1:1, 2:1, 3:1 |
 | Marimba | short inharmonic FM | ratio 2.5 to 5 |
@@ -32,6 +32,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
+| Pulse | a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits, tone the brightness, length the decays, register the kick's pitch | swing (the off sixteenths up to half a step late) |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -64,6 +65,8 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 | Extended page | F1 F2 F3 F4 | echo send, reverb send, pan (centre detent), activity |
 | | FFWD / RWD | the macro, as on the channel page |
 | Harmony page | •• + PLAY once | F1 root, F2 mode (8), F3 drift (10 s to 4 min per chord), F4 motion |
+| | •• + T1-T4 | the reverb: Hall, Chamber, Shimmer, Bloom (saved with the piece) |
+| | •• + T3 again (on Shimmer) | Shimmer's interval: an octave, a fifth, a minor seventh |
 | Anywhere | •• held + F1-F4 | the four channel levels |
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
@@ -78,7 +81,7 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
 | | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
 | | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |
-| | •• + VOL+ held 3 s | distortion before the delay and reverb (default) or after them |
+| | •• + VOL+ held 3 s | distortion before the delay and reverb (default), after them, or on the reverb only, in turn |
 | | •• held 3 s | power off (Wakes', unchanged; so is the 30 s backstop) |
 
 **Faders pick up.** After a page change a fader does nothing until it reaches the value it would
@@ -93,6 +96,27 @@ save, and the battery when •• goes down (Wakes').
 **Saves** are kept until power-off for now. Keeping them on the eMMC across power cycles is the
 next step (it will reuse Wakes' storage thread rather than write the nRF's flash, whose last page
 the bootloader may own).
+
+## The space
+
+**Tape echo** (DELAY on Home): a loop of up to 4 s, as in Discreet Music. Its length is the piece's
+echo time (a dotted quarter, a half, a dotted half, a bar, or two bars; a bar in most pieces),
+halved until it fits. Two heads, the loop on the left and three quarters of it on the right; each
+repeat comes back darker and thinner, with a little wow. Its output also feeds the reverb.
+
+**Four reverbs** (REVERB on Home sets how long they ring; •• + T1-T4 on Harmony picks one):
+
+| | Reverb | Character |
+|---|---|---|
+| T1 | Hall | an eight-line FDN: 40 ms predelay, the brightest, barely any wobble, lows outlasting highs |
+| T2 | Chamber | a four-line FDN: 8 ms predelay, mid-dark, a little wobble, the closest |
+| T3 | Shimmer | a pitch shifter in the loop: the tail climbs by an octave (open, after Eventide and Strymon), a fifth or a minor seventh; •• + T3 again steps it |
+| T4 | Bloom | six long allpasses in front: notes swell in late, the darkest, the most movement |
+
+Plucked and struck voices go into the reverb bright; held voices (Pad, Bass, Drone, Flute, Swell,
+Gong, Shimmer, Tails, Pulse) go in through a 12 dB/octave low-pass at 1.5 kHz, and 3 dB less per
+octave above C4, so drones never turn shrill (AMB-1 darkens its pad the same way). Freeze holds any
+of them as long as you like: a slow servo keeps the tail's level, and Shimmer keeps climbing.
 
 ## Distortion
 
@@ -175,7 +199,7 @@ west build -p always -b stem_player SP-1-Glag/firmware/app -- -DBOARD_ROOT=$PWD/
 python3 SP-1-Glag/firmware/tools/ci/check_image.py build
 ```
 
-Output: `build/zephyr/glag-sp1.bin` (about 116 KB of the 892 KB slot; 140 KB of RAM). Both Zephyr
+Output: `build/zephyr/glag-sp1.bin` (about 130 KB of the 892 KB slot; 189 KB of RAM). Both Zephyr
 patches are required and are lost on every `west update`. `check_image.py` refuses an image that
 could write below 0x20000 or into the reserved page, or that drops the watchdog.
 
@@ -209,32 +233,36 @@ From `host/cpu`: the engine cross-compiled with the SP-1's compiler and run unde
 Cortex-M4F, cycles weighted per instruction. Calibrated against Plaits, which Wakes measured on
 real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically).
 
-| Four channels of | Model, normal settings | Model, worst block, everything at maximum | Hardware estimate (x1.4) |
+| Four channels of (with the Hall, the heaviest reverb) | Model, normal settings | Model, worst block, everything at maximum | Hardware estimate (x1.4) |
 |---|---|---|---|
-| Pad, Bells, Bass, Flute (piece 1) | 32 % | 47 % | 45-66 % |
-| Pad x 4 | 40 % | 59 % | 56-82 % |
-| Bells x 4 | 37 % | 66 % | 52-92 % |
-| Drone x 4 | 49 % | 49 % | 69 % |
-| Arp x 4 | 37 % | 60 % | 51-84 % |
-| Kalimba x 4 | 21 % | 64 % | 29-89 % |
-| Flute x 4 | 23 % | 36 % | 32-50 % |
-| Swell x 4 | 42 % | 56 % | 59-79 % |
-| EP x 4 | 22 % | 55 % | 30-77 % |
-| Gong x 4 | 36 % | 47 % | 51-66 % |
-| Pizz x 4 | 36 % | 64 % | 50-89 % |
-| Shimmer x 4 | 24 % | 52 % | 34-72 % |
-| Tails x 4 | 24 % | 52 % | 33-73 % |
-| Swell, EP, Gong, Shimmer (Rain City) | 31 % | 48 % | 44-67 % |
-| Piece 1 + distortion at 4, before the effects | 40 % | 55 % | 56-77 % |
-| Bells x 4 + distortion at 4 | 38 % | 66 % | 53-92 % |
-| Pizz x 4 + distortion at 4, before the effects | 37 % | 72 % | 52-100 % |
+| Pad, Bells, Bass, Flute (piece 1) | 44 % | 56 % | 61-79 % |
+| Pad x 4 | 49 % | 59 % | 68-83 % |
+| Bells x 4 | 43 % | 67 % | 60-93 % |
+| Bass x 4 | 45 % | 48 % | 63-68 % |
+| Piano x 4 | 37 % | 56 % | 51-78 % |
+| Marimba x 4 | 37 % | 56 % | 51-78 % |
+| Drone x 4 | 53 % | 54 % | 75 % |
+| Kalimba x 4 | 36 % | 55 % | 50-77 % |
+| Flute x 4 | 38 % | 46 % | 53-65 % |
+| Arp x 4 | 46 % | 63 % | 64-88 % |
+| Swell x 4 | 50 % | 58 % | 70-81 % |
+| EP x 4 | 36 % | 57 % | 51-80 % |
+| Gong x 4 | 46 % | 52 % | 64-72 % |
+| Pizz x 4 | 41 % | 60 % | 58-84 % |
+| Tails x 4 | 38 % | 59 % | 53-83 % |
+| Pulse x 4 | 46 % | 56 % | 65-79 % |
+| Arp, Swell, EP, Gong | 44 % | 57 % | 62-80 % |
+| Bells x 4 + distortion at 4 | | 68 % | 95 % |
 
-The last row is the one combination that reaches the budget's edge: four Pizz channels at full
-activity and length with distortion at 4. If it overruns on the device, lower `FM_CAP`.
+The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). The heaviest case is four
+Bells channels at full activity with distortion on, under the Hall: about 95 % on the estimate. If it
+overruns on the device, lower `FM_CAP`.
 
-A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP, with
-a third oscillator, count 1.5); the quietest decaying note gives way, and the pad, swell, drone and
-bass are never cut (a pad or swell breath waits instead). Echo and reverb run at 24 kHz, controls at 1 kHz.
+Where it goes: the voices run at 24 kHz and are brought back up to 48 kHz after the mix (about half
+their cost at full rate); the tape echo runs at 8 kHz and the reverbs at 12 kHz, all in 16-bit
+memory. A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP,
+with a third oscillator, count 1.5); the quietest decaying note gives way, and the pad, swell, drone
+and bass are never cut (a pad or swell breath waits instead). Controls run at 1 kHz.
 
 ## Layout
 

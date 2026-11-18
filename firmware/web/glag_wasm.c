@@ -35,6 +35,7 @@ static struct {
 	uint8_t dist_type, dist_amt, dist_post, pad2;
 	uint8_t macro[4];          /* offset 80 */
 	float macro_period[4];     /* offset 84 */
+	uint8_t reverb, shimmer, pad3[2];   /* offset 100 */
 } st;
 
 EXPORT void wg_init(uint32_t seed) { gl_init(seed); glui_init(); }
@@ -60,6 +61,8 @@ EXPORT void wg_tick(uint32_t now_ms)
 		st.save_slot = out.save_slot;
 	st.volume = out.volume; st.speed = gl_speed; st.beat = gl_beat;
 	st.dist_type = out.dist_type; st.dist_amt = out.dist_amt; st.dist_post = out.dist_post;
+	st.reverb = out.reverb;
+	st.shimmer = out.shimmer;
 	for (int i = 0; i < 4; i++) {
 		st.macro[i] = out.macro[i];
 		st.macro_period[i] = out.macro_period[i];

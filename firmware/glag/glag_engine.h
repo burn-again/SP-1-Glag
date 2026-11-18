@@ -4,7 +4,7 @@
  * Inspired by AMB-1 (Charles Vestal, for the M-VAVE FM-1) and Brian Eno's Music for Airports,
  * written from scratch for the nRF52840 (64 MHz Cortex-M4F, 256 KB RAM). No code from AMB-1.
  *
- * Four channels. Each channel holds one of fifteen voices, and any voice can sit on any channel
+ * Four channels. Each channel holds one of sixteen voices, and any voice can sit on any channel
  * (duplicates allowed). They all draw on one scale and one chord that drifts slowly through it.
  *
  *   PAD       breathing chord: voices swell in and out on cycles of unequal length
@@ -22,6 +22,7 @@
  *   PIZZ      pizzicato arp: short FM plucks over the chord, with octave jumps
  *   SHIMMER   buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, an octave echo
  *   TAILS     FM modulation tails: each note's index falls, blooms or rises over seconds
+ *   PULSE     a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7
  *
  * Every voice reads the same eight controls, so a fader means the same thing on every page:
  *   page:      ACTIVITY  TONE  LENGTH  REGISTER
@@ -51,7 +52,7 @@ extern "C" {
 
 enum gl_voice {
 	GV_PAD, GV_BELLS, GV_BASS, GV_PIANO, GV_MARIMBA, GV_DRONE, GV_KALIMBA, GV_FLUTE, GV_ARP,
-	GV_SWELL, GV_EP, GV_GONG, GV_PIZZ, GV_SHIMMER, GV_TAILS,
+	GV_SWELL, GV_EP, GV_GONG, GV_PIZZ, GV_SHIMMER, GV_TAILS, GV_PULSE,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];
@@ -73,11 +74,22 @@ enum gl_gp {
 #define GL_NMODES 8
 extern const char *const GL_MODE_NAME[GL_NMODES];
 
+/* The space: which reverb, the shimmer's interval, and the tape echo's length. */
+enum gl_reverb { GR_HALL, GR_CHAMBER, GR_SHIMMER, GR_BLOOM, GR_COUNT };
+enum gl_shimmer { GS_OCTAVE, GS_FIFTH, GS_SEVENTH, GS_COUNT };
+#define GL_NECHO 5                      /* a dotted quarter, a half, a dotted half, a bar, two bars */
+enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_NSP = 4 };
+extern const char *const GL_REVERB_NAME[GR_COUNT];
+extern const char *const GL_SHIMMER_NAME[GS_COUNT];
+extern const char *const GL_ECHO_NAME[GL_NECHO];
+
 /* Everything a piece is. Plain data: the UI owns it, saves it, posts copies of it. */
 typedef struct {
 	uint8_t voice[GL_NCH];          /* enum gl_voice */
 	float ch[GL_NCH][GL_NCP];
 	float g[GL_NGP];
+	uint8_t space[GL_NSP];          /* [GL_SP_REVERB] gl_reverb, [GL_SP_SHIMMER] gl_shimmer,
+	                                 * [GL_SP_ECHO] 0..GL_NECHO-1 */
 } gl_patch;
 
 /* Stepped controls: how many positions they have (the UI snaps faders to these). 0 = smooth. */
@@ -96,7 +108,8 @@ void gl_freeze(int on);                  /* hold the chord, stop new notes, reve
 void gl_slow(int on);                    /* record slowing to 10 BPM over 10 s; off springs back */
 void gl_next_chord(void);
 /* Distortion, outside the patch (pieces and randomize leave it alone). amount 0 = off, 1..4.
- * post 0: on the instruments, before the delay and reverb; 1: on everything, after them. */
+ * post 0: on the instruments, before the delay and reverb; 1: on everything, after them;
+ * 2: on the reverb only (dirty tails, clean instruments). */
 enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_FOLD, GD_XOR, GD_COUNT };
 extern const char *const GL_DIST_NAME[GD_COUNT];
 void gl_dist(int type, int amount, int post);

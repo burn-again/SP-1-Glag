@@ -24,7 +24,7 @@ int main(int argc, char **argv)
 	gl_piece(piece, &p);
 	if (argc > 4)
 		for (int c = 0; c < GL_NCH && argv[4][c]; c++)
-			p.voice[c] = (uint8_t)(argv[4][c] <= '9' ? argv[4][c] - '0' : (argv[4][c] | 0x20) - 'a' + 10);   /* hex: 0-9, a-e */
+			p.voice[c] = (uint8_t)(argv[4][c] <= '9' ? argv[4][c] - '0' : (argv[4][c] | 0x20) - 'a' + 10);   /* hex: 0-9, a-f */
 	if (argc > 5)   /* channel mask, e.g. 0100 keeps channel 2 only */
 		for (int c = 0; c < GL_NCH && argv[5][c]; c++)
 			if (argv[5][c] == '0')
@@ -37,6 +37,15 @@ int main(int argc, char **argv)
 		p.ch[0][CP_TONE] = (float)atof(getenv("TONE"));
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
+	gl_post_patch(&p);
+	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
+		int t = 0, sh = 0;
+		sscanf(getenv("REVERB"), "%d,%d", &t, &sh);
+		p.space[GL_SP_REVERB] = (uint8_t)t;
+		p.space[GL_SP_SHIMMER] = (uint8_t)sh;
+	}
+	if (getenv("NOVERB"))      /* the same render with nothing sent to the reverb */
+		for (int c = 0; c < GL_NCH; c++) p.ch[c][CP_VERB] = 0;
 	gl_post_patch(&p);
 	if (getenv("DIST")) {   /* DIST=type,amount,post: e.g. 2,3,0 = fuzz, amount 3, before the effects */
 		int t = 0, a = 0, po = 0;
@@ -51,7 +60,12 @@ int main(int argc, char **argv)
 	int sweep_t = -1, sweep_p = 0;
 	if (getenv("DISTSWEEP"))   /* DISTSWEEP=type,post: amounts 1, 2, 3, 4 across the render */
 		sscanf(getenv("DISTSWEEP"), "%d,%d", &sweep_t, &sweep_p);
+	float fz0 = -1.0f, fz1 = -1.0f;
+	if (getenv("FREEZE"))      /* FREEZE=from,to in seconds */
+		sscanf(getenv("FREEZE"), "%f,%f", &fz0, &fz1);
 	for (uint32_t n = 0; n < frames; n += 96) {
+		if (fz0 >= 0.0f)
+			gl_freeze((float)n / 48000.0f >= fz0 && (float)n / 48000.0f < fz1);
 		if (sweep_t >= 0)
 			gl_dist(sweep_t, 1 + (int)((uint64_t)n * 4u / frames), sweep_p);
 		gl_render(blk, 96, 0.8f);
