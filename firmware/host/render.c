@@ -35,6 +35,8 @@ int main(int argc, char **argv)
 		p.ch[0][CP_ACTIVITY] = (float)atof(getenv("ACT"));
 	if (getenv("TONE"))
 		p.ch[0][CP_TONE] = (float)atof(getenv("TONE"));
+	if (getenv("REG"))      /* channel 1's register step, -2..+2 */
+		p.ch[0][CP_REGISTER] = ((float)atof(getenv("REG")) + 2.0f) * 0.25f;
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	gl_post_patch(&p);

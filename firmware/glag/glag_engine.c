@@ -39,7 +39,9 @@ static inline float mtof(float m) { return 440.0f * fexp2((m - 69.0f) * (1.0f / 
 /* The instruments run at half rate (24 kHz) and are brought back up to 48 kHz after the mix:
  * nearly half the cost of every voice, for nothing above 12 kHz (heard in round 2 of the
  * reverb audition; only a fully buzzing Shimmer aliased noticeably, dry). */
-#define VOICE_HALF 1
+#ifndef VOICE_HALF
+#define VOICE_HALF 1                     /* 0: full rate, for measuring the half rate's cost on a computer */
+#endif
 #define VSUB (GL_SUB >> VOICE_HALF)
 #define VSR (GL_SR / (float)(1 << VOICE_HALF))
 static inline uint32_t hz_inc(float hz) { return (uint32_t)(hz * (89478.485f * (float)(1 << VOICE_HALF))); }
@@ -367,6 +369,13 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 	v->menv2 = 1.0f;
 	v->t = 0.0f;
 	v->bend = 0.0f;
+	/* the index starts from nothing: a higher note must not inherit a lower one's brightness
+	 * (for its first millisecond it would alias, a grinding edge on every strike) */
+	v->idx = v->iinc = v->idx2 = v->iinc2 = 0.0f;
+	/* and its pitch is the new note's from the first sample (the cap above reads it) */
+	float hz = mtof(note) * speed;
+	v->ic = hz_inc(hz);
+	v->im = hz_inc(hz * ratio);
 	/* the attack starts from where the amplitude is: no click on a retrigger */
 	v->env = v->amp > 0.0f ? v->amp / (vel > 0.01f ? vel : 0.01f) : 0.0f;
 	if (v->env > 1.0f)
@@ -387,7 +396,22 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 #ifndef FM_DIST_CUT
 #define FM_DIST_CUT 4
 #endif
-static int fm_cap = FM_CAP;
+static int fm_cap = FM_CAP, fm_dist = FM_CAP;   /* the cap now; the cap the distortion leaves */
+/* The load governor: the audio thread reports each block's share of its time (gl_load); past
+ * 88 % the cap comes down a voice at a time (the quietest decaying notes give way), and after a
+ * second under 72 % it goes back up. A safety net under the worst cases, never heard otherwise. */
+static int gov_cap = FM_CAP, gov_cool;
+void gl_load(float frac)
+{
+	if (frac > 0.88f) {
+		gov_cap = gov_cap - 2 > 8 ? gov_cap - 2 : 8;
+		gov_cool = 0;
+	} else if (frac < 0.72f && gov_cap < FM_CAP && ++gov_cool >= (int)(GL_SR / 240.0f)) {
+		gov_cool = 0;
+		gov_cap += 2;
+	}
+	fm_cap = fm_dist < gov_cap ? fm_dist : gov_cap;
+}
 static chan CH[GL_NCH];
 static int nslots(int voice)
 {
@@ -457,23 +481,29 @@ static void make_room(const nvoice *keep) { make_room_w(keep, 2); }
 /* set this sub-block's ramps toward amplitude `a` and index `i`. A voice that has faded
  * is snapped to exactly zero, or float rounding would leave it rendering forever. */
 /* An FM voice's partials reach about fc + (index + 1) fm (Carson). The voices run at 24 kHz,
- * so anything past 12 kHz would fold back down as aliasing (a tinny edge on high bells, piano,
- * pad): cap each note's index so its partials stay under 11 kHz. Low notes are never touched;
+ * so anything past 12 kHz would fold back down as aliasing (a grinding edge on high bells,
+ * marimba, shimmer): cap each note's index so its partials stay under 10 kHz, with a sideband
+ * to spare (Carson's rule leaves the next one only ~20 dB down). Low notes are never touched;
  * the highest, brightest ones lose only what would have aliased. */
 #define HZ_PER_INC (1.0f / (89478.485f * (float)(1 << VOICE_HALF)))
-static inline float idx_cap(const nvoice *v, float i, uint32_t im)
+#ifndef IDX_TOP
+#define IDX_TOP (0.42f * VSR)                /* 10 kHz at half rate */
+#endif
+/* from the oscillators' increments (nv_trigger sets them for the new note at once, so a
+ * strike never reads the last note's pitch); mult widens fm for a richer modulator */
+static inline float idx_cap(const nvoice *v, float i, float mult)
 {
-	float fc = (float)v->ic * HZ_PER_INC, fm = (float)im * HZ_PER_INC;
+	float fc = (float)v->ic * HZ_PER_INC, fm = (float)v->im * HZ_PER_INC * mult;
 	if (fm < 1.0f)
 		return i;
-	float cap = ((11000.0f - fc) / fm - 1.0f) * IDX_SCALE;
+	float cap = ((IDX_TOP - fc) / fm - 2.0f) * IDX_SCALE;   /* Carson, plus a sideband to spare */
 	cap = cap > 0.0f ? cap : 0.0f;
 	return i < cap ? i : cap;
 }
 
 static inline void ramp(nvoice *v, float a, float i)
 {
-	i = idx_cap(v, i, v->im);
+	i = idx_cap(v, i, 1.0f);
 	if (a <= 0.0f && v->amp < 0.0002f && v->amp > -0.0002f)
 		v->amp = v->ainc = 0.0f;
 	else
@@ -662,7 +692,10 @@ static const float BELL_RATIO[3][4] = {
 static void bells_beat(chan *c, int ch)
 {
 	int base = reg_base(c, ch) - 12;
-	int zone = stepped(P.ch[ch][CP_CHAR], 3);
+	/* CHARACTER: its lower half the ratio set (harmonic, bell, glass) on the beat, its upper half
+	 * the same three in sixteenths, busier */
+	float chr = P.ch[ch][CP_CHAR];
+	int zone = stepped(chr > 0.5f ? (chr - 0.5f) * 2.0f : chr * 2.0f, 3);
 	for (int k = 0; k < 4; k++) {
 		int len = BELL_LEN[k];
 		int8_t d = c->loop[k][c->lpos[k]];
@@ -745,8 +778,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	int base = reg_base(c, ch);
 	switch (c->voice) {
 	case GV_BELLS:
-		if ((step & 3) == 0)
-			bells_beat(c, ch);            /* the loops step in quarter notes, as AMB-1's */
+		if (P.ch[ch][CP_CHAR] > 0.5f || (step & 3) == 0)
+			bells_beat(c, ch);            /* quarter notes, as AMB-1's; or sixteenths */
 		break;
 	case GV_PULSE:
 		pulse_step(c, ch, step);
@@ -1018,7 +1051,12 @@ static void chan_control(chan *c, int ch, float dt)
 	case GV_BELLS:
 		for (int k = 0; k < 4; k++) {
 			nvoice *v = &c->v[k];
-			nv_perc(v, 0.004f, expmap(len, 1.0f, 10.0f) / speed, 0.6f / speed, 0.3f + 2.0f * tone, dt);
+			/* as AMB-1's: a soft strike when dark (~50 ms, a slowed piano), sharp when bright
+			 * (4 ms); low bells ring longer; the brightness fades on its own, longer when bright */
+			float att = 0.004f + 0.046f * clampf(1.0f - 2.0f * tone, 0.0f, 1.0f);
+			float ring = clampf(1.0f + (60.0f - v->note) * 0.015f, 0.5f, 1.6f);
+			nv_perc(v, att, expmap(len, 1.0f, 10.0f) * ring / speed, (0.35f + 1.5f * tone) / speed,
+			        0.3f + 2.0f * tone, dt);
 			nv_pitch(v, v->note);
 		}
 		break;
@@ -1075,6 +1113,9 @@ static void chan_control(chan *c, int ch, float dt)
 			/* breath: the attack is breathier (less feedback) and brightens as it opens */
 			float a = v->env * v->vel;
 			float fbk = (0.1f + 1.1f * tone) * (0.4f + 0.6f * v->env);
+			/* self-feedback is as rich as a saw: high notes get less, or it folds back */
+			float top = (IDX_TOP / (mtof(v->note) * speed) - 1.0f) * 0.25f;
+			fbk = fbk < top ? fbk : (top > 0.0f ? top : 0.0f);
 			ramp(v, a, fbk * IDX_SCALE);
 			float vib = 1.0f + (0.0015f + 0.006f * P.ch[ch][CP_CHAR]) * sin_u(lfo_vib + (uint32_t)i * 1000000000u);
 			v->ic = hz_inc(mtof(v->note) * speed * vib);
@@ -1151,7 +1192,7 @@ static void chan_control(chan *c, int ch, float dt)
 			nv_perc(v, 0.002f, expmap(len, 1.0f, 10.0f) / speed, 0.6f / speed,
 			        (0.3f + 2.2f * tone) * (0.5f + 0.6f * v->vel), dt);
 			v->menv2 *= dcoef(0.09f / speed, dt);
-			float i2 = idx_cap(v, P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE, v->im2);
+			float i2 = idx_cap(v, P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE, 14.0f / (v->ratio > 0.1f ? v->ratio : 1.0f));
 			v->iinc2 = (i2 - v->idx2) * (1.0f / VSUB);
 			nv_pitch(v, v->note);
 			v->im2 = hz_inc(mtof(v->note) * speed * 14.0f);
@@ -1171,7 +1212,7 @@ static void chan_control(chan *c, int ch, float dt)
 			/* the index blooms for 0.6 s after the strike, then fades over seconds */
 			float b = v->t < 0.6f ? v->t * (1.0f / 0.6f)
 			                      : fexp2(-clampf(v->t - 0.6f, 0.0f, 60.0f) * (1.4427f / 5.0f));
-			float im = idx_cap(v, (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE, v->im);
+			float im = idx_cap(v, (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE, 1.0f);
 			v->iinc = (im - v->idx) * (1.0f / VSUB);
 			v->ratio = ratio;
 			nv_pitch(v, v->note + 0.7f * fexp2(-clampf(v->t, 0.0f, 5.0f) * (1.4427f / 0.12f)));
@@ -1211,11 +1252,16 @@ static void chan_control(chan *c, int ch, float dt)
 			}
 			v->t += sdt;
 			nv_perc(v, 0.04f + 0.2f * len, expmap(len, 1.5f, 8.0f) / speed, 3.0f / speed, 1.0f, dt);
-			ramp(v, v->env * v->vel * trem, (0.3f + 1.8f * tone) * (0.4f + 0.6f * v->menv) * IDX_SCALE);
-			v->idx2 = fbk;
+			/* the buzzing modulator is as wide as several of its harmonics: cap as if it were */
+			float fbn = v->idx2 * (1.0f / IDX_SCALE);
+			ramp(v, v->env * v->vel * trem, idx_cap(v, (0.3f + 1.8f * tone) * (0.4f + 0.6f * v->menv) * IDX_SCALE,
+			                                       1.0f + 2.0f * fbn));
 			v->bend *= dcoef(0.15f, sdt);
 			float vib = 1.0f + 0.004f * sin_u(lfo_vib + (uint32_t)k * 0x40000000u);
 			float hz = mtof(v->note + v->bend) * speed * vib;
+			/* the buzz is a self-modulated modulator, as rich as a saw: less of it up high,
+			 * where its harmonics would fold back */
+			v->idx2 = fbk * clampf((3000.0f - hz) * (1.0f / 2200.0f), 0.1f, 1.0f);
 			v->ic = hz_inc(hz);
 			v->im = hz_inc(hz);
 		}
@@ -1240,7 +1286,7 @@ static void chan_control(chan *c, int ch, float dt)
 				sh = x < 0.5f ? x * 2.0f : fexp2(-(x - 0.5f) * 1.4427f * 1.5f);
 			else
 				sh = 1.0f - fexp2(-x * 1.4427f);
-			float im = idx_cap(v, (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE, v->im);
+			float im = idx_cap(v, (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE, 1.0f);
 			v->iinc = (im - v->idx) * (1.0f / VSUB);
 			nv_pitch(v, v->note);
 		}
@@ -1388,18 +1434,21 @@ static int chan_render(chan *c, float *A, float *B)
 		if (!(v->amp > 0.0f || v->ainc > 0.0f))
 			break;
 		any = 1;
+		/* the fundamental, the sub-octave (less as TONE rises) and, as AMB-1's bass has, a little
+		 * of the octave above, so it carries on small speakers; 4 dB more than before */
 		float sub = v->ratio, fund = 1.0f - 0.5f * sub;
 		uint32_t pc = v->pc, pm = v->pm, ic = v->ic, im = v->im;
-		float amp = v->amp, ai = v->ainc, idx = v->idx, ii = v->iinc, fb = v->fb;
+		float amp = v->amp * 1.6f, ai = v->ainc * 1.6f, idx = v->idx, ii = v->iinc, fb = v->fb;
 		for (uint32_t i = 0; i < VSUB; i++) {
 			float o = sin_u(pc + (uint32_t)(int32_t)(fb * idx));
 			fb = o;
-			A[i] += (o * fund + SIN[pm >> TBL_SHIFT] * sub) * amp;
+			A[i] += (o * fund + SIN[pm >> TBL_SHIFT] * (0.9f * sub) + SIN[(pc << 1) >> TBL_SHIFT] * 0.15f) * amp;
 			pc += ic;
 			pm += im;
 			amp += ai;
 			idx += ii;
 		}
+		amp *= 1.0f / 1.6f;
 		v->pc = pc; v->pm = pm; v->amp = amp; v->idx = idx; v->fb = fb;
 		break;
 	}
@@ -1582,7 +1631,8 @@ static void dist_setup(void)
 	dist.type = cmd_dist_type;
 	dist.amt = cmd_dist_amt;
 	dist.post = cmd_dist_post;
-	fm_cap = FM_CAP - (dist.amt ? FM_DIST_CUT : 0);
+	fm_dist = FM_CAP - (dist.amt ? FM_DIST_CUT : 0);
+	fm_cap = fm_dist < gov_cap ? fm_dist : gov_cap;
 	static const float C2[4] = {0.12f, 0.22f, 0.35f, 0.5f}, C3[4] = {0.15f, 0.3f, 0.5f, 0.75f};
 	if (dist.amt) {
 		dist.c2 = C2[dist.amt - 1];
@@ -1841,7 +1891,13 @@ static void control(float dt)
 	gl_frozen = frozen;
 }
 
-static float up_l[3], up_r[3], vd_s[2];   /* the upsampler's last three, the dark send */
+#if VOICE_HALF
+/* the upsampler: a 12-tap half-band (Kaiser-windowed sinc), 27 dB down by 15 kHz and 42 by 16,
+ * where the 4-point it replaces managed 13 and 16: the images of bright partials no longer ring */
+static float hb_l[11], hb_r[11];
+static const float HB[6] = {0.619623f, -0.166023f, 0.062933f, -0.021032f, 0.004843f, -0.000343f};
+#endif
+static float vd_s[2];                     /* the dark send */
 
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {
@@ -1852,9 +1908,14 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		/* The instruments at 24 kHz: the dry mix (HL, HR) and the sends. Plucked and struck
 		 * voices go into the reverb bright; held ones go in through a dark send (AMB-1 darkens its
 		 * pad the same way), and less of them the higher they sit above C4. */
-		float L[GL_SUB], R[GL_SUB], E[VSUB], V[VSUB], VD[VSUB], HL[VSUB], HR[VSUB];
+		float L[GL_SUB], R[GL_SUB], E[GL_SUB / 2], V[GL_SUB / 2], VD[GL_SUB / 2], HL[VSUB], HR[VSUB];
+		for (uint32_t i = 0; i < GL_SUB / 2; i++)
+			E[i] = V[i] = VD[i] = 0.0f;
 		for (uint32_t i = 0; i < VSUB; i++)
-			E[i] = V[i] = VD[i] = HL[i] = HR[i] = 0.0f;
+			HL[i] = HR[i] = 0.0f;
+		/* the sends run at 24 kHz: at full rate (a measuring build), pairs are averaged */
+#define SI(i) ((i) >> (1 - VOICE_HALF))
+		const float sk = VOICE_HALF ? 1.0f : 0.5f;
 		for (int c = 0; c < GL_NCH; c++) {
 			float g = lvl_ch[c] * 0.5f * macro_trem(c);
 			if (g <= 0.0f)
@@ -1880,8 +1941,8 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 					float a0 = ca[i];
 					HL[i] += a0 * al;
 					HR[i] += a0 * ar;
-					E[i] += 4.0f * a0 * es;            /* as loud in the sends as a stereo voice */
-					VV[i] += 4.0f * a0 * vs;
+					E[SI(i)] += 4.0f * sk * a0 * es;   /* as loud in the sends as a stereo voice */
+					VV[SI(i)] += 4.0f * sk * a0 * vs;
 				}
 				continue;
 			}
@@ -1893,15 +1954,15 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				float a0 = ca[i], b0 = cb[i];
 				HL[i] += a0 * al + b0 * bl;
 				HR[i] += a0 * ar + b0 * br;
-				float m = 2.0f * (a0 + b0);
-				E[i] += m * es;
-				VV[i] += m * vs;
+				float m = 2.0f * sk * (a0 + b0);
+				E[SI(i)] += m * es;
+				VV[SI(i)] += m * vs;
 			}
 		}
 		{	/* the dark send: 12 dB an octave from 1.5 kHz */
 			const float k = 0.3245f;              /* 1 - exp(-2 pi 1500 / 24000) */
 			float d1 = vd_s[0], d2 = vd_s[1];
-			for (uint32_t i = 0; i < VSUB; i++) {
+			for (uint32_t i = 0; i < GL_SUB / 2; i++) {
 				d1 += k * (VD[i] - d1);
 				d2 += k * (d1 - d2);
 				V[i] += d2;
@@ -1922,19 +1983,41 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				HL[i] = M[i] + sd;
 				HR[i] = M[i] - sd;
 			}
-			dist_block(E, VSUB, 2);
-			dist_block(V, VSUB, 3);
+			dist_block(E, GL_SUB / 2, 2);
+			dist_block(V, GL_SUB / 2, 3);
 		}
-		/* back up to 48 kHz: each new sample, and a 4-point midpoint before it (-1 9 9 -1)/16 */
-		for (uint32_t i = 0; i < VSUB; i++) {
-			float l = HL[i], r = HR[i];
-			L[2 * i] = (9.0f * (up_l[1] + up_l[2]) - up_l[0] - l) * (1.0f / 16.0f);
-			R[2 * i] = (9.0f * (up_r[1] + up_r[2]) - up_r[0] - r) * (1.0f / 16.0f);
-			L[2 * i + 1] = up_l[2];
-			R[2 * i + 1] = up_r[2];
-			up_l[0] = up_l[1]; up_l[1] = up_l[2]; up_l[2] = l;
-			up_r[0] = up_r[1]; up_r[1] = up_r[2]; up_r[2] = r;
+		/* back up to 48 kHz: each sample, and a half-band midpoint before it */
+#if !VOICE_HALF
+		for (uint32_t i = 0; i < GL_SUB; i++) {
+			L[i] = HL[i];
+			R[i] = HR[i];
 		}
+#else
+		{	/* the last 11 samples and this block's 24, one window: no shifting */
+			float wl[11 + VSUB], wr[11 + VSUB];
+			for (int k = 0; k < 11; k++) {
+				wl[k] = hb_l[k];
+				wr[k] = hb_r[k];
+			}
+			for (uint32_t i = 0; i < VSUB; i++) {
+				wl[11 + i] = HL[i];
+				wr[11 + i] = HR[i];
+			}
+			for (uint32_t i = 0; i < VSUB; i++) {
+				const float *a = wl + i, *b = wr + i;      /* a[0..11]: the 12 around this midpoint */
+				L[2 * i] = HB[0] * (a[5] + a[6]) + HB[1] * (a[4] + a[7]) + HB[2] * (a[3] + a[8]) +
+				           HB[3] * (a[2] + a[9]) + HB[4] * (a[1] + a[10]) + HB[5] * (a[0] + a[11]);
+				R[2 * i] = HB[0] * (b[5] + b[6]) + HB[1] * (b[4] + b[7]) + HB[2] * (b[3] + b[8]) +
+				           HB[3] * (b[2] + b[9]) + HB[4] * (b[1] + b[10]) + HB[5] * (b[0] + b[11]);
+				L[2 * i + 1] = a[6];
+				R[2 * i + 1] = b[6];
+			}
+			for (int k = 0; k < 11; k++) {
+				hb_l[k] = wl[VSUB + k];
+				hb_r[k] = wr[VSUB + k];
+			}
+		}
+#endif
 		/* the space, at half rate; its output interpolated back up (and, with distortion on
 		 * the reverb only, that happens in there) */
 		space_block(E, V, L, R);
@@ -2003,48 +2086,48 @@ static const recipe PIECES[GL_NPIECES] = {
 	 * breaths as long as AMB-1's: LENGTH = 0.12 x Swell / 26) ---- */
 	/* Garden: everything, gently */
 	{"Garden", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 40, 28, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 50, 65},
-	  {35, 30, 60, 50, 9, 26, 50, 35, 45}, {35, 50, 40, 50, 14, 26, 50, 0, 40}},
+	 {{75, 40, 28, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 25, 65},
+	  {35, 30, 85, 50, 9, 26, 50, 35, 45}, {35, 50, 40, 50, 14, 26, 50, 0, 40}},
 	 {52, 45, 68, 50, 2, 1, 57, 52}, {GR_HALL, GS_OCTAVE, 3}},
 	/* Departures: slowed bells an octave down over a quiet pad, as 1/1 */
 	{"Departures", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 20, 25, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 5, 75},
-	  {35, 30, 60, 50, 6, 28, 50, 25, 0}, {0, 40, 40, 50, 9, 28, 50, 0, 0}},
+	 {{75, 20, 25, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 2, 75},
+	  {35, 30, 85, 50, 6, 28, 50, 25, 0}, {0, 40, 40, 50, 9, 28, 50, 0, 0}},
 	 {40, 30, 77, 50, 1, 0, 44, 45}, {GR_BLOOM, GS_OCTAVE, 3}},
 	/* Voices: only the sung pad on unequal loops and a low bass, as 2/1 */
 	{"Voices", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 67, 32, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 30, 0},
-	  {35, 30, 60, 25, 4, 32, 50, 30, 25}, {0, 40, 40, 50, 6, 32, 50, 0, 0}},
+	 {{75, 67, 32, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 15, 0},
+	  {35, 30, 85, 25, 4, 32, 50, 30, 25}, {0, 40, 40, 50, 6, 32, 50, 0, 0}},
 	 {36, 20, 85, 50, 5, 5, 36, 52}, {GR_SHIMMER, GS_FIFTH, 4}},
 	/* Afternoon: a bright pad, busier bells, a light pulse */
 	{"Afternoon", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 60, 23, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 60, 65},
-	  {35, 30, 60, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 15, 25}},
+	 {{75, 60, 23, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 30, 65},
+	  {35, 30, 85, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 15, 25}},
 	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}},
 	/* Night Bus: the pulse forward, metallic bells, short echoes */
 	{"Night Bus", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 35, 18, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 75, 55},
-	  {35, 30, 60, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 30, 60}},
+	 {{75, 35, 18, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 100, 55},
+	  {35, 30, 85, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 30, 60}},
 	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}},
 	/* Shoreline: dark, round bells lost in long echoes, as 2/2 */
 	{"Shoreline", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 30, 37, 50, 51, 55, 50, 20, 40}, {30, 10, 55, 50, 85, 55, 50, 0, 60},
-	  {35, 30, 60, 50, 17, 22, 50, 20, 30}, {0, 30, 40, 50, 26, 22, 50, 0, 0}},
+	  {35, 30, 85, 50, 17, 22, 50, 20, 30}, {0, 30, 40, 50, 26, 22, 50, 0, 0}},
 	 {44, 85, 94, 50, 4, 6, 44, 72}, {GR_BLOOM, GS_OCTAVE, 4}},
 	/* Glass: clangy bells an octave up, dense */
 	{"Glass", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 55, 21, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 90, 80},
-	  {35, 30, 60, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 10, 20}},
+	 {{75, 55, 21, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 45, 80},
+	  {35, 30, 85, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 10, 20}},
 	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}},
 	/* Tides: the most changeable */
 	{"Tides", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
-	 {{75, 60, 28, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 55, 60},
-	  {35, 30, 60, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 10, 35}},
+	 {{75, 60, 28, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 28, 60},
+	  {35, 30, 85, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 10, 35}},
 	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}},
 	/* ---- Glag's own ---- */
 	{"Gate Seven", {GV_PAD, GV_PIANO, GV_DRONE, GV_BELLS},
 	 {{40, 30, 75, 50, 20, 80, 50, 10, 60}, {35, 35, 60, 50, 55, 70, 45, 0, 65},
-	  {40, 35, 30, 50, 0, 60, 50, 0, 45}, {25, 30, 70, 75, 50, 75, 50, 50, 50}},
+	  {40, 35, 30, 50, 0, 60, 50, 0, 45}, {25, 30, 70, 75, 50, 75, 50, 25, 50}},
 	 {40, 50, 75, 50, 0, 0, 25, 40}, {GR_BLOOM, GS_OCTAVE, 3}},
 	{"Long Wait", {GV_DRONE, GV_FLUTE, GV_PAD, GV_KALIMBA},
 	 {{30, 45, 50, 50, 10, 70, 50, 0, 60}, {25, 35, 80, 50, 60, 80, 40, 40, 55},
@@ -2056,10 +2139,10 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {32, 60, 80, 50, 4, 7, 20, 45}, {GR_BLOOM, GS_OCTAVE, 3}},
 	{"Lounge", {GV_PIANO, GV_MARIMBA, GV_PAD, GV_FLUTE},
 	 {{45, 30, 70, 50, 40, 60, 40, 0, 60}, {25, 25, 45, 75, 50, 70, 65, 70, 40},
-	  {35, 40, 70, 50, 20, 70, 50, 30, 55}, {25, 50, 60, 75, 55, 75, 50, 50, 45}},
+	  {35, 40, 70, 25, 20, 70, 50, 30, 55}, {25, 50, 60, 75, 55, 75, 50, 50, 45}},
 	 {42, 45, 70, 50, 5, 0, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 3}},
 	{"Rain City", {GV_SWELL, GV_EP, GV_GONG, GV_SHIMMER},
-	 {{45, 55, 75, 50, 25, 85, 50, 60, 65}, {35, 25, 55, 50, 50, 65, 40, 40, 60},
+	 {{45, 55, 75, 25, 25, 85, 50, 60, 65}, {35, 25, 55, 50, 50, 65, 40, 40, 60},
 	  {30, 45, 70, 50, 10, 70, 50, 25, 55}, {25, 50, 60, 50, 70, 80, 60, 50, 45}},
 	 {37, 60, 85, 50, 4, 5, 30, 55}, {GR_SHIMMER, GS_FIFTH, 3}},
 	{"Deep Water", {GV_SHIMMER, GV_TAILS, GV_GONG, GV_PAD},
@@ -2072,8 +2155,41 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {60, 40, 55, 50, 5, 0, 35, 45}, {GR_CHAMBER, GS_OCTAVE, 1}},
 	{"Long Haul", {GV_PIZZ, GV_TAILS, GV_SWELL, GV_GONG},
 	 {{55, 40, 25, 75, 60, 55, 40, 100, 70}, {30, 50, 75, 50, 40, 75, 60, 50, 68},
-	  {40, 40, 80, 50, 20, 80, 50, 70, 62}, {25, 45, 75, 50, 10, 70, 50, 0, 65}},
+	  {40, 40, 80, 25, 20, 80, 50, 70, 62}, {25, 45, 75, 50, 10, 70, 50, 0, 65}},
 	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_HALL, GS_OCTAVE, 3}},
+#ifdef GL_DEMO_PIECES
+	/* ---- audition only: six in styles (not in the firmware yet) ---- */
+	/* Berlin school: a Pizz sequencer two octaves down, sixteenths up and down the chord */
+	{"Sequencer Dawn", {GV_PIZZ, GV_SWELL, GV_ARP, GV_DRONE},
+	 {{90, 45, 25, 0, 40, 40, 45, 0, 70}, {35, 40, 80, 25, 20, 75, 50, 40, 50},
+	  {40, 55, 35, 75, 55, 60, 65, 33, 40}, {40, 35, 60, 25, 0, 50, 50, 0, 45}},
+	 {80, 45, 70, 50, 9, 5, 30, 60}, {GR_HALL, GS_OCTAVE, 0}},
+	/* krautrock: four on the floor, a driving bass */
+	{"Motorik", {GV_PULSE, GV_BASS, GV_MARIMBA, GV_FLUTE},
+	 {{100, 65, 35, 50, 10, 25, 50, 0, 70}, {95, 40, 40, 50, 5, 15, 50, 15, 65},
+	  {70, 55, 40, 50, 45, 50, 35, 50, 50}, {35, 45, 70, 50, 50, 65, 65, 50, 40}},
+	 {108, 35, 50, 50, 4, 4, 40, 45}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* Tangerine Dream's slow space: dark, climbing */
+	{"Dark Orbit", {GV_PAD, GV_TAILS, GV_SHIMMER, GV_GONG},
+	 {{50, 30, 80, 25, 20, 80, 50, 40, 60}, {35, 50, 75, 50, 50, 75, 60, 50, 50},
+	  {30, 45, 60, 25, 60, 80, 40, 40, 40}, {30, 40, 80, 50, 15, 70, 50, 50, 55}},
+	 {36, 55, 85, 50, 2, 2, 25, 75}, {GR_SHIMMER, GS_FIFTH, 4}},
+	/* city pop: Rhodes, a busy bass, a swung pulse, brass swells */
+	{"Night Drive", {GV_EP, GV_BASS, GV_PULSE, GV_SWELL},
+	 {{55, 65, 55, 50, 35, 50, 45, 60, 70}, {85, 35, 45, 50, 5, 15, 50, 25, 65},
+	  {60, 75, 40, 50, 10, 25, 50, 35, 50}, {45, 70, 50, 50, 25, 55, 55, 50, 40}},
+	 {84, 30, 50, 50, 5, 3, 55, 45}, {GR_CHAMBER, GS_OCTAVE, 2}},
+	/* lofi: a dark piano, a lazy swing, the DJ filter a little closed */
+	{"Study Lamp", {GV_PIANO, GV_BASS, GV_PULSE, GV_KALIMBA},
+	 {{45, 25, 60, 50, 35, 50, 45, 30, 70}, {70, 25, 60, 50, 5, 15, 50, 30, 65},
+	  {55, 35, 45, 50, 15, 25, 50, 90, 55}, {35, 35, 55, 50, 50, 55, 65, 40, 40}},
+	 {58, 40, 45, 38, 10, 1, 50, 40}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* experimental: glass bells in sixteenths, wandering intervals, octave leaps, all moving */
+	{"Static Garden", {GV_BELLS, GV_DRONE, GV_TAILS, GV_PIZZ},
+	 {{30, 70, 50, 75, 60, 65, 40, 100, 50}, {40, 60, 50, 25, 10, 60, 50, 100, 45},
+	  {45, 60, 55, 50, 55, 65, 60, 100, 50}, {40, 50, 30, 75, 55, 55, 65, 100, 40}},
+	 {52, 60, 75, 50, 1, 7, 80, 95}, {GR_BLOOM, GS_OCTAVE, 2}},
+#endif
 };
 
 const char *gl_piece_name(int i) { return PIECES[(unsigned)i < GL_NPIECES ? i : 0].name; }

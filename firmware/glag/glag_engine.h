@@ -123,6 +123,9 @@ void gl_macro(int ch, float depth, float period_s);
 /* ---- audio thread ---- */
 /* n stereo frames, interleaved int16, n a multiple of GL_SUB. gain 0..1 (volume). */
 void gl_render(int16_t *lr, uint32_t n, float gain);
+/* After each block: its share (0..1) of the time the block had. Over 88 % the engine sounds
+ * fewer notes at once until it cools (the voice budget comes down, a voice at a time). */
+void gl_load(float frac);
 
 /* ---- state for the LEDs (written by the render, read anywhere) ---- */
 extern volatile float gl_glow[GL_NCH];   /* 0..1: this channel just played a note */
@@ -133,7 +136,11 @@ extern volatile float gl_speed;          /* 1 = normal, less while slowing */
 extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
+#ifdef GL_DEMO_PIECES
+#define GL_NPIECES 22                   /* an audition build: six more */
+#else
 #define GL_NPIECES 16
+#endif
 const char *gl_piece_name(int i);
 void gl_piece(int i, gl_patch *out);
 /* A tasteful random patch, keeping the current voices and harmony root unless asked. */

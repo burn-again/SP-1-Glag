@@ -18,8 +18,8 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Voice | What it does | Character (channel page F1) |
 |---|---|---|
 | Pad | 2 or 3 voices breathing in and out on unequal cycles, each taking its note of the chord | warm (1:1) to hollow (2:1), detune |
-| Bells | four loops of 13, 17, 23 and 29 beats, up to five notes each (as AMB-1's), soft FM bells, each up to 60 ms late like a human hand | ratio set: harmonic, bell, glass |
-| Bass | sine and sub-octave on the chord's root, gliding | glide time and how often it takes the fifth |
+| Bells | four loops of 13, 17, 23 and 29 beats, up to five notes each (as AMB-1's), soft FM bells, each up to 60 ms late like a human hand; a soft strike when dark, low bells ringing longer | lower half: harmonic, bell or glass ratios, on the beat; upper half: the same in sixteenths, busier |
+| Bass | sine, sub-octave and a little of the octave above on the chord's root, gliding (after AMB-1's bass, which carries on small speakers) | glide time and how often it takes the fifth |
 | Piano | sparse 2-op FM electric piano | tine: 1:1, 2:1, 3:1 |
 | Marimba | short inharmonic FM | ratio 2.5 to 5 |
 | Drone | two FM pairs on the root and an interval, the index swelling over tens of seconds | interval: fifth, fourth, octave, ninth |
@@ -259,6 +259,8 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 | Pulse x 4 | 46 % | 56 % | 65-79 % |
 | Arp, Swell, EP, Gong | 44 % | 57 % | 62-80 % |
 | Bells x 4 + distortion at 4 | | 68 % | 95 % |
+
+A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools.
 
 The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). The heaviest case is four
 Bells channels at full activity with distortion on, under the Hall: about 95 % on the estimate. If it

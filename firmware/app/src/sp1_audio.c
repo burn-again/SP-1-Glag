@@ -523,6 +523,9 @@ static void audio_thread(void *a, void *b, void *c)
 #endif
 			fill_block((int16_t *)blk);
 			const uint32_t cyc = DWT->CYCCNT - c0;
+#if defined(CONFIG_SP1_GLAG)
+			gl_load((float)cyc / (float)cyc_budget);   /* Glag sounds fewer notes if it runs hot */
+#endif
 #if defined(CONFIG_SP1_PROFILE_ICACHE)
 			const uint32_t miss = NRF_NVMC->IMISS - m0;
 #else
