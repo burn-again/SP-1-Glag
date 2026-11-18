@@ -31,7 +31,19 @@
 
 #define TAPE_N 32768u                    /* 4.1 s at 8 kHz */
 #define TAPE_SR 8000.0f
+#if defined(GL_FLOAT_SPACE) || defined(GL_FLOAT_TAPE)   /* host only: in float, to hear what 16 bits cost */
+static float tape[TAPE_N];
+#define TAPE_GET(i) (tape[(i)])
+float dbg_tpeak;
+static inline float tpk(float x) { float a = x > 0.0f ? x : -x; if (a > dbg_tpeak) dbg_tpeak = a; return x; }
+#define TAPE_PUT(i, x) (tape[(i)] = tpk(x))
+#else
 static int16_t tape[TAPE_N];
+/* stored at 3x: the tape never holds more than ~0.42 of the 16 bits' +-2, so this is ~10 dB
+ * finer, with room to spare */
+#define TAPE_GET(i) (from16(tape[(i)]) * (1.0f / 3.0f))
+#define TAPE_PUT(i, x) (tape[(i)] = to16((x) * 3.0f))
+#endif
 static struct {
 	uint32_t w;
 	int ph;                               /* 24 kHz samples into this 8 kHz one */
@@ -44,7 +56,7 @@ static inline float tape_rd(float d)     /* d 8 kHz samples ago, interpolated */
 {
 	uint32_t k = (uint32_t)d;
 	float f = d - (float)k;
-	float a = from16(tape[(tp.w - k) & (TAPE_N - 1u)]), b = from16(tape[(tp.w - k - 1u) & (TAPE_N - 1u)]);
+	float a = TAPE_GET((tp.w - k) & (TAPE_N - 1u)), b = TAPE_GET((tp.w - k - 1u) & (TAPE_N - 1u));
 	return a + (b - a) * f;
 }
 
@@ -64,7 +76,7 @@ static inline void tape_tick(float in, float *el, float *er)
 		y = tp.lp - tp.hp;
 		y = y / (1.0f + (y > 0.0f ? y : -y) * 0.4f);     /* tape saturation */
 		tp.w++;
-		tape[tp.w & (TAPE_N - 1u)] = to16(y);
+		TAPE_PUT(tp.w & (TAPE_N - 1u), y);
 		tp.acc = 0.0f;
 		tp.l0 = tp.l1;
 		tp.r0 = tp.r1;
@@ -120,10 +132,18 @@ static const uint16_t BLOOM_L[6] = {613, 797, 1021, 1291, 1559, 1823};   /* 51..
 
 #define RBITS 14
 #define RMASK ((1u << RBITS) - 1u)
-static int16_t rring[1u << RBITS];
 static uint32_t rw;
+#if defined(GL_FLOAT_SPACE) || defined(GL_FLOAT_RING)
+static float rring[1u << RBITS];
+float dbg_rpeak;                          /* the largest value each memory had to hold */
+static inline float rpk(float x) { float a = x > 0.0f ? x : -x; if (a > dbg_rpeak) dbg_rpeak = a; return x; }
+#define RRD(off) (rring[(rw + (uint32_t)(off)) & RMASK])
+#define RWR(off, x) (rring[(rw + (uint32_t)(off)) & RMASK] = rpk(x))
+#else
+static int16_t rring[1u << RBITS];
 #define RRD(off) from16(rring[(rw + (uint32_t)(off)) & RMASK])
 #define RWR(off, x) (rring[(rw + (uint32_t)(off)) & RMASK] = to16(x))
+#endif
 
 static struct {
 	int cur, shim;                        /* the reverb running, its shimmer interval */
@@ -137,6 +157,7 @@ static struct {
 	uint32_t lfo, lfo_inc;
 	float sh_p, sh_lp, sh_lp2, sh_hp, sh_amt;
 	float agc_env, agc_target, ag;
+	float ig;                             /* the input's gain: 1, less when the ring runs hot */
 	float acc, ol, or_, pl, pr;
 	int phase;
 	float last_rv;
@@ -153,6 +174,16 @@ static inline float rrdf(uint32_t off, float k)                      /* interpol
 	uint32_t ki = (uint32_t)k;
 	float f = k - (float)ki, a = RRD(off + ki), b = RRD(off + ki + 1u);
 	return a + (b - a) * f;
+}
+
+static inline float sqrtf_fast(float x)    /* control rate only: two Newton steps from a bit guess */
+{
+	union { float f; int32_t i; } u;
+	u.f = x;
+	u.i = 0x1FBD1DF5 + (u.i >> 1);
+	float y = u.f;
+	y = 0.5f * (y + x / y);
+	return 0.5f * (y + x / y);
 }
 
 /* lay the chosen reverb out in the ring */
@@ -203,6 +234,7 @@ static void rv_layout(int type)
 	rv.sh_p = rv.sh_lp = rv.sh_lp2 = rv.sh_hp = 0.0f;
 	rv.agc_env = rv.agc_target = 0.0f;
 	rv.ag = 1.0f;
+	rv.ig = 1.0f;
 	(void)o;
 }
 
@@ -247,7 +279,7 @@ static void rv_derive(float rvv)
 	rv.lfo_inc = (uint32_t)(d->lfo_hz / fr * 4294967296.0f);
 	rv.pre = (int)((float)d->pre_ms * fr * 0.001f);
 	rv.fmod = (float)d->fmod;
-	rv.mix = d->gain * 2.0f * (d->shimmer ? SH_GAIN[rv.shim] : 1.0f);   /* the ring's 6 dB of headroom back */
+	rv.mix = d->gain * (d->shimmer ? SH_GAIN[rv.shim] : 1.0f);
 }
 
 /* the freeze servo: tracks the lines' energy; frozen, nudges the loop toward the level it had */
@@ -372,7 +404,9 @@ static inline __attribute__((always_inline)) void fdn8_tick(float in, float *ol,
 /* every 24 kHz sample */
 static inline __attribute__((always_inline)) void rv_tick(float in, float *ol, float *or_)
 {
-	in *= 0.5f;                                   /* headroom in the 16-bit ring */
+	/* in at full scale (it used to be half: 6 dB coarser in the 16-bit ring, a grain on quiet
+	 * tails), turned down by the guard only when the ring runs hot */
+	in *= rv.ig;
 	if (rv.d->alg == ALG_FDN4_24) {
 		fdn4_tick(in, ol, or_);
 		return;
@@ -446,6 +480,14 @@ static void space_control(float dt, int freeze_changed)
 	}
 	if (freeze_changed)
 		rv_derive(P.g[GP_REVERB]);
+	/* the guard: the lines' level (rms) held under ~0.35 of the ring's 2.0, which no stock piece
+	 * reaches; past it, the input comes down in ~100 ms and goes back up over ~2 s */
+	if (!frozen) {
+		float rms2 = rv.agc_env * (rv.nl == 8 ? 0.0625f : 0.25f);
+		float want = rms2 > 0.1225f ? 0.35f / sqrtf_fast(rms2) : 1.0f;
+		want = want < 0.2f ? 0.2f : want;
+		rv.ig += (want - rv.ig) * (want < rv.ig ? 0.01f : 0.0005f);
+	}
 }
 
 /* one sub-block: E and V hold one echo and reverb send per pair of samples (24 kHz); the

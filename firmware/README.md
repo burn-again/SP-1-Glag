@@ -32,7 +32,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
-| Pulse | a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits, tone the brightness, length the decays, register the kick's pitch | swing (the off sixteenths up to half a step late) |
+| Pulse | a light pulse: soft kick, shaker (with air above 12 kHz, made at the full 48 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -107,6 +107,8 @@ the bootloader may own).
 echo time (a dotted quarter, a half, a dotted half, a bar, or two bars; a bar in most pieces),
 halved until it fits. Two heads, the loop on the left and three quarters of it on the right; each
 repeat comes back darker and thinner, with a little wow. Its output also feeds the reverb.
+
+The reverb takes its input at full scale in its 16-bit memory (a guard turns it down only if the memory runs hot), and the tape stores at three times its level: their grain sits near -81 dBFS.
 
 Both run below 48 kHz, so each sits between two-pole low-passes that keep what is above their reach from folding down or leaking up as a faint tinny noise.
 

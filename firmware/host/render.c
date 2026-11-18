@@ -40,6 +40,7 @@ int main(int argc, char **argv)
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	gl_post_patch(&p);
+	{ extern float pulse_air; if (getenv("AIR")) pulse_air = (float)atof(getenv("AIR")); }
 	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
 		int t = 0, sh = 0;
 		sscanf(getenv("REVERB"), "%d,%d", &t, &sh);

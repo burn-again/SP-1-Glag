@@ -176,8 +176,10 @@ typedef struct {
 	float echo_at, echo_note, echo_vel;
 	/* pulse: kick (phase, pitch, its fall's end, level, decay), shaker, click; a swung hit waiting */
 	float pk_ph, pk_f, pk_fend, pk_a, pk_k, ps_a, ps_k, ps_x, pc_ph, pc_inc, pc_a;
+	float air_a, air_k;            /* the shaker's level and decay for this block, for its air */
+	float pc_k, sn_a, sn_k;        /* the click's decay; the snare's noise (grid mode) */
 	float pend_t;
-	uint8_t pend;
+	uint8_t pend;                  /* (the mask fits: up to 127) */
 	/* bells: a note waiting to sound, per loop */
 	float bp_t[4], bp_note[4], bp_vel[4], bp_ratio[4];
 	uint8_t bp_on;
@@ -730,6 +732,8 @@ static void bells_beat(chan *c, int ch)
  * kick's pitch (half an octave a step), CHARACTER the swing (the off sixteenths up to half a
  * step late). The click's ring is turned a little against the others. */
 static int euclid_hit(int k, int n, int i) { return k > 0 && ((i * k) % n) < k; }
+/* mask: 1 kick, 2 shaker, 4 click, 8 the bar's accent, 16 a shaker accent, 32 snare,
+ * 64 an open hat (a longer shaker) */
 static void pulse_fire(chan *c, int ch, int mask)
 {
 	float t = eff_tone(ch), l = P.ch[ch][CP_LENGTH];
@@ -744,24 +748,57 @@ static void pulse_fire(chan *c, int ch, int mask)
 	}
 	if (mask & 2) {
 		c->ps_a = (mask & 16 ? 0.6f : 0.35f) * (0.7f + 0.3f * rnd());
-		c->ps_k = fexp2(-9.9658f / ((0.02f + 0.07f * l) * VSR));
+		c->ps_k = fexp2(-9.9658f / ((mask & 64 ? 0.12f + 0.2f * l : 0.02f + 0.07f * l) * VSR));
 	}
 	if (mask & 4) {
 		c->pc_a = 0.5f + 0.2f * rnd();
 		c->pc_ph = 0.0f;
 		c->pc_inc = (1100.0f + 1400.0f * t) / VSR;
+		c->pc_k = 0.992f;                         /* ~15 ms */
+	}
+	if (mask & 32) {                              /* the snare: a body near 190 Hz and a burst of noise */
+		c->pc_a = 0.75f + 0.15f * rnd();
+		c->pc_ph = 0.0f;
+		c->pc_inc = (170.0f + 60.0f * t) / VSR;
+		c->pc_k = fexp2(-9.9658f / (0.07f * VSR));
+		c->sn_a = 0.8f + 0.2f * rnd();
+		c->sn_k = fexp2(-9.9658f / ((0.08f + 0.15f * l) * VSR));
+		c->glow = 1.0f;
 	}
 }
 static void pulse_step(chan *c, int ch, uint32_t step)
 {
-	float h = eff_activity(ch);
-	int kk = 1 + (int)(h * 3.0f + 0.5f), hk = 2 + (int)(h * 6.0f + 0.5f), ck = (int)(h * 3.0f + 0.5f);
-	int s16 = (int)(step % 16u), s12 = (int)(step % 12u), s7 = (int)((step + 3u) % 7u);
-	int mask = (euclid_hit(kk, 16, s16) ? 1 : 0) | (euclid_hit(hk, 12, s12) ? 2 : 0) |
-	           (euclid_hit(ck, 7, s7) ? 4 : 0) | (s16 == 0 ? 8 : 0) | (s12 & 1 ? 0 : 16);
-	if (!(mask & 7))
+	float h = eff_activity(ch), chr = P.ch[ch][CP_CHAR];
+	int mask, s16 = (int)(step % 16u);
+	float swing;
+	if (chr <= 0.5f) {
+		/* the lower half: three euclidean rings of 16, 12 and 7 against each other, swung up to
+		 * half a step */
+		int kk = 1 + (int)(h * 3.0f + 0.5f), hk = 2 + (int)(h * 6.0f + 0.5f), ck = (int)(h * 3.0f + 0.5f);
+		int s12 = (int)(step % 12u), s7 = (int)((step + 3u) % 7u);
+		mask = (euclid_hit(kk, 16, s16) ? 1 : 0) | (euclid_hit(hk, 12, s12) ? 2 : 0) |
+		       (euclid_hit(ck, 7, s7) ? 4 : 0) | (s16 == 0 ? 8 : 0) | (s12 & 1 ? 0 : 16);
+		swing = chr;
+	} else {
+		/* the upper half: a 4/4 grid with a backbeat. Kick on 1 and 3, then a boom-bap kick
+		 * (1, the "and" of 2, the "and" of 3), then four on the floor; the snare on 2 and 4;
+		 * the hats in eighths, then sixteenths, then with open hats on the offbeats. Swing grows
+		 * across the half, to half a step. */
+		static const uint16_t KICK[3] = {0x0101, 0x0441, 0x1111};   /* bit n: step n */
+		int lvl = h < 0.4f ? 0 : h < 0.75f ? 1 : 2;
+		mask = (KICK[lvl] >> s16) & 1;
+		if (s16 == 4 || s16 == 12)
+			mask |= 32;
+		if (h < 0.4f ? !(s16 & 1) : 1)
+			mask |= 2 | (!(s16 & 1) ? 16 : 0);
+		if (h >= 0.85f && (s16 & 3) == 2)
+			mask |= 64 | 16;
+		if (s16 == 0)
+			mask |= 8;
+		swing = (chr - 0.5f);
+	}
+	if (!(mask & (1 | 2 | 4 | 32)))
 		return;
-	float swing = 0.5f * P.ch[ch][CP_CHAR];
 	if ((step & 1u) && swing > 0.01f) {      /* an off sixteenth: late */
 		float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
 		c->pend = (uint8_t)mask;
@@ -1322,31 +1359,35 @@ static int chan_render(chan *c, float *A, float *B)
 			}
 			c->pk_ph = kph; c->pk_f = kf; c->pk_a = ka;
 		}
-		if (c->ps_a > 1e-4f) {                    /* the shaker: noise, its lows taken off */
+		c->air_a = c->ps_a;                       /* (its air is added at 48 kHz, after the mix) */
+		c->air_k = c->ps_k;
+		if (c->ps_a > 1e-4f || c->sn_a > 1e-4f) { /* the shaker (its lows taken off) and the snare's noise */
 			any = 1;
-			float sa = c->ps_a, sx = c->ps_x;
-			const float sk = c->ps_k, br = 0.3f + 0.7f * eff_tone((int)(c - CH));
+			float sa = c->ps_a, sx = c->ps_x, na = c->sn_a;
+			const float sk = c->ps_k, nk = c->sn_k, br = 0.3f + 0.7f * eff_tone((int)(c - CH));
 			uint32_t r = rng;
 			for (uint32_t i = 0; i < VSUB; i++) {
 				r = r * 1664525u + 1013904223u;
 				float w = (float)(int32_t)r * (1.0f / 2147483648.0f), sh = (w - br * sx) * sa;
+				float sn = (w - 0.5f * sx) * na;
 				sx = w;
-				A[i] += sh * 1.0f;
-				B[i] += sh * 0.7f;
+				A[i] += sh * 1.0f + sn * 0.55f;
+				B[i] += sh * 0.7f + sn * 0.55f;
 				sa *= sk;
+				na *= nk;
 			}
 			rng ^= r;
-			c->ps_a = sa; c->ps_x = sx;
+			c->ps_a = sa; c->ps_x = sx; c->sn_a = na;
 		}
 		if (c->pc_a > 1e-4f) {                    /* the click: ~15 ms of a high sine */
 			any = 1;
 			float cph = c->pc_ph, ca = c->pc_a;
-			const float ci = c->pc_inc;
+			const float ci = c->pc_inc, ck = c->pc_k > 0.0f ? c->pc_k : 0.992f;
 			for (uint32_t i = 0; i < VSUB; i++) {
 				cph += ci;
 				cph -= cph >= 1.0f ? 1.0f : 0.0f;
 				B[i] += sin_u((uint32_t)(cph * 4294967296.0f)) * ca * 1.3f;
-				ca *= 0.992f;
+				ca *= ck;
 			}
 			c->pc_ph = cph; c->pc_a = ca;
 		}
@@ -1898,6 +1939,11 @@ static float hb_l[11], hb_r[11];
 static const float HB[6] = {0.619623f, -0.166023f, 0.062933f, -0.021032f, 0.004843f, -0.000343f};
 #endif
 static float vd_s[2];                     /* the dark send */
+#ifndef PULSE_AIR
+#define PULSE_AIR 0.6f                   /* chosen by ear; 0 = none */
+#endif
+float pulse_air = PULSE_AIR;              /* the hats' air at 48 kHz */
+static float air_pend[GL_NCH], air_pan[GL_NCH], air_x[2];
 
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {
@@ -1986,6 +2032,16 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			dist_block(E, GL_SUB / 2, 2);
 			dist_block(V, GL_SUB / 2, 3);
 		}
+		/* the shaker's air: noise above ~10 kHz at 48 kHz, which the instruments' 24 kHz can't
+		 * carry, on the shaker's own envelope (without it the hats sound squashed) */
+		for (int c = 0; c < GL_NCH; c++) {
+			chan *ch = &CH[c];
+			if (ch->voice != GV_PULSE || ch->air_a < 1e-4f || pulse_air <= 0.0f)
+				continue;
+			float g = lvl_ch[c] * 0.5f * pulse_air, pan = P.ch[c][CP_PAN];
+			air_pend[c] = g;
+			air_pan[c] = pan;
+		}
 		/* back up to 48 kHz: each sample, and a half-band midpoint before it */
 #if !VOICE_HALF
 		for (uint32_t i = 0; i < GL_SUB; i++) {
@@ -2018,6 +2074,29 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			}
 		}
 #endif
+		for (int c = 0; c < GL_NCH; c++) {
+			if (air_pend[c] <= 0.0f)
+				continue;
+			chan *ch = &CH[c];
+			float a = ch->air_a, k = ch->air_k, g = air_pend[c], gl = (1.0f - air_pan[c]) * g, gr = air_pan[c] * g;
+			float x1 = air_x[0], x2 = air_x[1];
+			uint32_t r = rng;
+			for (uint32_t i = 0; i < GL_SUB; i++) {
+				r = r * 1664525u + 1013904223u;
+				float w = (float)(int32_t)r * (1.0f / 2147483648.0f);
+				float h = (w - 2.0f * x1 + x2) * 0.25f * a;   /* twice differenced: 12 dB an octave up */
+				x2 = x1;
+				x1 = w;
+				L[i] += h * gl;
+				R[i] += h * gr;
+				if (i & 1)
+					a *= k;
+			}
+			rng ^= r;
+			air_x[0] = x1;
+			air_x[1] = x2;
+			air_pend[c] = 0.0f;
+		}
 		/* the space, at half rate; its output interpolated back up (and, with distortion on
 		 * the reverb only, that happens in there) */
 		space_block(E, V, L, R);
@@ -2102,12 +2181,12 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Afternoon: a bright pad, busier bells, a light pulse */
 	{"Afternoon", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 60, 23, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 30, 65},
-	  {35, 30, 85, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 15, 25}},
+	  {35, 30, 85, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 8, 25}},
 	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}},
 	/* Night Bus: the pulse forward, metallic bells, short echoes */
 	{"Night Bus", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 35, 18, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 100, 55},
-	  {35, 30, 85, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 30, 60}},
+	  {35, 30, 85, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 15, 60}},
 	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}},
 	/* Shoreline: dark, round bells lost in long echoes, as 2/2 */
 	{"Shoreline", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
@@ -2117,12 +2196,12 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Glass: clangy bells an octave up, dense */
 	{"Glass", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 55, 21, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 45, 80},
-	  {35, 30, 85, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 10, 20}},
+	  {35, 30, 85, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 5, 20}},
 	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}},
 	/* Tides: the most changeable */
 	{"Tides", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 60, 28, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 28, 60},
-	  {35, 30, 85, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 10, 35}},
+	  {35, 30, 85, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 5, 35}},
 	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}},
 	/* ---- Glag's own ---- */
 	{"Gate Seven", {GV_PAD, GV_PIANO, GV_DRONE, GV_BELLS},
@@ -2159,31 +2238,35 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_HALL, GS_OCTAVE, 3}},
 #ifdef GL_DEMO_PIECES
 	/* ---- audition only: six in styles (not in the firmware yet) ---- */
-	/* Berlin school: a Pizz sequencer two octaves down, sixteenths up and down the chord */
-	{"Sequencer Dawn", {GV_PIZZ, GV_SWELL, GV_ARP, GV_DRONE},
-	 {{90, 45, 25, 0, 40, 40, 45, 0, 70}, {35, 40, 80, 25, 20, 75, 50, 40, 50},
-	  {40, 55, 35, 75, 55, 60, 65, 33, 40}, {40, 35, 60, 25, 0, 50, 50, 0, 45}},
-	 {80, 45, 70, 50, 9, 5, 30, 60}, {GR_HALL, GS_OCTAVE, 0}},
-	/* krautrock: four on the floor, a driving bass */
-	{"Motorik", {GV_PULSE, GV_BASS, GV_MARIMBA, GV_FLUTE},
-	 {{100, 65, 35, 50, 10, 25, 50, 0, 70}, {95, 40, 40, 50, 5, 15, 50, 15, 65},
-	  {70, 55, 40, 50, 45, 50, 35, 50, 50}, {35, 45, 70, 50, 50, 65, 65, 50, 40}},
-	 {108, 35, 50, 50, 4, 4, 40, 45}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* Berlin school: a Pizz sequencer in octaves two octaves down, in sixteenths; an Arp
+	 * against it in dotted sixteenths; a choir pad; a deep held bass; dotted-quarter echoes */
+	{"Sequencer Dawn", {GV_PIZZ, GV_ARP, GV_PAD, GV_BASS},
+	 {{90, 35, 22, 0, 40, 35, 45, 40, 70}, {55, 45, 30, 75, 50, 55, 65, 0, 40},
+	  {75, 35, 80, 50, 15, 75, 50, 70, 50}, {15, 20, 90, 50, 0, 20, 50, 40, 55}},
+	 {92, 45, 72, 50, 9, 5, 15, 75}, {GR_HALL, GS_OCTAVE, 0}},
+	/* krautrock: a straight beat with a backbeat, an eighth-note pedal bass (the Arp's pedal
+	 * pattern, low), an organ drone, jangling eighths up high, one chord */
+	{"Motorik", {GV_PULSE, GV_ARP, GV_DRONE, GV_PIZZ},
+	 {{80, 55, 30, 50, 5, 20, 50, 51, 68}, {80, 25, 35, 0, 0, 10, 50, 100, 70},
+	  {40, 50, 50, 50, 10, 45, 45, 0, 45}, {60, 55, 35, 75, 45, 45, 65, 0, 45}},
+	 {112, 35, 45, 50, 4, 4, 0, 50}, {GR_CHAMBER, GS_OCTAVE, 1}},
 	/* Tangerine Dream's slow space: dark, climbing */
 	{"Dark Orbit", {GV_PAD, GV_TAILS, GV_SHIMMER, GV_GONG},
 	 {{50, 30, 80, 25, 20, 80, 50, 40, 60}, {35, 50, 75, 50, 50, 75, 60, 50, 50},
 	  {30, 45, 60, 25, 60, 80, 40, 40, 40}, {30, 40, 80, 50, 15, 70, 50, 50, 55}},
 	 {36, 55, 85, 50, 2, 2, 25, 75}, {GR_SHIMMER, GS_FIFTH, 4}},
-	/* city pop: Rhodes, a busy bass, a swung pulse, brass swells */
-	{"Night Drive", {GV_EP, GV_BASS, GV_PULSE, GV_SWELL},
-	 {{55, 65, 55, 50, 35, 50, 45, 60, 70}, {85, 35, 45, 50, 5, 15, 50, 25, 65},
-	  {60, 75, 40, 50, 10, 25, 50, 35, 50}, {45, 70, 50, 50, 25, 55, 55, 50, 40}},
-	 {84, 30, 50, 50, 5, 3, 55, 45}, {GR_CHAMBER, GS_OCTAVE, 2}},
-	/* lofi: a dark piano, a lazy swing, the DJ filter a little closed */
-	{"Study Lamp", {GV_PIANO, GV_BASS, GV_PULSE, GV_KALIMBA},
-	 {{45, 25, 60, 50, 35, 50, 45, 30, 70}, {70, 25, 60, 50, 5, 15, 50, 30, 65},
-	  {55, 35, 45, 50, 15, 25, 50, 90, 55}, {35, 35, 55, 50, 50, 55, 65, 40, 40}},
-	 {58, 40, 45, 38, 10, 1, 50, 40}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* city pop: Rhodes chords, a root-and-octave disco bass (Pizz, low), four on the floor
+	 * with a backbeat and open hats, brass swells, the chords moving every few bars */
+	{"Night Drive", {GV_EP, GV_PIZZ, GV_PULSE, GV_SWELL},
+	 {{60, 60, 50, 50, 25, 45, 40, 50, 80}, {60, 40, 30, 0, 0, 10, 50, 40, 70},
+	  {95, 75, 30, 50, 5, 15, 50, 56, 52}, {45, 65, 45, 50, 20, 55, 60, 60, 55}},
+	 {84, 25, 40, 50, 5, 0, 95, 30}, {GR_CHAMBER, GS_OCTAVE, 1}},
+	/* lofi: dark Rhodes, a soft round bass, boom-bap drums swung hard, kalimba, the DJ
+	 * filter half closed */
+	{"Study Lamp", {GV_EP, GV_BASS, GV_PULSE, GV_KALIMBA},
+	 {{45, 22, 70, 50, 35, 45, 45, 20, 72}, {70, 15, 55, 50, 0, 10, 50, 20, 70},
+	  {60, 35, 45, 50, 10, 20, 50, 85, 62}, {30, 30, 50, 50, 45, 50, 65, 35, 40}},
+	 {56, 35, 40, 36, 10, 1, 100, 35}, {GR_CHAMBER, GS_OCTAVE, 2}},
 	/* experimental: glass bells in sixteenths, wandering intervals, octave leaps, all moving */
 	{"Static Garden", {GV_BELLS, GV_DRONE, GV_TAILS, GV_PIZZ},
 	 {{30, 70, 50, 75, 60, 65, 40, 100, 50}, {40, 60, 50, 25, 10, 60, 50, 100, 45},
