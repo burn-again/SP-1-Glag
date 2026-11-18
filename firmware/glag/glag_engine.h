@@ -22,7 +22,7 @@
  *   PIZZ      pizzicato arp: short FM plucks over the chord, with octave jumps
  *   SHIMMER   buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, an octave echo
  *   TAILS     FM modulation tails: each note's index falls, blooms or rises over seconds
- *   PULSE     a light pulse: a thump on the root, closed and open hats on euclidean rings of 16, 12, 7
+ *   PULSE     a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7
  *
  * Every voice reads the same eight controls, so a fader means the same thing on every page:
  *   page:      ACTIVITY  TONE  LENGTH  REGISTER

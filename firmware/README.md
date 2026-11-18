@@ -32,7 +32,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Pizz | pizzicato arp: very short FM plucks up and down the chord, accents on the beat | octaves: none, alternating, random jumps |
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
-| Pulse | a light pulse, as AMB-1's: a thump on the chord's root, a closed hat and a long open hat on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits (up to 5, 7 and 3), tone the hats, length the thump's decay, register its octave | swing (the off sixteenths up to half a step late) |
+| Pulse | a light pulse: soft kick, shaker and wood click on euclidean rings of 16, 12 and 7 sixteenths. Activity is the hits, tone the brightness, length the decays, register the kick's pitch | swing (the off sixteenths up to half a step late) |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
