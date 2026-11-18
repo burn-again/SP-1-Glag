@@ -30,6 +30,8 @@ int main(int argc, char **argv)
 			if (argv[5][c] == '0')
 				p.ch[c][CP_LEVEL] = 0.0f;
 	if (getenv("DRY")) { p.g[GP_REVERB] = 0; p.g[GP_DELAY] = 0; for (int c = 0; c < GL_NCH; c++) p.ch[c][CP_VERB] = p.ch[c][CP_ECHO] = 0; }
+	if (getenv("ACT"))   /* channel 1's activity, for auditioning a voice */
+		p.ch[0][CP_ACTIVITY] = (float)atof(getenv("ACT"));
 	gl_post_patch(&p);
 	uint32_t frames = (uint32_t)(secs * 48000.0f) / 96u * 96u;
 	FILE *f = fopen(argv[3], "wb");
