@@ -56,6 +56,9 @@ typedef struct {
 } gl_ui_out;
 
 void glui_init(void);
+/* The device has just turned ON again (it was off or in standby): take the faders as they now
+ * are, rather than as a movement from where they were. Values and the page are kept. */
+void glui_enter(void);
 /* Give the UI a piece's saved version (at boot, from storage). NULL clears it. */
 void glui_set_saved(int piece, const gl_patch *p);
 const gl_patch *glui_saved(int piece);  /* NULL if that piece was never saved */

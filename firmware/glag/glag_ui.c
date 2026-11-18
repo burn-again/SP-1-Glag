@@ -132,6 +132,18 @@ static void load_piece(int i)
 	dirty = 1;
 }
 
+void glui_enter(void)
+{
+	started = 0;
+	prev_btn = 0;
+	fn_taps = play_taps = 0;
+	if (freeze_on || slow_on) {               /* nothing stays held across a power cycle */
+		freeze_on = freeze_latched = slow_on = 0;
+		gl_freeze(0);
+		gl_slow(0);
+	}
+}
+
 void glui_set_saved(int i, const gl_patch *p)
 {
 	if ((unsigned)i >= GL_NPIECES)

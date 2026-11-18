@@ -3,4 +3,5 @@ host/render
 host/ui_test
 host/cpu/*.elf
 *.wav
+!release/*.bin
 web/build/

@@ -2,6 +2,14 @@
 
 # SP-1 developer documentation
 
+## Glag: generative ambient firmware
+
+This fork also holds **Glag**, an easy-mode generative ambient firmware for the SP-1 inspired by
+AMB-1, built on Wakes' SP-1 base. Everything is in [`firmware/`](firmware/README.md): the
+firmware image (`firmware/release/`), how to build and flash it, the control map, and a browser
+emulator.
+
+
 Welcome to the developer documentation for the SP-1 stem player by Teenage Engineering.
 
 The SP-1 is an unreleased stem player designed by Teenage Engineering and now also a very fancy nRF52840 development board. Since it was never released and TE doesn't provide any documentation, we have to write it ourselves.
