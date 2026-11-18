@@ -7,7 +7,8 @@
 volatile uint8_t cfg_voices[4] = {0, 1, 2, 7};
 volatile uint32_t cfg_blocks = 500;
 volatile uint8_t cfg_mute = 0x80;
-volatile uint8_t cfg_stress = 0x80;      /* 0x81: every channel at full activity and length */           /* bit c: channel c at level 0 */
+volatile uint8_t cfg_stress = 0x80;
+volatile uint16_t cfg_dist = 0xFFFF;      /* type | amount << 4 | post << 8; 0xFFFF: none */      /* 0x81: every channel at full activity and length */           /* bit c: channel c at level 0 */
 volatile uint32_t mark;                  /* the host watches writes here */
 static int16_t blk[192];
 
@@ -28,6 +29,8 @@ int main(void)
 		if (cfg_mute & (1u << c))
 			p.ch[c][CP_LEVEL] = 0.0f;
 	gl_post_patch(&p);
+	if (cfg_dist != 0xFFFF)
+		gl_dist(cfg_dist & 15, (cfg_dist >> 4) & 15, (cfg_dist >> 8) & 1);
 	for (uint32_t b = 0; b < cfg_blocks; b++) {
 		mark = 1;
 		gl_render(blk, 96, 0.8f);

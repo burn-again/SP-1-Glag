@@ -20,6 +20,12 @@
  *                        •• + FFWD: randomize the piece        •• + RWD: undo (randomize or piece)
  *                        •• + RWD held 2 s: save the piece to its slot
  *                        VOL+ / VOL-: volume
+ *                        •• + VOL- tap: distortion amount, off then 1-4
+ *                        •• + VOL+ tap: distortion type (Chebyshev, overdrive, fuzz, fold, XOR)
+ *                        •• + VOL- held 3 s: distortion off, the stack back to default
+ *                        •• + VOL+ held 3 s: distortion before / after the delay and reverb
+ *                        (each click shows the type on the track row and the amount on the
+ *                        play row, filling from the •• end before the effects, PLAY end after)
  *
  * Not here, on purpose: the power gestures (•• held 3 s, the 30 s backstop) and the battery
  * picture belong to the firmware's power code and are never routed through this file.
@@ -52,7 +58,8 @@ typedef struct {
 	float volume;            /* 0..1: pass to gl_render() */
 	uint8_t save_slot;       /* 1..8: persist glui_saved(save_slot - 1) now; 0 = nothing */
 	uint8_t page, channel;   /* where the UI is (enum gl_page, 0..3) */
-	uint8_t piece;           /* 0..7 */
+	uint8_t piece;           /* 0..11 */
+	uint8_t dist_type, dist_amt, dist_post;   /* enum gl_dist, 0 off .. 4, 1 = after the effects */
 } gl_ui_out;
 
 void glui_init(void);

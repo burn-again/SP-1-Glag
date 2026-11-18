@@ -33,6 +33,10 @@ const { chromium } = require('playwright');
       expect((await p.textContent('#piece')).includes('frozen'), 'FFWD tap freezes');
       await p.keyboard.press(']'); await p.waitForTimeout(400);
       expect(!(await p.textContent('#piece')).includes('frozen'), 'FFWD tap again lets go');
+      await p.keyboard.down('Shift'); await p.keyboard.press('_'); await p.keyboard.up('Shift'); await p.waitForTimeout(400);
+      expect((await p.textContent('#piece')).includes('Chebyshev 1 before'), '•• + VOL-: distortion on (' + await p.textContent('#piece') + ')');
+      await p.keyboard.down('Shift'); await p.keyboard.press('+'); await p.keyboard.up('Shift'); await p.waitForTimeout(400);
+      expect((await p.textContent('#piece')).includes('Overdrive 1'), '•• + VOL+: next type');
       // drag F1 (tempo) up from the bottom: it should pick the tempo up and change it
       const tr = await p.$$('.track'); const bb = await tr[0].boundingBox();
       await p.mouse.move(bb.x + 20, bb.y + bb.height * 0.98); await p.mouse.down();

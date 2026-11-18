@@ -38,12 +38,22 @@ int main(int argc, char **argv)
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	gl_post_patch(&p);
+	if (getenv("DIST")) {   /* DIST=type,amount,post: e.g. 2,3,0 = fuzz, amount 3, before the effects */
+		int t = 0, a = 0, po = 0;
+		sscanf(getenv("DIST"), "%d,%d,%d", &t, &a, &po);
+		gl_dist(t, a, po);
+	}
 	uint32_t frames = (uint32_t)(secs * 48000.0f) / 96u * 96u;
 	FILE *f = fopen(argv[3], "wb");
 	wav_header(f, frames);
 	int16_t blk[192];
 	double sum2 = 0; int clip = 0, peak = 0;
+	int sweep_t = -1, sweep_p = 0;
+	if (getenv("DISTSWEEP"))   /* DISTSWEEP=type,post: amounts 1, 2, 3, 4 across the render */
+		sscanf(getenv("DISTSWEEP"), "%d,%d", &sweep_t, &sweep_p);
 	for (uint32_t n = 0; n < frames; n += 96) {
+		if (sweep_t >= 0)
+			gl_dist(sweep_t, 1 + (int)((uint64_t)n * 4u / frames), sweep_p);
 		gl_render(blk, 96, 0.8f);
 		for (int i = 0; i < 192; i++) {
 			int a = abs(blk[i]);

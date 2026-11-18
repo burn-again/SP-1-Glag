@@ -2349,6 +2349,10 @@ int main(void)
 				b |= sp1_button_held(SP1_BTN_PLAY) ? (1u << GB_PLAY) : 0u;
 				b |= sp1_button_held(SP1_BTN_FFWD) ? (1u << GB_FFWD) : 0u;
 				b |= sp1_button_held(SP1_BTN_RWD) ? (1u << GB_RWD) : 0u;
+				/* VOL goes to the controls too, for "••" + VOL (the distortion). Plain VOL
+				 * is still Wakes' output level, below; the controls' own level is unused. */
+				b |= sp1_button_held(SP1_BTN_VOL_UP) ? (1u << GB_VOLUP) : 0u;
+				b |= sp1_button_held(SP1_BTN_VOL_DOWN) ? (1u << GB_VOLDN) : 0u;
 				b |= fnc ? (1u << GB_FN) : 0u;
 				gi.buttons = b;
 
@@ -2370,6 +2374,18 @@ int main(void)
 						voices_seen[c] = gp->voice[c];
 						printk("GLAG channel %d: %s\n", c + 1,
 						       GL_VOICE_NAME[gp->voice[c] % GV_COUNT]);
+					}
+				}
+				if (g_glag_out.dist_type != was.dist_type || g_glag_out.dist_amt != was.dist_amt ||
+				    g_glag_out.dist_post != was.dist_post) {
+					if (g_glag_out.dist_amt == 0) {
+						printk("GLAG distortion off (%s, %s the effects)\n",
+						       GL_DIST_NAME[g_glag_out.dist_type % GD_COUNT],
+						       g_glag_out.dist_post ? "after" : "before");
+					} else {
+						printk("GLAG distortion %s %d, %s the effects\n",
+						       GL_DIST_NAME[g_glag_out.dist_type % GD_COUNT], g_glag_out.dist_amt,
+						       g_glag_out.dist_post ? "after" : "before");
 					}
 				}
 				if (g_glag_out.save_slot) {

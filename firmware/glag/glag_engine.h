@@ -95,6 +95,11 @@ void gl_play(int on);                    /* grow / rest: rest stops new notes, t
 void gl_freeze(int on);                  /* hold the chord, stop new notes, reverb rings forever */
 void gl_slow(int on);                    /* record slowing to 10 BPM over 10 s; off springs back */
 void gl_next_chord(void);
+/* Distortion, outside the patch (pieces and randomize leave it alone). amount 0 = off, 1..4.
+ * post 0: on the instruments, before the delay and reverb; 1: on everything, after them. */
+enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_FOLD, GD_XOR, GD_COUNT };
+extern const char *const GL_DIST_NAME[GD_COUNT];
+void gl_dist(int type, int amount, int post);
 void gl_panic(void);
 
 /* ---- audio thread ---- */

@@ -15,7 +15,7 @@ import capstone as cs
 
 ELF = sys.argv[1]
 TOOL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].endswith('-') else None
-configs = [a for a in sys.argv[2:] if all(ch in '0123456789abcdefm' for ch in a) and len(a.split('m')[0]) == 4] or ['0127']
+configs = [a for a in sys.argv[2:] if all(ch in '0123456789abcdefmd' for ch in a) and len(a.split('m')[0].split('d')[0]) == 4] or ['0127']
 NM = TOOL + 'nm' if TOOL else 'arm-zephyr-eabi-nm'
 OBJCOPY = TOOL + 'objcopy' if TOOL else 'arm-zephyr-eabi-objcopy'
 
@@ -64,10 +64,16 @@ def run(voices):
     mu.mem_write(0, img[: 1 << 20])
     # cfg_* live in .data: patch their load image in flash, which reset() copies to RAM
     lma = lambda a: syms['_sidata'] + (a - syms['_sdata'])
+    dist = None
+    if 'd' in voices:                      # 0127d241: distortion type 2, amount 4, after the effects
+        voices, dd = voices.split('d')
+        dist = int(dd[0]) | int(dd[1]) << 4 | int(dd[2]) << 8
     mute = int(voices.split('m')[1]) if 'm' in voices else 0
     voices = voices.split('m')[0]
     mu.mem_write(lma(syms['cfg_voices']), bytes(int(ch, 16) for ch in voices))
     mu.mem_write(lma(syms['cfg_mute']), bytes([mute | 0x80]))
+    if dist is not None and 'cfg_dist' in syms:
+        mu.mem_write(lma(syms['cfg_dist']), struct.pack('<H', dist))
     if 'cfg_stress' in syms:
         mu.mem_write(lma(syms['cfg_stress']), bytes([0x81 if STRESS else 0x80]))   # nonzero init keeps it in .data
     nblk = 1500 if STRESS else 300
@@ -110,7 +116,7 @@ names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute'
          'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails']
 for v in configs:
     avg, worst = run(v)
-    vv = v.split('m')[0]
+    vv = v.split('m')[0].split('d')[0]
     print(f"{v:8s} {' + '.join(names[int(c, 16)] for c in vv):40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
 
 if PROF is not None:

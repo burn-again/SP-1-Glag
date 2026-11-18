@@ -324,8 +324,10 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
  * A new note past the cap fades out the quietest decaying note anywhere (over 1 ms); the
  * pad, the drone and the bass are never taken, but they count. This bounds the worst case
  * whatever four voices are chosen. */
-/* Counted in half-voices: a 2-op voice is 2, the three-oscillator swell and EP are 3. */
+/* Counted in half-voices: a 2-op voice is 2, the three-oscillator swell and EP are 3. The
+ * distortion, when it is on, takes two voices' worth out of the budget. */
 #define FM_CAP 18
+static int fm_cap = FM_CAP;
 static chan CH[GL_NCH];
 static int nslots(int voice)
 {
@@ -357,6 +359,9 @@ static int budget_used(void)
 		for (int i = 0; i < ns; i++)
 			if (sounding(&ch->v[i]))
 				n += w;
+		if (ch->voice == GV_KALIMBA)               /* a ringing string costs about a voice */
+			for (int k = 0; k < KS_N; k++)
+				n += ch->ks_len[k] ? 2 : 0;
 	}
 	return n;
 }
@@ -381,7 +386,7 @@ static void make_room_w(const nvoice *keep, int w)
 			}
 		}
 	}
-	if (n + w > FM_CAP && q) {
+	if (n + w > fm_cap && q) {
 		q->stage = ST_IDLE;                    /* its amplitude ramps to 0 in the next ms */
 		q->env = 0.0f;
 	}
@@ -689,6 +694,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		int vp = (int)(rnd32() & 1u);
 		if (c->voice == GV_KALIMBA) {
 			int k = c->ks_next;
+			if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
+				break;                       /* no room: this pluck is skipped */
 			c->ks_next = (uint8_t)((k + 1) % KS_N);
 			float hz = mtof((float)note) * speed;
 			int len = (int)(GL_SR / hz);
@@ -806,7 +813,7 @@ static void chan_control(chan *c, int ch, float dt)
 				if (v->stage == ST_IDLE) {
 					c->gap[i] -= sdt;
 					if (c->gap[i] <= 0.0f && playing && i < nv &&
-					    budget_used() + weight(c->voice) > FM_CAP) {
+					    budget_used() + weight(c->voice) > fm_cap) {
 						c->gap[i] = 0.5f;                /* no room: breathe a little later */
 					} else if (c->gap[i] <= 0.0f && playing && i < nv) {
 						/* breathe in on this voice's tone of the chord */
@@ -1026,7 +1033,7 @@ static void chan_control(chan *c, int ch, float dt)
 				v->ainc = v->iinc = 0.0f;
 				continue;
 			}
-			nv_perc(v, 0.0005f, expmap(len, 0.08f, 0.7f) / speed, 0.03f / speed, 0.6f + 2.0f * tone, dt);
+			nv_perc(v, 0.0005f, expmap(len, 0.06f, 0.45f) / speed, 0.03f / speed, 0.6f + 2.0f * tone, dt);
 			nv_pitch(v, v->note);
 		}
 		break;
@@ -1357,6 +1364,131 @@ void gl_slow(int on) { cmd_slow = (uint8_t)(on != 0); }
 void gl_next_chord(void) { cmd_next++; }
 void gl_panic(void) { cmd_panic++; }
 
+/* ================================================================ distortion
+ * Five cheap waveshapers, a few operations a sample each. Driven harder at each amount, then
+ * brought back down so a step changes the colour more than the loudness. */
+const char *const GL_DIST_NAME[GD_COUNT] = {"Chebyshev", "Overdrive", "Fuzz", "Fold", "XOR"};
+static volatile uint8_t cmd_dist_type, cmd_dist_amt, cmd_dist_post;
+void gl_dist(int type, int amount, int post)
+{
+	cmd_dist_type = (uint8_t)((unsigned)type < GD_COUNT ? type : 0);
+	cmd_dist_amt = (uint8_t)(amount < 0 ? 0 : amount > 4 ? 4 : amount);
+	cmd_dist_post = (uint8_t)(post != 0);
+}
+
+static struct {
+	uint8_t type, amt, post;
+	float g, mix, mk;          /* drive, how much of the shaped signal, make-up gain */
+	int32_t prev[4];           /* XOR: the last crushed sample per path (L, R, echo, reverb) */
+	float env[4];              /* Chebyshev: each path's level */
+	float c2, c3;              /* Chebyshev: how much octave (T2) and twelfth (T3) */
+} dist;
+
+static void dist_setup(void)
+{
+	static const float DRIVE[GD_COUNT][4] = {
+		{1.2f, 1.6f, 2.2f, 3.0f},      /* Chebyshev: T2 and T3 harmonics growing */
+		{2.0f, 3.5f, 6.0f, 11.0f},     /* overdrive: soft saturation */
+		{3.0f, 6.0f, 12.0f, 25.0f},    /* fuzz: biased hard clip */
+		{1.5f, 2.3f, 3.4f, 5.0f},      /* fold: wave folding */
+		{1.0f, 1.0f, 1.0f, 1.0f},      /* XOR: crushed and XORed bits */
+	};
+	static const float MAKEUP[GD_COUNT][4] = {
+		{1.209f, 1.524f, 1.677f, 1.446f},
+		{0.42f, 0.307f, 0.238f, 0.188f},
+		{0.162f, 0.111f, 0.093f, 0.087f},
+		{0.66f, 0.486f, 0.373f, 0.306f},
+		{1.333f, 1.952f, 2.26f, 1.839f},
+	};
+	dist.type = cmd_dist_type;
+	dist.amt = cmd_dist_amt;
+	dist.post = cmd_dist_post;
+	fm_cap = FM_CAP - (dist.amt ? 4 : 0);
+	static const float C2[4] = {0.12f, 0.22f, 0.35f, 0.5f}, C3[4] = {0.15f, 0.3f, 0.5f, 0.75f};
+	if (dist.amt) {
+		dist.c2 = C2[dist.amt - 1];
+		dist.c3 = C3[dist.amt - 1];
+		dist.g = DRIVE[dist.type][dist.amt - 1];
+		dist.mk = MAKEUP[dist.type][dist.amt - 1];
+		dist.mix = 0.35f + 0.65f * (float)dist.amt * 0.25f;
+	}
+}
+
+/* shape a buffer in place; `path` keeps each signal's own memory (L, R, echo, reverb). One
+ * loop per type with everything in locals: the type is decided once per buffer, not per sample. */
+static void dist_block(float *x, uint32_t n, int path)
+{
+	const float mk = dist.mk, g = dist.g, mix = dist.mix, dry = 1.0f - dist.mix;
+	switch (dist.type) {
+	case GD_CHEBYSHEV: {
+		/* A harmonic exciter: the signal is brought to full scale by its own level (T_n makes
+		 * clean harmonics only there), T2 adds the octave and T3 the twelfth, and the level is
+		 * put back. T2's offset is taken out by the output's high-pass. */
+		/* c2 T2(u) + c3 T3(u) = 4 c3 u^3 + 2 c2 u^2 - 3 c3 u - c2, in Horner form */
+		/* the level first, so the signal never passes full scale (that would be a hard clip):
+		 * this block's peak, or the last level falling over ~50 ms, whichever is higher */
+		float pk = 0.0f;
+		for (uint32_t i = 0; i < n; i++) {
+			float a = x[i] > 0.0f ? x[i] : -x[i];
+			pk = a > pk ? a : pk;
+		}
+		float d = dist.env[path] * 0.98f, e = pk > d ? pk : d;
+		dist.env[path] = e;
+		if (e < 0.0005f)
+			break;                                      /* silence: nothing to excite */
+		const float inv = 1.0f / e;
+		const float pa = 4.0f * dist.c3 * mk, pb = 2.0f * dist.c2 * mk, pc = -3.0f * dist.c3 * mk, pd = -dist.c2 * mk;
+		for (uint32_t i = 0; i < n; i++) {
+			float v = x[i], u = v * inv;
+			x[i] = v * mk + e * (((pa * u + pb) * u + pc) * u + pd);
+		}
+		break;
+	}
+	case GD_OVERDRIVE: {
+		const float k = mk * 1.6f;
+		for (uint32_t i = 0; i < n; i++) {
+			float v = x[i] * g;
+			x[i] = v / (1.0f + (v > 0.0f ? v : -v)) * k;
+		}
+		break;
+	}
+	case GD_FUZZ: {
+		const float k = mk * 2.2f;
+		for (uint32_t i = 0; i < n; i++)                /* biased: uneven halves, a buzz */
+			x[i] = (clampf(x[i] * g + 0.15f, -0.55f, 0.85f) - 0.15f) * k;
+		break;
+	}
+	case GD_FOLD: {
+		/* a triangle fold: past the edge the wave turns back on itself */
+		const float hg = g * 0.5f, wet = mix * 0.7f * mk, dk = dry * mk;
+		for (uint32_t i = 0; i < n; i++) {
+			float v = x[i] * hg + 0.25f + 64.0f;        /* kept positive: (int) is then floor */
+			float t = v - (float)(int)v;
+			float tri = 1.0f - 4.0f * (t > 0.5f ? t - 0.5f : 0.5f - t);
+			x[i] = x[i] * dk + tri * wet;
+		}
+		break;
+	}
+	default: {
+		/* crush to fewer bits, then XOR with the last crushed sample shifted down */
+		static const uint8_t BITS[4] = {11, 9, 7, 5};
+		static const float XMIX[4] = {0.2f, 0.4f, 0.65f, 0.9f};
+		const int sh = 16 - BITS[dist.amt - 1];
+		const float xm = XMIX[dist.amt - 1];
+		const float wet = xm * mk * (1.0f / 32768.0f) * (float)(1 << sh), dk = (1.0f - xm) * mk;
+		int32_t prev = dist.prev[path];
+		for (uint32_t i = 0; i < n; i++) {
+			int32_t q = (int32_t)(clampf(x[i], -1.0f, 1.0f) * 32767.0f) >> sh;
+			int32_t y = q ^ (prev >> 1);
+			prev = q;
+			x[i] = x[i] * dk + (float)y * wet;
+		}
+		dist.prev[path] = prev;
+		break;
+	}
+	}
+}
+
 /* ================================================================ render */
 
 static float lvl_ch[GL_NCH], fx_echo_mix, fx_echo_fb, fx_verb_mix, fx_verb_g, fx_verb_damp;
@@ -1392,6 +1524,8 @@ static void control(float dt)
 	}
 	playing = cmd_play;
 	frozen = cmd_freeze;
+	if (cmd_dist_type != dist.type || cmd_dist_amt != dist.amt || cmd_dist_post != dist.post)
+		dist_setup();
 	slowing = cmd_slow;
 	if (cmd_panic != seen_panic) {
 		seen_panic = cmd_panic;
@@ -1618,8 +1752,29 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				V[i >> 1] += m * vs;
 			}
 		}
+		/* distortion before the effects: the dry mix and what goes into them */
+		if (dist.amt && !dist.post) {
+			/* the middle of the image is distorted and the sides left clean: half the work, and
+			 * instruments panned wide keep their spread */
+			float M[GL_SUB];
+			for (uint32_t i = 0; i < GL_SUB; i++)
+				M[i] = 0.5f * (L[i] + R[i]);
+			dist_block(M, GL_SUB, 0);
+			for (uint32_t i = 0; i < GL_SUB; i++) {
+				float sd = 0.5f * (L[i] - R[i]);
+				L[i] = M[i] + sd;
+				R[i] = M[i] - sd;
+			}
+			dist_block(E, GL_SUB / 2, 2);
+			dist_block(V, GL_SUB / 2, 3);
+		}
 		/* the space, at half rate; its output interpolated back up */
 		fx_block(E, V, L, R);
+		/* ...or after them, on everything (the DJ filter below can tame it) */
+		if (dist.amt && dist.post) {
+			dist_block(L, GL_SUB, 0);
+			dist_block(R, GL_SUB, 1);
+		}
 		/* DJ filter, DC blocker, soft clip, out */
 		float a1 = svf_a1, a2 = svf_a2, a3 = svf_a3, k = svf_k, md = svf_mode;
 		float s0l = svf_s[0][0], s1l = svf_s[0][1], s0r = svf_s[1][0], s1r = svf_s[1][1];

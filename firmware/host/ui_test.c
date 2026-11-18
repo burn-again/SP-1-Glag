@@ -190,6 +190,38 @@ int main(void)
 	CHECK(out.piece == 0, "%d steps wrap to piece 1 (%d)", GL_NPIECES, out.piece);
 	CHECK(memcmp(glui_patch(), &mine, sizeof mine) == 0, "piece 1 comes back as saved");
 
+	/* •• + VOL: the distortion */
+	CHECK(out.dist_amt == 0 && out.dist_type == 0 && out.dist_post == 0, "distortion starts off, Chebyshev, before the effects");
+	int want_amt[5] = {1, 2, 3, 4, 0};
+	for (int k = 0; k < 5; k++) {
+		down(GB_FN); tap(GB_VOLDN); up(GB_FN);
+		CHECK(out.dist_amt == want_amt[k], "•• + VOL- tap %d: amount %d (got %d)", k + 1, want_amt[k], out.dist_amt);
+	}
+	down(GB_FN); tap(GB_VOLDN); tap(GB_VOLDN); up(GB_FN);
+	CHECK(out.dist_amt == 2, "amount 2 again");
+	CHECK(out.led_p[0] == 255 && out.led_p[1] == 255 && out.led_p[3] == 0, "before the effects: the bar fills from the •• end");
+	CHECK(out.led_t[0] == 255 && out.led_t[1] == 0, "the track row shows the type (1 = Chebyshev)");
+	down(GB_FN); tap(GB_VOLUP); up(GB_FN);
+	CHECK(out.dist_type == GD_OVERDRIVE, "•• + VOL+ tap: next type (got %d)", out.dist_type);
+	CHECK(out.led_t[1] == 255 && out.led_t[0] == 0, "the track row shows type 2");
+	for (int k = 0; k < GD_COUNT; k++) {
+		down(GB_FN); tap(GB_VOLUP); up(GB_FN);
+	}
+	CHECK(out.dist_type == GD_OVERDRIVE, "five types, round again (got %d)", out.dist_type);
+	int pg0 = out.page;
+	down(GB_FN); down(GB_VOLUP); run(3200);
+	CHECK(out.dist_post == 1, "•• + VOL+ held 3 s: after the effects");
+	up(GB_VOLUP); up(GB_FN);
+	CHECK(out.dist_type == GD_OVERDRIVE, "the hold is not also a tap (type unchanged)");
+	CHECK(out.led_p[3] == 255 && out.led_p[2] == 255 && out.led_p[0] == 0, "after the effects: the bar fills from the PLAY end");
+	CHECK(out.page == pg0, "•• held with VOL is not a •• tap");
+	down(GB_FN); down(GB_VOLDN); run(1500);
+	CHECK(out.led_p[0] > 0 && out.led_p[3] == 0, "holding: the play row fills toward 3 s");
+	run(1700);
+	up(GB_VOLDN); up(GB_FN);
+	CHECK(out.dist_amt == 0 && out.dist_type == 0 && out.dist_post == 0, "•• + VOL- held 3 s: off, the stack back to default");
+	run(2000);
+
 	/* VOL */
 	float v0 = out.volume;
 	tap(GB_VOLUP);

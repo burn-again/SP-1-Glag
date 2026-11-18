@@ -9,8 +9,8 @@ reverb. You don't perform it, you tend it.
 It runs on [Wakes](https://github.com/Worldwave/Wakes)' SP-1 base (power, watchdog, standby,
 battery, controls, LEDs, audio bring-up), used unchanged except where marked `CONFIG_SP1_GLAG`.
 
-**Status: 0.2.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
-controls pass 49 tests on a computer, and the browser emulator runs the same engine and controls.
+**Status: 0.3.0, not yet run on an SP-1.** It builds, passes Wakes' image safety checks, its
+controls pass 67 tests on a computer, and the browser emulator runs the same engine and controls.
 The first hardware session decides the rest; see [Testing on the device](#testing-on-the-device).
 
 ## The voices
@@ -64,6 +64,10 @@ and Long Haul (Pizz, Tails, Swell, Gong).
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
 | | •• + RWD held 2 s | save the piece to its slot |
 | | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
+| | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
+| | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
+| | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |
+| | •• + VOL+ held 3 s | distortion before the delay and reverb (default) or after them |
 | | •• held 3 s | power off (Wakes', unchanged; so is the 30 s backstop) |
 
 **Faders pick up.** After a page change a fader does nothing until it reaches the value it would
@@ -78,6 +82,29 @@ save, and the battery when •• goes down (Wakes').
 **Saves** are kept until power-off for now. Keeping them on the eMMC across power cycles is the
 next step (it will reuse Wakes' storage thread rather than write the nRF's flash, whose last page
 the bootloader may own).
+
+## Distortion
+
+Five cheap waveshapers, outside the pieces (randomize and piece changes leave them alone):
+
+| Type | What it does |
+|---|---|
+| Chebyshev | a harmonic exciter: the signal is normalised by its own level, Chebyshev T2 adds the octave and T3 the twelfth, and the level is put back, so it colours without crushing |
+| Overdrive | soft saturation, warmer and denser with each amount |
+| Fuzz | a biased hard clip: uneven halves, a buzz |
+| Fold | a triangle wavefolder: past the edge the wave turns back on itself |
+| XOR | the signal crushed to fewer bits (11 down to 5) and XORed with its own last sample: digital grit |
+
+Each amount is driven harder and brought back down, so a step changes the colour more than the
+loudness (within about 1 dB of clean at amount 1, +0.75 dB per step). **Before the effects**, the
+middle of the stereo image and the echo and reverb sends are distorted, so the delay and reverb
+carry it; **after**, the whole mix is, ahead of the DJ filter (which can tame a fuzz). Every click
+shows both positions: the type on the track row (the number picture) and the amount as a bar on
+the play row, filling from the •• end before the effects and from the PLAY end after (off: one dim
+LED at that end). While •• + VOL is held, the play row fills toward the 3 s mark.
+
+Distortion costs about 6-10 % of the CPU in the model, so while it is on the voice budget gives up
+two voices.
 
 ## The emulator
 
@@ -98,7 +125,7 @@ Open `firmware/web/build/glag-emulator.html`. Keyboard: 1-4 = T1-T4, Shift = •
 sh firmware/host/run_tests.sh
 ```
 
-Runs the 49 control tests and renders all eight pieces to WAVs in `firmware/host/build/`.
+Runs the 67 control tests and renders all twelve pieces to WAVs in `firmware/host/build/`.
 `firmware/host/cpu/` runs the engine, cross-compiled for the Cortex-M4F, under an emulator and
 counts cycles (see [CPU](#cpu)).
 
@@ -181,6 +208,12 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 | Shimmer x 4 | 24 % | 52 % | 34-72 % |
 | Tails x 4 | 24 % | 52 % | 33-73 % |
 | Swell, EP, Gong, Shimmer (Rain City) | 31 % | 48 % | 44-67 % |
+| Piece 1 + distortion at 4, before the effects | 40 % | 55 % | 56-77 % |
+| Bells x 4 + distortion at 4 | 38 % | 66 % | 53-92 % |
+| Pizz x 4 + distortion at 4, before the effects | 37 % | 72 % | 52-100 % |
+
+The last row is the one combination that reaches the budget's edge: four Pizz channels at full
+activity and length with distortion at 4. If it overruns on the device, lower `FM_CAP`.
 
 A voice budget keeps at most the cost of 9 two-operator voices sounding at once (Swell and EP, with
 a third oscillator, count 1.5); the quietest decaying note gives way, and the pad, swell, drone and

@@ -9,7 +9,7 @@ CC=${CC:-cc}
 $CC -O2 -Wall -Wextra -I../glag -o "$OUT/ui_test" ui_test.c ../glag/glag_ui.c ../glag/glag_engine.c -lm
 $CC -O2 -Wall -I../glag -o "$OUT/render" render.c ../glag/glag_engine.c -lm
 "$OUT/ui_test"
-for i in 0 1 2 3 4 5 6 7; do
+for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
 	"$OUT/render" $i 60 "$OUT/piece$i.wav"
 done
 echo "WAVs in $OUT/"

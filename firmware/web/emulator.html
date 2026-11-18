@@ -121,7 +121,7 @@ details summary { cursor: pointer; font-weight: 500; }
           <kbd>Space</kbd><span>PLAY</span>
           <kbd>[</kbd><span>RWD</span>
           <kbd>]</kbd><span>FFWD</span>
-          <kbd>-</kbd><span><kbd>=</kbd>: VOL− and VOL+</span>
+          <kbd>-</kbd><span><kbd>=</kbd>: VOL− and VOL+ (with Shift: distortion amount and type; hold 3 s: off, or before/after the effects)</span>
           <kbd>↑</kbd><span><kbd>↓</kbd> on a focused fader moves it</span>
         </div>
         <details>
@@ -131,6 +131,7 @@ details summary { cursor: pointer; font-weight: 500; }
             <div><b>Channel</b>: F1 activity, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, character).</div>
             <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion.</div>
             <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
+            <div><b>Distortion</b>: •• + VOL− steps the amount (off, 1 to 4), •• + VOL+ the type (Chebyshev, overdrive, fuzz, fold, XOR). Held 3 s: VOL− turns it off and resets it, VOL+ moves it before or after the delay and reverb. The track LEDs show the type, the play row the amount, filling from the •• end before the effects and from the PLAY end after.</div>
             <div><b>Rocker</b>: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
           </div>
         </details>
@@ -156,6 +157,7 @@ const CPU_BASE = 17.5, CPU_VOICE = [10.35, 12.1, 5.85, 6.5, 7.9, 8.0, 11.5, 4.5,
   9.7, 9.3, 7.5, 11.5, 8.5, 8.7], CPU_SCALE = 1.4;
 const B = { T1: 0, T2: 1, T3: 2, T4: 3, PLAY: 4, VOLUP: 5, VOLDN: 6, FFWD: 7, RWD: 8, FN: 9 };
 const PAGES = ["Home", "Channel", "Extended", "Harmony"];
+const DISTS = ["Chebyshev", "Overdrive", "Fuzz", "Fold", "XOR"];
 
 let faders = [0, 0, 0, 0], buttons = 0, node = null, ctx = null, state = null, patch = null;
 let pressed = 0;   /* buttons pressed since the engine last heard: a quick tap is never lost */
@@ -269,7 +271,7 @@ class GlagCore {
     }
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
-    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 76).slice();
+    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 80).slice();
     const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), 180).slice();
     const msg = { t: "st", st: st.buffer, pt: pt.buffer };
     const slot = st[13];
@@ -382,7 +384,8 @@ function draw() {
   }
   const pc = state.getUint8(10);
   document.getElementById("piece").textContent = `Piece ${pc + 1}: ${PIECES[pc]}` + (state.getUint8(12) ? "  ·  frozen" : "") + (state.getUint8(11) ? "" : "  ·  resting") +
-    (state.getFloat32(20, true) < 0.99 ? `  ·  slowing ${Math.round(state.getFloat32(20, true) * 100)}%` : "");
+    (state.getFloat32(20, true) < 0.99 ? `  ·  slowing ${Math.round(state.getFloat32(20, true) * 100)}%` : "") +
+    (state.getUint8(77) ? `  ·  ${DISTS[state.getUint8(76)]} ${state.getUint8(77)} ${state.getUint8(78) ? "after" : "before"} the effects` : "");
   const m = rows();
   document.getElementById("pagename").textContent = m.title;
   document.getElementById("fmap").innerHTML = m.r.map((r, i) => {

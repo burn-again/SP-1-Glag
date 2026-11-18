@@ -32,6 +32,7 @@ static struct {
 	float target[4];
 	int32_t caught[4];
 	float glow[4];
+	uint8_t dist_type, dist_amt, dist_post, pad2;
 } st;
 
 EXPORT void wg_init(uint32_t seed) { gl_init(seed); glui_init(); }
@@ -56,6 +57,7 @@ EXPORT void wg_tick(uint32_t now_ms)
 	if (out.save_slot)
 		st.save_slot = out.save_slot;
 	st.volume = out.volume; st.speed = gl_speed; st.beat = gl_beat;
+	st.dist_type = out.dist_type; st.dist_amt = out.dist_amt; st.dist_post = out.dist_post;
 }
 EXPORT void *wg_state(void) { return &st; }
 EXPORT void *wg_patch(void) { return (void *)glui_patch(); }

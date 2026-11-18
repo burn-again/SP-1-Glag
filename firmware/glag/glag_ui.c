@@ -36,11 +36,15 @@ static int play_taps;                         /* •• + PLAY taps waiting to b
 static uint32_t play_tap_at;
 static int freeze_latched, freeze_on, slow_on, playing = 1;
 static uint8_t rwd_shift, rwd_saved, ffwd_froze, started;
+/* distortion: type, amount (0 off .. 4), after the effects; and the •• + VOL presses in flight */
+#define DIST_HOLD_MS 3000u
+static int dist_type, dist_amt, dist_post;
+static uint8_t vol_shift[2], vol_done[2];                /* [0] VOL-, [1] VOL+ */
 static int vol = 11;
 static uint32_t seed = 0x2545F491u;
 
 /* what the play row is showing */
-enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH };
+enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD };
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -178,6 +182,8 @@ void glui_init(void)
 	playing = 1;
 	freeze_latched = freeze_on = slow_on = 0;
 	vol = 11;
+	dist_type = dist_amt = dist_post = 0;
+	gl_dist(0, 0, 0);
 }
 
 /* ---------------------------------------------------------------- play row pictures */
@@ -381,14 +387,54 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		}
 	}
 
-	/* ---- VOL ---- */
-	if (PRESSED(GB_VOLUP) || PRESSED(GB_VOLDN)) {
-		if (fn)
-			used_with_fn = 1;
-		vol += PRESSED(GB_VOLUP) ? 1 : -1;
-		vol = vol < 0 ? 0 : vol > VOL_STEPS ? VOL_STEPS : vol;
-		show_val = (float)vol / VOL_STEPS;
-		say(SH_VALUE, now, SHOW_MS);
+	/* ---- VOL: the level; with •• the distortion ----
+	 * •• + VOL- tap: amount (off, 1-4); •• + VOL+ tap: type. Held 3 s: VOL- turns it off and
+	 * puts the whole stack back to default, VOL+ moves it before / after the delay and reverb.
+	 * Taps act on release, so a hold is never also a tap. */
+	for (int k = 0; k < 2; k++) {
+		const int b = k ? GB_VOLUP : GB_VOLDN;
+		if (PRESSED(b)) {
+			if (fn) {
+				used_with_fn = 1;
+				vol_shift[k] = 1;
+				vol_done[k] = 0;
+			} else {
+				vol_shift[k] = 0;
+				vol += k ? 1 : -1;
+				vol = vol < 0 ? 0 : vol > VOL_STEPS ? VOL_STEPS : vol;
+				show_val = (float)vol / VOL_STEPS;
+				say(SH_VALUE, now, SHOW_MS);
+			}
+		}
+		if (DOWN(b) && vol_shift[k] && !vol_done[k]) {
+			uint32_t held = now - down_at[b];
+			if (held >= DIST_HOLD_MS) {
+				vol_done[k] = 1;
+				if (k) {
+					dist_post = !dist_post;
+				} else {
+					dist_type = 0;
+					dist_amt = 0;
+					dist_post = 0;
+				}
+				gl_dist(dist_type, dist_amt, dist_post);
+				say(SH_DIST, now, 1500);
+			} else if (held >= TAP_MS) {
+				show_val = (float)held / (float)DIST_HOLD_MS;   /* the hold filling up */
+				say(SH_HOLD, now, 100);
+			}
+		}
+		if (RELEASED(b) && vol_shift[k]) {
+			if (!vol_done[k]) {
+				if (k)
+					dist_type = (dist_type + 1) % GD_COUNT;
+				else
+					dist_amt = (dist_amt + 1) % 5;
+				gl_dist(dist_type, dist_amt, dist_post);
+				say(SH_DIST, now, 1500);
+			}
+			vol_shift[k] = 0;
+		}
 	}
 
 	/* ---- faders ---- */
@@ -460,6 +506,26 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		out->led_p[show_dir > 0 ? k : 3 - k] = 255;
 		break;
 	}
+	case SH_DIST: {
+		/* both positions: the type on the track row (the number picture), the amount as a
+		 * bar on the play row, filling from the •• end before the effects and from the PLAY
+		 * end after them (off: a dim LED at that end) */
+		index_pic(out->led_t, dist_type, now);
+		uint8_t p[4];
+		if (dist_amt)
+			bar(p, (float)dist_amt * 0.25f);
+		else {
+			memset(p, 0, 4);
+			p[0] = 30;
+		}
+		for (int i = 0; i < 4; i++)
+			out->led_p[i] = dist_post ? p[3 - i] : p[i];
+		break;
+	}
+	case SH_HOLD:                                   /* •• + VOL held: filling toward 3 s */
+		index_pic(out->led_t, dist_type, now);
+		bar(out->led_p, show_val);
+		break;
 	case SH_FLASH: {                                /* saved: three flashes on all eight */
 		uint8_t on = ((now - flash_t0) / 150u) & 1u ? 0 : 255;
 		memset(out->led_p, on, 4);
@@ -485,5 +551,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->page = (uint8_t)page;
 	out->channel = (uint8_t)chan;
 	out->piece = (uint8_t)piece;
+	out->dist_type = (uint8_t)dist_type;
+	out->dist_amt = (uint8_t)dist_amt;
+	out->dist_post = (uint8_t)dist_post;
 	prev_btn = btn;
 }
