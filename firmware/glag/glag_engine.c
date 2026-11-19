@@ -1039,6 +1039,25 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		c->glow = vel;
 		break;
 	}
+	case GV_STRINGS: {
+		/* a chord struck: on the bar, then (ACTIVITY) on the half bar, the beat, or eighths;
+		 * the chord's tones together, each below C5 */
+		int div = act < 0.3f ? 16 : act < 0.55f ? 8 : act < 0.8f ? 4 : 2;
+		if (step % (uint32_t)div)
+			break;
+		int top = base + 9 < 71 ? base + 9 : 71;
+		for (int k = 0; k < 3 && k < chord_n; k++) {
+			nvoice *v = &c->v[k];
+			int note = place(chord_pc[k], (float)(base + 4 * k), base - 3, top);
+			v->note = ivl_note(ch, (float)note);
+			v->menv = v->stage == ST_IDLE ? 0.0f : v->env;
+			v->stage = ST_ATT;
+			v->vel = ((step & 15) == 0 ? 0.9f : 0.7f) + 0.1f * rnd();
+			c->cyc[k] = 0.0f;
+		}
+		c->glow = 0.8f;
+		break;
+	}
 	case GV_SEQ: {
 		/* an analog arp: a saw through a resonant filter that snaps open on each note. Its
 		 * patterns (CHARACTER): octave bounce, broken thirds, a gallop, a wandering walk */
@@ -1151,19 +1170,64 @@ static void chan_control(chan *c, int ch, float dt)
 		}
 		c->glow *= 0.95f;
 		break;
+	case GV_STRINGS: {
+		/* Juno strings as chords, never held drones: each struck chord rises in 20 ms, falls in
+		 * 50 ms to 60 %, holds a moment (LENGTH: 0.1 to 0.8 s), then rings away slowly
+		 * (LENGTH: 1.5 to 5 s). One saw a side, the Juno's chorus swaying them. */
+		const float chr = P.ch[ch][CP_CHAR];
+		const float gate = 0.1f + 0.7f * len, rel = 1.5f + 3.5f * len;
+		c->lfo1 += sub_inc(0.5f + 0.35f * chr, speed);
+		float depth = (0.0016f + 0.0034f * chr) * sin_u(c->lfo1);
+		for (int i = 0; i < 3; i++) {
+			nvoice *v = &c->v[i];
+			float e;
+			if (v->stage == ST_IDLE) {
+				e = 0.0f;
+			} else {
+				float t = (c->cyc[i] += sdt);
+				if (t < 0.02f)                           /* from where it was: a re-strike never dips */
+					e = v->menv + (1.0f - v->menv) * t / 0.02f;
+				else if (t < 0.07f)
+					e = 1.0f - 0.4f * (t - 0.02f) / 0.05f;
+				else if (t < gate)
+					e = 0.6f;
+				else {
+					v->env *= dcoef(rel, sdt);                 /* the long release */
+					e = v->env;
+					if (e < 0.0005f) {
+						v->stage = ST_IDLE;
+						e = 0.0f;
+					}
+				}
+				if (t < gate)
+					v->env = e;
+			}
+			float hz0 = mtof(v->note) * speed * pbend;
+			v->ic = hz_inc(hz0 * (1.0f + depth));
+			v->ic2 = hz_inc(hz0 / (1.0f + depth));
+			/* the filter: TONE, a little more while the note is fresh, half keyboard tracking */
+			float fc = (300.0f + 3800.0f * tone * tone * (0.6f + 0.4f * e)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f));
+			v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.8f);
+			v->idx = v->iinc = 0.0f;
+			float a = e * v->vel * 0.72f;
+			v->ainc = (a - v->amp) * (1.0f / VSUB);
+			if (a <= 0.0f && v->amp < 0.0002f)
+				v->amp = v->ainc = 0.0f;
+		}
+		break;
+	}
 	case GV_PAD:
-	case GV_STRINGS:
 	case GV_SUPER:
 	case GV_SWELL: {
 		/* the swell is a pad that breathes like brass: a slow rise, a hold, a long fall, its
 		 * brightness following its loudness, vibrato arriving late */
-		const int an = c->voice == GV_STRINGS || c->voice == GV_SUPER;   /* the analog ones: swell-shaped */
+		const int an = c->voice == GV_SUPER;                              /* super: swell-shaped */
 		const int sw = c->voice == GV_SWELL || an;
 		const float chr = P.ch[ch][CP_CHAR];
 		int nv = 2 + stepped(P.ch[ch][CP_ACTIVITY], 2);   /* 2 or 3 voices breathing */
-		float cycle = c->voice == GV_STRINGS ? 2.5f + 9.0f * len : sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
+		float cycle = sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
 		if (an)
-			c->lfo1 += sub_inc(c->voice == GV_STRINGS ? 0.5f + 0.35f * chr : 0.37f, speed);   /* chorus I 0.5 Hz .. II 0.85 */
+			c->lfo1 += sub_inc(0.37f, speed);
 		float ratio = sw ? 1.0f : (chr < 0.5f ? 1.0f : 2.0f);
 		float detune = sw ? 0.0f : 0.12f * chr;
 		float spread = fexp2((4.0f + 14.0f * chr) * (1.0f / 1200.0f));   /* swell's second carrier */
@@ -1198,24 +1262,6 @@ static void chan_control(chan *c, int ch, float dt)
 			float x = c->cyc[i], e, idx, vib = 1.0f;
 			if (v->stage == ST_IDLE)
 				e = 0.0f;
-			else if (c->voice == GV_STRINGS) {
-				/* a Juno-ish ADSR, in seconds: ~0.3 s up, down to 0.8 over 0.4 s, held, ~0.9 s
-				 * away (each eased, never a step) */
-				float t = x * cycle * PAD_FACTOR[i], T = cycle * PAD_FACTOR[i];
-				float at = 0.3f, rl = 0.9f;
-				if (t < at) {
-					float u = t / at;
-					e = u * u * (3.0f - 2.0f * u);
-				} else if (t < at + 0.4f) {
-					float u = (t - at) / 0.4f;
-					e = 1.0f - 0.2f * u * u * (3.0f - 2.0f * u);
-				} else
-					e = 0.8f;
-				if (t > T - rl) {
-					float u = clampf((T - t) / rl, 0.0f, 1.0f);
-					e *= u * u * (3.0f - 2.0f * u);
-				}
-			}
 			else if (!sw) {
 				float s = sin_u((uint32_t)(x * 2147483648.0f));
 				e = s * s;
@@ -1261,10 +1307,12 @@ static void chan_control(chan *c, int ch, float dt)
 					v->ic4 = hz_inc(hz0 / d2);
 				}
 				/* half keyboard tracking (a Juno's KYBD): high notes keep their brightness */
-				float fc = (250.0f + (sup ? 6500.0f : 4500.0f) * tone * tone * (0.35f + 0.65f * e)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f));
+				/* a quarter keyboard tracking and a ceiling, so its top is bright, not shrill */
+				float fc = (250.0f + 6500.0f * tone * tone * (0.35f + 0.65f * e)) * fexp2((v->note - 60.0f) * (1.0f / 48.0f));
+				fc = fc > 5200.0f ? 5200.0f : fc;
 				v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.9f);
 				v->idx = v->iinc = 0.0f;
-				float a = e * v->vel * (sup ? 0.58f : 0.79f);   /* level with the pad */
+				float a = e * v->vel * 0.58f * clampf(1.0f - (v->note - 72.0f) * 0.025f, 0.6f, 1.0f);   /* level with the pad; a little less up high */
 				v->ainc = (a - v->amp) * (1.0f / VSUB);
 				if (a <= 0.0f && v->amp < 0.0002f)
 					v->amp = v->ainc = 0.0f;
@@ -1315,9 +1363,11 @@ static void chan_control(chan *c, int ch, float dt)
 				v->fk = clampf(2.0f * sin_u((uint32_t)(clampf(fc / VSR, 0.0f, 0.16f) * 2147483648.0f)), 0.01f, 0.9f);
 				v->fq = 1.1f;                          /* resonance: a touch */
 			} else {
-				float fc = (900.0f + 5000.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 24.0f));
+				/* softer up high: a quarter tracking with a ceiling, and less triangle above C5 */
+				float fc = (900.0f + 4000.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 48.0f));
+				fc = fc > 3500.0f ? 3500.0f : fc;
 				v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.9f);
-				v->fq = P.ch[ch][CP_CHAR];
+				v->fq = P.ch[ch][CP_CHAR] * clampf(1.0f - (v->note - 72.0f) * (1.0f / 24.0f), 0.2f, 1.0f);
 			}
 		}
 		break;
@@ -2826,6 +2876,46 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{30, 35, 60, 25, 10, 55, 40, 20, 70}, {30, 55, 50, 75, 20, 65, 60, 60, 53},
 	  {40, 45, 55, 50, 35, 55, 50, 40, 60}, {35, 45, 55, 75, 40, 60, 55, 20, 50}},
 	 {46, 40, 65, 50, 5, 0, 35, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 2, 1}, 12, {3, 3, 3, 2}, 12, 0, {0, 1u << 2, 0, 0}},
+	/* ---- audition only: the new voices, after the artists we keep coming back to ---- */
+	/* Eno (Thursday Afternoon, Music for Airports): a slow sparse Glow up high, rare Juno chords
+	 * ringing out, a pad, kalimba; Bloom and two-bar echoes */
+	{"Thursday", {GV_GLOW, GV_STRINGS, GV_PAD, GV_KALIMBA},
+	 {{30, 35, 85, 75, 40, 70, 40, 15, 71}, {20, 35, 90, 50, 25, 70, 55, 25, 62},
+	  {30, 30, 85, 50, 10, 80, 50, 60, 58}, {30, 45, 60, 75, 45, 60, 60, 50, 54}},
+	 {24, 50, 80, 50, 2, 3, 20, 60}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 0, 1}, 16, {3, 2, 1, 2}, 16, 0, {0, 0, 0, 0}},
+	/* Tangerine Dream (Rubycon, Phaedra): the Seq bouncing octaves low in sixteenths, a slow
+	 * supersaw underneath, Juno chords on the half bar, a drone; its macro on a long rise */
+	{"Rubycon", {GV_SEQ, GV_SUPER, GV_STRINGS, GV_DRONE},
+	 {{88, 45, 35, 25, 35, 40, 40, 0, 63}, {30, 35, 75, 25, 15, 70, 50, 45, 46},
+	  {45, 40, 50, 50, 25, 55, 60, 40, 46}, {40, 40, 60, 25, 10, 60, 50, 0, 42}},
+	 {84, 40, 70, 50, 4, 2, 30, 65}, {GR_HALL, GS_OCTAVE, 0}, {3, 1, 1, 0}, 12, {4, 2, 2, 1}, 12,
+	 2u << 5, {0, 0, 0, 0}},
+	/* Autechre (Amber, Tri Repetae): a melancholy Glow, the Seq walking in eighths, swung
+	 * euclidean rings, Juno chords on the beat; ping-pong */
+	{"Repetae", {GV_GLOW, GV_SEQ, GV_PULSE, GV_STRINGS},
+	 {{45, 45, 60, 50, 40, 50, 40, 40, 66}, {70, 40, 40, 50, 35, 40, 60, 100, 60},
+	  {40, 30, 30, 50, 15, 25, 50, 30, 60}, {65, 40, 35, 50, 20, 50, 55, 30, 53}},
+	 {76, 40, 55, 50, 5, 1, 35, 55}, {GR_CHAMBER, GS_OCTAVE, 0}, {2, 2, 1, 1}, 10, {3, 3, 2, 2}, 10,
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	/* Aphex Twin (Avril 14th, SAW): a near-sine Glow an octave up, Juno chords on the bar
+	 * ringing long, a dark pad, tails; reverse swells */
+	{"Avril", {GV_GLOW, GV_STRINGS, GV_PAD, GV_TAILS},
+	 {{50, 40, 65, 75, 30, 55, 45, 0, 62}, {25, 35, 85, 50, 20, 60, 55, 20, 51},
+	  {30, 30, 85, 25, 10, 80, 50, 60, 47}, {30, 40, 70, 50, 45, 65, 60, 50, 42}},
+	 {36, 40, 70, 50, 0, 0, 30, 55}, {GR_HALL, GS_OCTAVE, 2}, {1, 2, 0, 2}, 14, {2, 3, 1, 3}, 14,
+	 GL_FLAG_REVERSE, {0, 0, 0, 0}},
+	/* Nyman and Reich: chugging Juno chords on every eighth, the Seq in broken thirds in
+	 * sixteenths, a Glow a third above interlocking, a bass on the fifth */
+	{"Chamber Pulse", {GV_STRINGS, GV_SEQ, GV_GLOW, GV_BASS},
+	 {{88, 45, 25, 50, 10, 35, 40, 40, 58}, {88, 45, 30, 50, 15, 30, 60, 33, 46},
+	  {60, 40, 45, 75, 20, 40, 55, 40, 44}, {35, 30, 70, 50, 0, 20, 50, 70, 56}},
+	 {98, 20, 40, 50, 7, 5, 60, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {0, 1, 1, 0}, 8, {1, 2, 2, 1}, 8, 0, {0, 0, 1u << 2, 0}},
+	/* lofi, after Study Lamp: Juno chords on the beat, a Glow, a round bass, boom-bap drums
+	 * swung hard, the DJ filter half closed */
+	{"Juno Lamp", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
+	 {{62, 30, 40, 50, 30, 45, 45, 30, 62}, {35, 35, 55, 75, 40, 50, 60, 30, 48},
+	  {70, 15, 55, 50, 0, 10, 50, 20, 66}, {60, 35, 45, 50, 10, 20, 50, 85, 58}},
+	 {56, 35, 40, 36, 10, 1, 70, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 2, 0, 0}, 10, {2, 3, 1, 1}, 10, 0, {0, 0, 0, 0}},
 #endif
 };
 
