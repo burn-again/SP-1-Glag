@@ -34,7 +34,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 | Pulse | a light pulse: soft kick, shaker (its noise made at the full 48 kHz from its own generator, its body at 3-12 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
 | Strings | after a Juno, struck as chords (never held): the chord's tones together below C5, 20 ms attack, 50 ms to 60 %, a short hold (Length 0.1-0.8 s), a long release (1.5-5 s); Activity: bar, half bar, beat, eighths; a PolyBLEP saw per side with the Juno's chorus, two poles tracking the keyboard by half | chorus I toward II |
-| Glow | a sine with a triangle mixed in, through a gentle pole, easing in | sine to triangle |
+| Glow | mostly triangle with a little sine, through a gentle pole that never closes below the note, leaning to the sine above E5 | half to all triangle |
 | Seq | a polysynth arp: saw and square through a gently opening low-pass, across three octaves of the chord | pattern: octave bounce (two octaves), broken thirds, gallop, walk |
 | Super | a supersaw: five saws spread on each chord note, through two poles | spread |
 
@@ -42,7 +42,7 @@ Every channel page reads the same four faders: **character, tone, length, regist
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
 character, which is each voice's own.
 
-**The channel macro.** On a channel or extended page the rocker drives that channel's macro: a slow
+**The channel macro.** On a channel or extended page the rocker drives that channel's macro (on Strings, Seq and Glow it also syncopates their rhythm): a slow
 random glide that pushes the voice's own controls around (tone, character, length, activity) and
 adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as

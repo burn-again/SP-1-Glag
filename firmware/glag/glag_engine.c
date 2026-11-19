@@ -889,6 +889,14 @@ static int deg_semis(int d)
 	return r1 + 12 * (at / n) - r0 - 12 * (chord_deg / n);
 }
 
+/* how much a channel's macro pushes its rhythm off the beat (strings, seq, glow): its depth,
+ * swelling and waning with its glide */
+static float syncopation(int ch)
+{
+	float d = mac_depth[ch];
+	return d <= 0.0f ? 0.0f : clampf(d * (0.55f + 0.45f * mac_u[ch][1]), 0.0f, 1.0f);
+}
+
 /* ---- the sixteenth-note step: every voice's sequencer ---- */
 static void chan_step(chan *c, int ch, uint32_t step)
 {
@@ -969,6 +977,10 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
 		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0};
 		float p = act * act * PMAX[c->voice];
+		if (c->voice == GV_GLOW) {                    /* its macro leans it onto the off-beats */
+			float syn = syncopation(ch);
+			p *= (step & 1u) ? 1.0f + 1.5f * syn : (step & 2u) ? 1.0f : 1.0f - 0.6f * syn;
+		}
 		if (rnd() >= p)
 			break;
 		int note = pick_note(c, base - 5, base + 12, 0.6f);
@@ -1040,29 +1052,52 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		break;
 	}
 	case GV_STRINGS: {
-		/* a chord struck: on the bar, then (ACTIVITY) on the half bar, the beat, or eighths;
-		 * the chord's tones together, each below C5 */
+		/* a chord struck: on the bar, then (ACTIVITY) on the half bar, the beat, or eighths.
+		 * Its macro adds syncopation: stabs on the off-beat (and the "and" after), some downbeats
+		 * left out, as in dub chords. Each strike voiced afresh: an inversion, sometimes open
+		 * (a tone an octave up), the seventh where there is one, now and then two notes; below C5 */
 		int div = act < 0.3f ? 16 : act < 0.55f ? 8 : act < 0.8f ? 4 : 2;
-		if (step % (uint32_t)div)
+		uint32_t ph = step % (uint32_t)div;
+		float syn = syncopation(ch);
+		int hit = ph == 0u;
+		if (hit && syn > 0.0f && rnd() < 0.35f * syn)
+			hit = 0;
+		if (!hit && syn > 0.0f && div >= 4 &&
+		    ((ph == (uint32_t)div / 2u && rnd() < 0.7f * syn) || (ph == (uint32_t)(3 * div) / 4u && rnd() < 0.3f * syn)))
+			hit = 1;
+		if (!hit)
 			break;
 		int top = base + 9 < 71 ? base + 9 : 71;
-		for (int k = 0; k < 3 && k < chord_n; k++) {
+		int inv = rndi(chord_n), nn = rnd() < 0.15f ? 2 : 3, open = rnd() < 0.3f;
+		for (int k = 0; k < 3; k++) {
 			nvoice *v = &c->v[k];
-			int note = place(chord_pc[k], (float)(base + 4 * k), base - 3, top);
+			if (k >= nn || k >= chord_n)
+				continue;
+			int idx = (k + inv) % chord_n;
+			if (chord_n == 4 && k == 2 && rnd() < 0.4f)
+				idx = 3;                                 /* the seventh for colour */
+			int note = place(chord_pc[idx], (float)(base + 4 * k), base - 3, top);
+			if (open && k == nn - 1 && note + 12 <= 71)
+				note += 12;
 			v->note = ivl_note(ch, (float)note);
 			v->menv = v->stage == ST_IDLE ? 0.0f : v->env;
 			v->stage = ST_ATT;
-			v->vel = ((step & 15) == 0 ? 0.9f : 0.7f) + 0.1f * rnd();
+			v->vel = (ph == 0u ? 0.85f : 0.7f) + 0.2f * rnd();
 			c->cyc[k] = 0.0f;
 		}
 		c->glow = 0.8f;
 		break;
 	}
 	case GV_SEQ: {
-		/* an analog arp: a saw through a resonant filter that snaps open on each note. Its
-		 * patterns (CHARACTER): octave bounce, broken thirds, a gallop, a wandering walk */
+		/* an analog arp. Its patterns (CHARACTER): octave bounce, broken thirds, a gallop, a
+		 * wandering walk. Its macro syncopates: rests on the grid, notes pushed onto the
+		 * sixteenth between */
 		int div = act < 0.25f ? 8 : act < 0.5f ? 4 : act < 0.65f ? 3 : act < 0.8f ? 2 : 1;
-		if (step % (uint32_t)div)
+		float syn = syncopation(ch);
+		if (step % (uint32_t)div) {
+			if (!(syn > 0.0f && div == 2 && rnd() < 0.3f * syn))
+				break;
+		} else if (syn > 0.0f && rnd() < 0.25f * syn)
 			break;
 		/* three octaves of the chord, from an octave below home */
 		int notes[12], n = 0;
@@ -1363,11 +1398,19 @@ static void chan_control(chan *c, int ch, float dt)
 				v->fk = clampf(2.0f * sin_u((uint32_t)(clampf(fc / VSR, 0.0f, 0.16f) * 2147483648.0f)), 0.01f, 0.9f);
 				v->fq = 1.1f;                          /* resonance: a touch */
 			} else {
-				/* softer up high: a quarter tracking with a ceiling, and less triangle above C5 */
-				float fc = (900.0f + 4000.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 48.0f));
-				fc = fc > 3500.0f ? 3500.0f : fc;
+				/* mostly triangle (CHARACTER: from half to all), a darker filter that closes a little
+				 * as notes climb past C5, and a little quieter up there: soft, never shrill */
+				float fc = (800.0f + 2400.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 48.0f));
+				if (v->note > 72.0f)
+					fc *= fexp2(-(v->note - 72.0f) * (1.0f / 18.0f));
+				fc = fc > 2600.0f ? 2600.0f : fc;
+				float f0 = mtof(v->note);                  /* never below the note itself */
+				fc = fc < 1.4f * f0 ? 1.4f * f0 : fc;
 				v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.9f);
-				v->fq = P.ch[ch][CP_CHAR] * clampf(1.0f - (v->note - 72.0f) * (1.0f / 24.0f), 0.2f, 1.0f);
+				/* the triangle's harmonics are what turn shrill up high: above E5 it leans to the
+				 * sine, by A6 nearly all sine */
+				v->fq = (0.5f + 0.5f * P.ch[ch][CP_CHAR]) * clampf(1.0f - (v->note - 76.0f) * (1.0f / 18.0f), 0.15f, 1.0f);
+				v->hold = clampf(1.0f - (v->note - 72.0f) * 0.03f, 0.55f, 1.0f);
 			}
 		}
 		break;
@@ -1749,14 +1792,14 @@ static void nv_render_glow(nvoice *v, float *out)
 	uint32_t pc = v->pc;
 	const uint32_t ic = v->ic;
 	float amp = v->amp, ai = v->ainc, f1 = v->f1;
-	const float k = v->fk, m = v->fq;
+	const float k = v->fk, m = v->fq, g = v->hold > 0.0f ? v->hold : 1.0f;
 	for (uint32_t i = 0; i < VSUB; i++) {
 		float t = (float)pc * (1.0f / 4294967296.0f);
 		float tri = 1.0f - 4.0f * (t > 0.5f ? t - 0.5f : 0.5f - t);
 		float x = sin_u(pc) * (1.0f - m) + tri * m;
 		pc += ic;
 		f1 += k * (x - f1);
-		out[i] += f1 * amp;
+		out[i] += f1 * amp * g;
 		amp += ai;
 	}
 	v->pc = pc; v->amp = amp; v->f1 = f1;
@@ -2916,6 +2959,58 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{62, 30, 40, 50, 30, 45, 45, 30, 62}, {35, 35, 55, 75, 40, 50, 60, 30, 48},
 	  {70, 15, 55, 50, 0, 10, 50, 20, 66}, {60, 35, 45, 50, 10, 20, 50, 85, 58}},
 	 {56, 35, 40, 36, 10, 1, 70, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 2, 0, 0}, 10, {2, 3, 1, 1}, 10, 0, {0, 0, 0, 0}},
+	/* ---- audition only: more uses for the new voices ---- */
+	/* dub techno: Juno chord stabs syncopated by their macro, thrown into ping-pong echoes, a
+	 * deep bass, a soft four-on-the-floor, a dark pad */
+	{"Dub Stabs", {GV_STRINGS, GV_BASS, GV_PULSE, GV_PAD},
+	 {{65, 30, 15, 50, 65, 45, 50, 40, 60}, {30, 20, 70, 50, 0, 15, 50, 30, 58},
+	  {80, 30, 25, 50, 5, 20, 50, 56, 48}, {25, 25, 85, 25, 15, 70, 50, 60, 38}},
+	 {100, 60, 55, 50, 5, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {3, 0, 0, 1}, 8, {4, 1, 1, 2}, 8,
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	/* synthwave: a supersaw bed, the Seq bouncing octaves in sixteenths, a Glow lead, four on
+	 * the floor with a snare on 2 and 4 */
+	{"Outrun", {GV_SUPER, GV_SEQ, GV_GLOW, GV_PULSE},
+	 {{35, 45, 70, 50, 15, 55, 50, 55, 63}, {90, 50, 35, 25, 25, 35, 45, 0, 77},
+	  {50, 50, 55, 75, 35, 50, 60, 70, 69}, {80, 45, 25, 50, 5, 15, 50, 56, 74}},
+	 {80, 35, 55, 50, 9, 5, 45, 45}, {GR_HALL, GS_OCTAVE, 0}, {1, 2, 2, 0}, 8, {2, 3, 3, 1}, 8, 0, {0, 0, 0, 0}},
+	/* Vangelis (Blade Runner): a low brassy supersaw, a Glow lead with vibrato above, high
+	 * bells, rare Juno chords; a long hall */
+	{"Tears in Rain", {GV_SUPER, GV_GLOW, GV_BELLS, GV_STRINGS},
+	 {{30, 50, 80, 25, 20, 75, 50, 60, 55}, {40, 50, 70, 75, 45, 70, 55, 90, 55},
+	  {30, 45, 70, 75, 40, 70, 40, 75, 42}, {15, 40, 85, 50, 25, 65, 60, 50, 46}},
+	 {40, 50, 88, 50, 2, 5, 25, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 0, 1}, 14, {3, 3, 1, 2}, 14, 0, {0, 0, 0, 0}},
+	/* Boards of Canada: wide Juno chords (chorus II) on the bar, a Glow, soft swung rings, a
+	 * bass; with vinyl and its warble */
+	{"Hazy Kodak", {GV_STRINGS, GV_GLOW, GV_PULSE, GV_BASS},
+	 {{30, 30, 70, 50, 25, 55, 50, 100, 65}, {40, 40, 60, 50, 40, 55, 60, 70, 54},
+	  {45, 30, 35, 50, 10, 20, 50, 35, 50}, {25, 20, 80, 50, 0, 15, 50, 40, 61}},
+	 {62, 35, 55, 40, 4, 1, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 2, 1, 0}, 12, {3, 3, 2, 1}, 12, 0, {0, 0, 0, 0}},
+	/* Jean-Michel Jarre (Oxygene): the Seq bouncing, Juno chords on the half bar, a supersaw
+	 * swelling, soft euclidean rings; key travel in lifts */
+	{"Oxygen", {GV_SEQ, GV_STRINGS, GV_SUPER, GV_PULSE},
+	 {{85, 45, 35, 50, 35, 45, 40, 0, 62}, {45, 45, 60, 50, 25, 60, 60, 60, 51},
+	  {30, 40, 75, 50, 20, 70, 50, 40, 46}, {40, 35, 30, 50, 15, 25, 50, 25, 51}},
+	 {92, 40, 65, 50, 0, 5, 40, 60}, {GR_HALL, GS_OCTAVE, 0}, {2, 1, 1, 0}, 10, {3, 2, 2, 1}, 10,
+	 GL_FLAG_PINGPONG | (2u << 2), {0, 0, 0, 0}},
+	/* ambient techno (after Gas): a soft four-on-the-floor kick, dark Juno chords off the beat,
+	 * a pad and a drone, all in a foggy Bloom */
+	{"Fog Machine", {GV_PULSE, GV_STRINGS, GV_PAD, GV_DRONE},
+	 {{80, 20, 30, 50, 10, 45, 50, 53, 56}, {60, 25, 25, 50, 40, 60, 55, 40, 62},
+	  {25, 25, 90, 50, 10, 85, 50, 60, 49}, {35, 30, 70, 25, 10, 70, 50, 0, 45}},
+	 {98, 40, 75, 42, 7, 5, 20, 55}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 4, 1, 0}, 8, {1, 4, 2, 1}, 8, 0, {0, 0, 0, 0}},
+	/* minimal (after Glass and Reich): two Glows a third apart in eighths, the Seq in broken
+	 * thirds, Juno chords on the bar; one key, slowly turning */
+	{"Glass Tower", {GV_GLOW, GV_GLOW, GV_SEQ, GV_STRINGS},
+	 {{95, 45, 40, 75, 15, 40, 35, 60, 69}, {95, 45, 40, 75, 15, 40, 65, 60, 60},
+	  {90, 45, 30, 50, 15, 35, 50, 33, 72}, {25, 40, 70, 50, 15, 55, 50, 40, 63}},
+	 {92, 20, 45, 50, 2, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 1, 0}, 8, {2, 2, 2, 1}, 8, 0, {0, 1u << 2, 0, 0}},
+	/* a slow space: a supersaw two octaves down to one, a Glow far above, Juno chords ringing
+	 * long, gongs; reverse swells, macros on a long rise */
+	{"Low Orbit", {GV_SUPER, GV_GLOW, GV_STRINGS, GV_GONG},
+	 {{30, 40, 80, 25, 15, 75, 50, 50, 68}, {30, 45, 75, 100, 45, 70, 60, 60, 55},
+	  {15, 35, 90, 25, 25, 70, 45, 30, 57}, {30, 40, 80, 25, 20, 75, 50, 60, 60}},
+	 {20, 45, 85, 50, 1, 2, 15, 75}, {GR_BLOOM, GS_OCTAVE, 4}, {3, 2, 1, 1}, 20, {4, 3, 2, 2}, 20,
+	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
 #endif
 };
 
