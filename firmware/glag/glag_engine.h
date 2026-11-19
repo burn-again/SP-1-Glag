@@ -78,7 +78,9 @@ extern const char *const GL_MODE_NAME[GL_NMODES];
 enum gl_reverb { GR_HALL, GR_CHAMBER, GR_SHIMMER, GR_BLOOM, GR_COUNT };
 enum gl_shimmer { GS_OCTAVE, GS_FIFTH, GS_SEVENTH, GS_COUNT };
 #define GL_NECHO 5                      /* a dotted quarter, a half, a dotted half, a bar, two bars */
-enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_NSP = 4 };
+enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_NSP = 4 };
+#define GL_FLAG_REVERSE 1u              /* space[GL_SP_FLAGS]: reverse swells, ping-pong echo */
+#define GL_FLAG_PINGPONG 2u
 extern const char *const GL_REVERB_NAME[GR_COUNT];
 extern const char *const GL_SHIMMER_NAME[GS_COUNT];
 extern const char *const GL_ECHO_NAME[GL_NECHO];
@@ -122,7 +124,7 @@ void gl_macro(int ch, float depth, float period_s);
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */
 enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW_SHAPE, GW_PINGPONG,
-                     GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF };
+                     GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF, GW_FORM_KIND };
 void gl_world(int what, float v);
 
 /* ---- audio thread ---- */

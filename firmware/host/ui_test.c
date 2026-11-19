@@ -156,6 +156,14 @@ int main(void)
 	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_HALL, "Garden starts with the Hall");
 	down(GB_FN); tap(GB_T2); up(GB_FN);
 	CHECK(out.page == PG_HARMONY && glui_patch()->space[GL_SP_REVERB] == GR_CHAMBER, "•• + T2 on HARMONY: Chamber, and stays on HARMONY");
+	{
+		unsigned f0 = glui_patch()->space[GL_SP_FLAGS] & GL_FLAG_REVERSE;
+		down(GB_FN); tap(GB_T2); up(GB_FN); run(100);
+		CHECK((glui_patch()->space[GL_SP_FLAGS] & GL_FLAG_REVERSE) != f0 && glui_patch()->space[GL_SP_REVERB] == GR_CHAMBER,
+		      "•• + T2 again on Chamber: reverse swells toggle");
+		down(GB_FN); tap(GB_T2); up(GB_FN); run(100);
+		CHECK((glui_patch()->space[GL_SP_FLAGS] & GL_FLAG_REVERSE) == f0, "and again: back");
+	}
 	CHECK(out.led_t[1] == 255 && out.led_t[0] == 0, "the track row shows the reverb");
 	down(GB_FN); tap(GB_T3); up(GB_FN);
 	CHECK(glui_patch()->space[GL_SP_REVERB] == GR_SHIMMER && glui_patch()->space[GL_SP_SHIMMER] == GS_OCTAVE, "•• + T3: Shimmer, an octave");

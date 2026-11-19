@@ -49,6 +49,7 @@ static inline uint32_t hz_inc48(float hz) { return (uint32_t)(hz * 89478.485f); 
 static inline float clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
 /* coefficient that falls by 60 dB over t seconds, applied every `dt` seconds */
 static inline float dcoef(float t, float dt) { return fexp2(-9.9658f * dt / t); }
+static inline float fmodf_pos(float x, float m) { x -= (float)(int)(x / m) * m; return x < 0.0f ? x + m : x; }
 /* log2(x), x > 0: exponent from the bits, a cubic for the mantissa (control rate only) */
 static float flog2(float x)
 {
@@ -209,10 +210,12 @@ static float step_acc;                     /* 16ths */
  * tape's ping-pong, the macros' shape, the key's travel */
 static float w_lvl[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f}, w_act[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
 static float pump_env, pump_tgt, sp_duck = 1.0f;
-static int w_pingpong, key_off, mode_swap;
+static int w_pingpong, key_off, mode_swap, form_fill;
+static float form_space = 1.0f, form_filt = -1.0f;
 static uint8_t mac_shape[GL_NCH];
 static uint32_t step_n;
 static float speed = 1.0f, arc;
+static float pbend = 1.0f;                 /* pitch only (Playworld's pump bends the notes as it ducks) */
 static uint32_t lfo_vib, lfo_arc1, lfo_arc2, lfo_trem;
 static uint8_t playing = 1, frozen, slowing;
 static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 while frozen */
@@ -222,7 +225,7 @@ static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 whil
 static void harmony_update(void)
 {
 	int mode = stepped(P.g[GP_MODE], GL_NMODES);
-	int root = (stepped(P.g[GP_ROOT], 12) + key_off) % 12;
+	int root = (stepped(P.g[GP_ROOT], 12) + key_off + 24) % 12;
 	if (mode_swap) {
 		/* the relative major / minor: the same notes, another home. Where each mode sits in its
 		 * major scale (Ionian .. Aeolian; the pentatonics as major and minor) */
@@ -392,7 +395,7 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 	 * (for its first millisecond it would alias, a grinding edge on every strike) */
 	v->idx = v->iinc = v->idx2 = v->iinc2 = 0.0f;
 	/* and its pitch is the new note's from the first sample (the cap above reads it) */
-	float hz = mtof(note) * speed;
+	float hz = mtof(note) * speed * pbend;
 	v->ic = hz_inc(hz);
 	v->im = hz_inc(hz * ratio);
 	/* the attack starts from where the amplitude is: no click on a retrigger */
@@ -566,7 +569,7 @@ static void nv_perc(nvoice *v, float att, float dec, float mdec, float imax, flo
 /* pitch for this sub-block (slowdown bends everything down together) */
 static void nv_pitch(nvoice *v, float note)
 {
-	float hz = mtof(note) * speed;
+	float hz = mtof(note) * speed * pbend;
 	v->ic = hz_inc(hz);
 	v->im = hz_inc(hz * v->ratio);
 }
@@ -815,6 +818,13 @@ static void pulse_step(chan *c, int ch, uint32_t step)
 			mask |= 8;
 		swing = (chr - 0.5f);
 	}
+	if (form_fill) {
+		/* Playworld's form: the last bar of a build is a fill, hats on every sixteenth and a
+		 * snare roll through its second half, every step in its last beat */
+		mask |= 2 | (s16 & 1 ? 0 : 16);
+		if (s16 >= 8 && (s16 >= 12 || !(s16 & 1)))
+			mask |= 32;
+	}
 	if (!(mask & (1 | 2 | 4 | 32)))
 		return;
 	if ((step & 1u) && swing > 0.01f) {      /* an off sixteenth: late */
@@ -925,7 +935,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
 				break;                       /* no room: this pluck is skipped */
 			c->ks_next = (uint8_t)((k + 1) % KS_N);
-			float hz = mtof((float)note) * speed;
+			float hz = mtof((float)note) * speed * pbend;
 			int len = (int)(VSR / hz);
 			if (len >= KS_LEN)
 				len = KS_LEN - 1;
@@ -1123,7 +1133,7 @@ static void chan_control(chan *c, int ch, float dt)
 			} else
 				idx = tone * 1.3f * (0.5f + 0.5f * e);
 			ramp(v, e * v->vel * (sw ? 0.7f : 1.0f), clampf(idx, 0.0f, 3.0f) * IDX_SCALE);
-			float hz = mtof(v->note + detune * (float)(i - 1)) * speed * vib;
+			float hz = mtof(v->note + detune * (float)(i - 1)) * speed * pbend * vib;
 			v->ic = hz_inc(hz);
 			v->im = hz_inc(hz * ratio);
 			v->ic2 = hz_inc(hz * spread);
@@ -1196,11 +1206,11 @@ static void chan_control(chan *c, int ch, float dt)
 			float a = v->env * v->vel;
 			float fbk = (0.1f + 1.1f * tone) * (0.4f + 0.6f * v->env);
 			/* self-feedback is as rich as a saw: high notes get less, or it folds back */
-			float top = (IDX_TOP / (mtof(v->note) * speed) - 1.0f) * 0.25f;
+			float top = (IDX_TOP / (mtof(v->note) * speed * pbend) - 1.0f) * 0.25f;
 			fbk = fbk < top ? fbk : (top > 0.0f ? top : 0.0f);
 			ramp(v, a, fbk * IDX_SCALE);
 			float vib = 1.0f + (0.0015f + 0.006f * P.ch[ch][CP_CHAR]) * sin_u(lfo_vib + (uint32_t)i * 1000000000u);
-			v->ic = hz_inc(mtof(v->note) * speed * vib);
+			v->ic = hz_inc(mtof(v->note) * speed * pbend * vib);
 		}
 		break;
 	case GV_BASS: {
@@ -1227,7 +1237,7 @@ static void chan_control(chan *c, int ch, float dt)
 		/* TONE: the sub-octave fades out and a little self-modulation (grit) comes in */
 		ramp(v, a, (0.05f + 0.6f * tone) * IDX_SCALE);
 		v->ratio = 1.0f - tone;                                /* sub mix */
-		float hz = mtof(c->glide_note < 0.0f ? (float)base : c->glide_note) * speed;
+		float hz = mtof(c->glide_note < 0.0f ? (float)base : c->glide_note) * speed * pbend;
 		v->ic = hz_inc(hz);
 		v->im = hz_inc(hz * 0.5f);
 		break;
@@ -1277,7 +1287,7 @@ static void chan_control(chan *c, int ch, float dt)
 			float i2 = idx_cap(v, P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE, 14.0f / (v->ratio > 0.1f ? v->ratio : 1.0f));
 			v->iinc2 = (i2 - v->idx2) * (1.0f / VSUB);
 			nv_pitch(v, v->note);
-			v->im2 = hz_inc(mtof(v->note) * speed * 14.0f);
+			v->im2 = hz_inc(mtof(v->note) * speed * pbend * 14.0f);
 		}
 		break;
 	case GV_GONG: {
@@ -1340,7 +1350,7 @@ static void chan_control(chan *c, int ch, float dt)
 			                                       1.0f + 2.0f * fbn));
 			v->bend *= dcoef(0.15f, sdt);
 			float vib = 1.0f + 0.004f * sin_u(lfo_vib + (uint32_t)k * 0x40000000u);
-			float hz = mtof(v->note + v->bend) * speed * vib;
+			float hz = mtof(v->note + v->bend) * speed * pbend * vib;
 			/* the buzz is a self-modulated modulator, as rich as a saw: less of it up high,
 			 * where its harmonics would fold back */
 			v->idx2 = fbk * clampf((3000.0f - hz) * (1.0f / 2200.0f), 0.1f, 1.0f);
@@ -1960,6 +1970,7 @@ static void control(float dt)
 		dist_setup();
 	slowing = cmd_slow;
 	macro_tick(dt);
+	world_tick();
 	form_tick(dt);
 	key_tick(dt);
 	autof_tick();
@@ -2086,7 +2097,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		const float sk = VOICE_HALF ? 1.0f : 0.5f;
 		int pulses = 0;
 		const float pg = pump_gain(dt, gl_tempo_bpm(P.g[GP_TEMPO]) * speed);   /* Playworld's pump */
-		sp_duck = pg;
+		sp_duck = pg * form_space;
 		for (int c = 0; c < GL_NCH; c++) {
 			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE ? 1.0f : pg);
 			if (g <= 0.0f)
@@ -2229,6 +2240,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			dist_block(L, GL_SUB, 0);
 			dist_block(R, GL_SUB, 1);
 		}
+		warble_block(L, R, GL_SUB);                  /* Playworld: the vinyl's warble */
 		/* DJ filter, DC blocker, soft clip, out */
 		float a1 = svf_a1, a2 = svf_a2, a3 = svf_a3, k = svf_k, md = svf_mode;
 		float s0l = svf_s[0][0], s1l = svf_s[0][1], s0r = svf_s[1][0], s1r = svf_s[1][1];

@@ -336,6 +336,7 @@ h3.group { margin-top: 18px; }
       <article class="card term"><h3>Chamber<span class="where">•• + T2 on Harmony</span></h3><p>The closest-sounding: the space starts almost with the note, mid-dark, with a gentle movement in it.</p></article>
       <article class="card term"><h3>Shimmer<span class="where">•• + T3 on Harmony</span></h3><p>The tail climbs: what rings is fed back a step higher, again and again, as in the shimmer pedals. Tap •• + T3 again to change the step: an octave (open and bright), a fifth, or a minor seventh. Frozen, it rises on and on.</p></article>
       <article class="card term"><h3>Bloom<span class="where">•• + T4 on Harmony</span></h3><p>The farthest away: notes swell into the space late, it is the darkest of the four, and it moves the most.</p></article>
+      <article class="card term"><h3>Reverse swells<span class="where">•• + the chosen reverb's T again</span></h3><p>On Hall, Chamber or Bloom, press its T again with •• held: now and then the space's last moments play backwards, swelling up. Again to turn them off. Saved with the piece. (On Shimmer the second press steps its interval instead.)</p></article>
     </div>
     <h3 class="group">The eight modes</h3>
     <div class="table-wrap">
@@ -592,7 +593,7 @@ const PAGES = {
     play: PLAY, prow: PROW, fn: FN,
     t: (n) => { const R = ["Hall", "Chamber", "Shimmer", "Bloom"][n - 1];
       return [`T${n} · ${R}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: the ${R} reverb.`,
-        n === 3 ? "•• + tap again: Shimmer's interval (octave, fifth, seventh)." : "!•• + tap again: nothing.", "!Held: nothing."]]; } },
+        n === 3 ? "•• + tap again: Shimmer's interval (octave, fifth, seventh)." : `•• + tap again: the ${R}'s reverse swells, on / off.`, "!Held: nothing."]]; } },
   pw: { how: "Planned. Hold PLAY for 2 s on Home to enter; again to leave. What you set here is saved with the piece, and the piece as it plays is saved at power-off and comes back at power-on.", fl: ["FORM", "KEY", "PUMP", "TEX"], tl: ["PING", "REV", "AUTO", "KEY"], led: "outer",
     f1: ["F1 · Form", "plan", ["~Off (one scene) through the piece moving between a sparse intro, full and a breakdown."]],
     f2: ["F2 · Key travel", "plan", ["~Off, then a new key every 8 down to 2 minutes."]],

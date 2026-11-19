@@ -330,8 +330,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			} else if (page == PG_HARMONY) {
 				/* the reverb: T1 Hall, T2 Chamber, T3 Shimmer, T4 Bloom; Shimmer's T again
 				 * steps its interval (octave, fifth, seventh) */
-				if (t == GR_SHIMMER && cur.space[GL_SP_REVERB] == GR_SHIMMER)
+				/* the reverb already chosen, again: Shimmer steps its interval; the others turn
+				 * their reverse swells on or off (saved with the piece) */
+				if (t == cur.space[GL_SP_REVERB] && t == GR_SHIMMER)
 					cur.space[GL_SP_SHIMMER] = (uint8_t)((cur.space[GL_SP_SHIMMER] + 1) % GS_COUNT);
+				else if (t == cur.space[GL_SP_REVERB])
+					cur.space[GL_SP_FLAGS] ^= GL_FLAG_REVERSE;
 				else
 					cur.space[GL_SP_REVERB] = (uint8_t)t;
 				dirty = 1;

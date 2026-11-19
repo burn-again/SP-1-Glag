@@ -75,6 +75,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | Harmony page | •• + PLAY once | F1 root, F2 mode (8), F3 drift (10 s to 4 min per chord), F4 motion |
 | | •• + T1-T4 | the reverb: Hall, Chamber, Shimmer, Bloom (saved with the piece) |
 | | •• + T3 again (on Shimmer) | Shimmer's interval: an octave, a fifth, a minor seventh |
+| | •• + T1, T2 or T4 again | reverse swells on that reverb, on / off (saved with the piece) |
 | Anywhere | •• held + F1-F4 | the four channel levels |
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
