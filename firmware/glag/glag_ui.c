@@ -594,7 +594,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			if (held >= DIST_HOLD_MS) {
 				vol_done[k] = 1;
 				if (k) {
-					dist_post = (dist_post + 1) % 3;   /* before, after, the reverb only */
+					dist_post = (dist_post + 1) % 4;   /* before, after, the reverb only, the drums only */
 				} else {
 					dist_type = 0;
 					dist_amt = 0;
@@ -703,7 +703,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		}
 		for (int i = 0; i < 4; i++)
 			out->led_p[i] = dist_post == 1 ? p[3 - i] : p[i];
-		if (dist_post == 2 && ((now / 250u) & 1u))   /* the reverb only: the bar blinks */
+		if ((dist_post == 2 && ((now / 250u) & 1u)) || (dist_post == 3 && ((now / 90u) & 1u)))   /* the reverb only: the bar blinks; the drums only: fast */
 			memset(out->led_p, 0, 4);
 		break;
 	}

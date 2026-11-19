@@ -404,7 +404,7 @@ h3.group { margin-top: 18px; }
             <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> tap</td><td>Amount: off → 1 → 2 → 3 → 4 → off</td></tr>
             <tr><td class="g"><span class="key">••</span> + <span class="key">VOL+</span> tap</td><td>Type: Chebyshev → Overdrive → Fuzz → Fold → XOR</td></tr>
             <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> held 3 s</td><td>Off, and everything back to default: Chebyshev, off, before the effects</td></tr>
-            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL+</span> held 3 s</td><td>Move it: before the delay and reverb (default), after them, or onto the reverb only, in turn</td></tr>
+            <tr><td class="g"><span class="key">••</span> + <span class="key">VOL+</span> held 3 s</td><td>Move it: before the delay and reverb (default), after them, onto the reverb only, or onto the drums only, in turn</td></tr>
           </tbody>
         </table>
       </div>
@@ -587,8 +587,8 @@ const PAGES = {
     f1: ["F1 · Root", "", ["12 steps, C to B."]], f2: ["F2 · Mode", "", ["Eight: Ionian … pentatonic minor."]],
     f3: ["F3 · Drift", "", ["A new chord every 10 s to 4 min."]], f4: ["F4 · Motion", "", ["The slow tide, and how much the loops evolve."]],
     vol: VOL,
-    ffwd: ["FFWD · rocker up", "free", ["Tap: the echo longer (1/8 … 2 bars); the tape glides there.", "•• + tap: key travel: off, up a fifth, lifts, relative, drops.", "!Held: nothing."]],
-    rwd: ["RWD · rocker down", "free", ["Tap: the echo shorter.", "•• + tap: the macros' shape: glide, bar steps, long rise.", "!Held: nothing."]],
+    ffwd: ["FFWD · rocker up", "free", ["Tap: the echo longer (the string, 1/8 … 2 bars); the tape glides there.", "•• + tap: key travel: off, up a fifth, lifts, relative, drops.", "!Held: nothing."]],
+    rwd: ["RWD · rocker down", "free", ["Tap: the echo shorter, down to the string: one cycle of the chord's root, ringing like a plucked string.", "•• + tap: the macros' shape: glide, bar steps, long rise.", "!Held: nothing."]],
     tled: ["Track LEDs", "", ["A slow chase."]],
     play: PLAY, prow: PROW, fn: FN,
     t: (n) => { const R = ["Hall", "Chamber", "Shimmer", "Bloom"][n - 1];

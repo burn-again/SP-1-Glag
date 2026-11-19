@@ -78,7 +78,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• + T1-T4 | the reverb: Hall, Chamber, Shimmer, Bloom (saved with the piece) |
 | | •• + T3 again (on Shimmer) | Shimmer's interval: an octave, a fifth, a minor seventh |
 | | •• + T1, T2 or T4 again | reverse swells on that reverb, on / off (saved with the piece) |
-| | FFWD / RWD | the echo time longer / shorter: 1/8, 1/8., 1/4, 1/4., 1/2, 1/2., 1 bar, 2 bars (the tape glides there) |
+| | FFWD / RWD | the echo time longer / shorter: the string, 1/8, 1/8., 1/4, 1/4., 1/2, 1/2., 1 bar, 2 bars (the tape glides there). The string: the loop one cycle of the chord's root, fed back hard, ringing like a plucked string |
 | | •• + FFWD | key travel: off, up a fifth, lifts, relative, drops (a move every 3 minutes) |
 | | •• + RWD | the macros' shape: glide, steps on each bar, a long rise |
 | Anywhere | •• held + F1-F4 | the four channel levels |
@@ -96,7 +96,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
 | | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
 | | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |
-| | •• + VOL+ held 3 s | distortion before the delay and reverb (default), after them, or on the reverb only, in turn |
+| | •• + VOL+ held 3 s | distortion before the delay and reverb (default), after them, on the reverb only, or on the drums only (the Pulse, and so its echo and reverb), in turn |
 | | •• held 3 s | power off (Wakes', unchanged; so is the 30 s backstop) |
 
 **Faders pick up.** After a page change a fader does nothing until it reaches the value it would

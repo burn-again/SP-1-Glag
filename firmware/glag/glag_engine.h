@@ -77,7 +77,8 @@ extern const char *const GL_MODE_NAME[GL_NMODES];
 /* The space: which reverb, the shimmer's interval, and the tape echo's length. */
 enum gl_reverb { GR_HALL, GR_CHAMBER, GR_SHIMMER, GR_BLOOM, GR_COUNT };
 enum gl_shimmer { GS_OCTAVE, GS_FIFTH, GS_SEVENTH, GS_COUNT };
-#define GL_NECHO 8                      /* a dotted quarter, a half, a dotted half, a bar, two bars, an eighth, a dotted eighth, a quarter */
+#define GL_NECHO 9                      /* a dotted quarter, a half, a dotted half, a bar, two bars, an eighth, a dotted eighth, a quarter, the string */
+#define GL_ECHO_STRING 8                /* the echo as a plucked string: one cycle of the chord's root */
 enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_NSP = 4 };
 #define GL_FLAG_REVERSE 1u              /* space[GL_SP_FLAGS]: reverse swells, ping-pong echo */
 #define GL_FLAG_PINGPONG 2u
@@ -123,7 +124,8 @@ void gl_slow(int on);                    /* record slowing to 10 BPM over 10 s; 
 void gl_next_chord(void);
 /* Distortion, outside the patch (pieces and randomize leave it alone). amount 0 = off, 1..4.
  * post 0: on the instruments, before the delay and reverb; 1: on everything, after them;
- * 2: on the reverb only (dirty tails, clean instruments). */
+ * 2: on the reverb only (dirty tails, clean instruments); 3: on the drums only (the Pulse, and so
+ * its echo and reverb). */
 enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_FOLD, GD_XOR, GD_COUNT };
 extern const char *const GL_DIST_NAME[GD_COUNT];
 void gl_dist(int type, int amount, int post);
@@ -158,7 +160,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 27                   /* an audition build: eleven more */
+#define GL_NPIECES 32                   /* an audition build: sixteen more */
 #else
 #define GL_NPIECES 16
 #endif

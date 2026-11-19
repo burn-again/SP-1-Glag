@@ -48,10 +48,11 @@ static struct {
 	uint32_t w;
 	int ph;                               /* 24 kHz samples into this 8 kHz one */
 	float acc, len, len_want, fb, mix, lp, hp, wow, l0, r0, l1, r1;
-} tp = {0, 0, 0.0f, 16000.0f, 16000.0f, 0.6f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 bars", "1/8", "1/8.", "1/4"};
-static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.5f, 0.75f, 1.0f};
-const uint8_t GL_ECHO_ORDER[GL_NECHO] = {5, 6, 7, 0, 1, 2, 3, 4};
+	int string;                           /* the echo tuned to the chord's root: a plucked string */
+} tp = {0, 0, 0.0f, 16000.0f, 16000.0f, 0.6f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0};
+const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 bars", "1/8", "1/8.", "1/4", "string"};
+static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.5f, 0.75f, 1.0f, 0.5f};
+const uint8_t GL_ECHO_ORDER[GL_NECHO] = {GL_ECHO_STRING, 5, 6, 7, 0, 1, 2, 3, 4};
 
 static inline float tape_rd(float d)     /* d 8 kHz samples ago, interpolated */
 {
@@ -69,12 +70,16 @@ static inline void tape_tick(float in, float *el, float *er)
 		tp.ph = 0;
 		tp.wow += 0.4f / TAPE_SR;
 		tp.wow -= tp.wow >= 1.0f ? 1.0f : 0.0f;
-		float w = 1.5f * sin_u((uint32_t)(tp.wow * 4294967296.0f));
+		/* the wow, less on a short loop (on the string, a cycle's length, it would detune it) */
+		float wl = tp.len < 400.0f ? tp.len * (1.0f / 400.0f) : 1.0f;
+		float w = 1.5f * wl * sin_u((uint32_t)(tp.wow * 4294967296.0f));
 		float h1 = tape_rd(tp.len + w), h2 = tape_rd((w_pingpong ? 0.5f : 0.75f) * tp.len - w);
-		/* ping-pong (Playworld): only the long head feeds back, so each repeat crosses sides */
-		float y = tp.acc * (1.0f / 3.0f) + tp.fb * (w_pingpong ? h1 : 0.6f * h1 + 0.4f * h2);
-		tp.lp += 0.75f * (y - tp.lp);                     /* darker each pass (~1.8 kHz) */
-		tp.hp += 0.1f * (tp.lp - tp.hp);                  /* and thinner (~140 Hz) */
+		/* ping-pong (Playworld) and the string: only the long head feeds back, so each repeat
+		 * crosses sides (the string: one comb, its other head a fourth above) */
+		int one = w_pingpong || tp.string;
+		float y = tp.acc * (1.0f / 3.0f) + tp.fb * (one ? h1 : 0.6f * h1 + 0.4f * h2);
+		tp.lp += (tp.string ? 0.9f : 0.75f) * (y - tp.lp);   /* darker each pass (~1.8 kHz; the string brighter) */
+		tp.hp += (tp.string ? 0.015f : 0.1f) * (tp.lp - tp.hp);   /* and thinner (~140 Hz; the string keeps its root) */
 		y = tp.lp - tp.hp;
 		y = y / (1.0f + (y > 0.0f ? y : -y) * 0.4f);     /* tape saturation */
 		tp.w++;
@@ -99,6 +104,13 @@ static void tape_derive(float bpm, float dl, int echo)
 	}
 	tp.len_want = clampf(t, 0.1f, 3.9f) * TAPE_SR;
 	tp.fb = 0.45f + 0.4f * dl;
+	tp.string = echo == GL_ECHO_STRING;
+	if (tp.string) {
+		/* Karplus-Strong: one cycle of the chord's root (C3 .. B3) round the loop, fed back hard,
+		 * so whatever goes in rings at that pitch; DELAY sets how long it sustains */
+		tp.len_want = TAPE_SR / mtof((float)(48 + chord_pc[0]));
+		tp.fb = 0.86f + 0.12f * dl;
+	}
 	tp.mix = dl < 0.02f ? 0.0f : 0.25f + 0.5f * dl;
 }
 
@@ -546,6 +558,9 @@ static void space_derive(float bpm)
  * takes the ring and fades in; freezing changes the decay */
 static void space_control(float dt, int freeze_changed)
 {
+	/* the string follows the chord: each new root, the loop retunes (gliding, like a bend) */
+	if (tp.string)
+		tp.len_want = TAPE_SR / mtof((float)(48 + chord_pc[0]));
 	/* the heads glide to a new length like a tape slowing or speeding up: no click, a short swoop */
 	tp.len += (tp.len_want - tp.len) * (1.0f - dcoef(1.6f, dt));
 	int want = P.space[GL_SP_REVERB] % GR_COUNT;

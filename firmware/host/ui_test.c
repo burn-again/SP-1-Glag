@@ -264,7 +264,7 @@ int main(void)
 		for (int k = 0; k < 10; k++) { tap(GB_FFWD); run(100); }
 		CHECK(glui_patch()->space[GL_SP_ECHO] == 4, "FFWD on HARMONY: the echo longer, up to 2 bars (%d)", glui_patch()->space[GL_SP_ECHO]);
 		for (int k = 0; k < 10; k++) { tap(GB_RWD); run(100); }
-		CHECK(glui_patch()->space[GL_SP_ECHO] == 5 && gl_speed > 0.99f, "RWD on HARMONY: shorter, down to an eighth, no slow-down (%d)", glui_patch()->space[GL_SP_ECHO]);
+		CHECK(glui_patch()->space[GL_SP_ECHO] == GL_ECHO_STRING && gl_speed > 0.99f, "RWD on HARMONY: shorter, down to the string, no slow-down (%d)", glui_patch()->space[GL_SP_ECHO]);
 		down(GB_FN); tap(GB_FFWD); run(100); up(GB_FN); run(200);
 		CHECK(GL_FLAG_KEY(glui_patch()->space[GL_SP_FLAGS]) == 1u, "•• + FFWD on HARMONY: key travel, up a fifth");
 		down(GB_FN); tap(GB_RWD); run(100); up(GB_FN); run(200);
@@ -319,6 +319,8 @@ int main(void)
 	CHECK(out.page == pg0, "•• held with VOL is not a •• tap");
 	down(GB_FN); down(GB_VOLUP); run(3200); up(GB_VOLUP); up(GB_FN);
 	CHECK(out.dist_post == 2, "•• + VOL+ held again: on the reverb only");
+	down(GB_FN); down(GB_VOLUP); run(3200); up(GB_VOLUP); up(GB_FN);
+	CHECK(out.dist_post == 3, "and again: on the drums only");
 	down(GB_FN); down(GB_VOLUP); run(3200); up(GB_VOLUP); up(GB_FN);
 	CHECK(out.dist_post == 0, "and again: before the effects");
 	down(GB_FN); down(GB_VOLDN); run(1500);
