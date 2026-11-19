@@ -344,7 +344,7 @@ static int place(int pc, float from, int lo, int hi)
 
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
 /* plucked or struck (bright into the reverb), rather than held */
-static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0,
+static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0,
                                        0, 0, 1, 1};
 static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, 69, 55, 57,
                                       67, 40, 62, 60};
@@ -1030,8 +1030,7 @@ static void ribbon_note(chan *c, int ch, int base)
 	if (!on) {
 		if (!sounding(v))
 			make_room_w(v, 4);
-		float r = rnd();
-		c->glide_note = n + (r < 0.45f ? -(2.0f + (float)rndi(4)) : r < 0.6f ? 2.0f : 0.0f);
+		c->glide_note = n;                      /* a muted horn: it starts on the note */
 		if (v->amp < 0.01f)
 			v->t = 0.0f;
 		v->stage = ST_ATT;
@@ -1513,14 +1512,15 @@ static void chan_control(chan *c, int ch, float dt)
 					v->env = e;
 			}
 			float hz0 = mtof(v->note) * speed * pbend;
-			v->ic = hz_inc(hz0 * (1.0f + depth));
-			v->ic2 = hz_inc(hz0 / (1.0f + depth));
-			/* the filter: TONE, a little more while the note is fresh, half keyboard tracking */
-			/* less fizz than before: the filter lower, opening more on the strike than it stays */
-			float fc = (280.0f + 2900.0f * tone * tone * (0.45f + 0.55f * e)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f));
-			v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.8f);
+			(void)depth;                                /* the chorus does the moving now */
+			v->ic = hz_inc(hz0);
+			/* a 24 dB low-pass (the Juno's), opening a little on the strike: no fizz above it */
+			float fc = (350.0f + 2600.0f * tone * tone * (0.55f + 0.45f * e)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f));
+			fc = clampf(fc, 1.5f * hz0, 5000.0f);
+			v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.01f, 0.8f);
+			v->fq = 0.25f;
 			v->idx = v->iinc = 0.0f;
-			float a = e * v->vel * 0.68f;
+			float a = e * v->vel * 0.9f;
 			v->ainc = (a - v->amp) * (1.0f / VSUB);
 			if (a <= 0.0f && v->amp < 0.0002f)
 				v->amp = v->ainc = 0.0f;
@@ -1677,36 +1677,36 @@ static void chan_control(chan *c, int ch, float dt)
 			} else {
 				/* mostly triangle (CHARACTER: from half to all), a darker filter that closes a little
 				 * as notes climb past C5, and a little quieter up there: soft, never shrill */
-				float fc = (1100.0f + 2600.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 48.0f));
-				if (v->note > 72.0f)
-					fc *= fexp2(-(v->note - 72.0f) * (1.0f / 18.0f));
-				fc = fc > 2600.0f ? 2600.0f : fc;
-				/* never below the note's own harmonics: the low and middle notes keep their third and
-				 * fifth (open, woody), the top closes to just over the note */
-				float f0 = mtof(v->note), fl = clampf(4.0f - (v->note - 60.0f) * (2.6f / 16.0f), 1.4f, 4.0f);
-				fc = fc < fl * f0 ? fl * f0 : fc;
-				v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.9f);
-				/* the triangle's harmonics are what turn shrill up high: above E5 it leans to the
-				 * sine, by A6 nearly all sine */
-				v->fq = (0.5f + 0.5f * P.ch[ch][CP_CHAR]) * clampf(1.0f - (v->note - 76.0f) * (1.0f / 18.0f), 0.15f, 1.0f);
-				v->hold = clampf(1.0f - (v->note - 72.0f) * 0.03f, 0.55f, 1.0f);
+				/* a triangle's third and fifth (1/9, 1/25; CHARACTER and TONE from half to a little
+				 * past them), each faded out as it climbs past 2.5 kHz and gone by 4 kHz, where the
+				 * ear is keenest. And quieter as it climbs past E4, about 0.4 dB a semitone (the
+				 * equal-loudness curves): a high note no longer stands out of the mix */
+				float f0 = mtof(v->note), chr = P.ch[ch][CP_CHAR];
+				float m = (0.5f + 0.5f * chr) * (0.7f + 0.6f * tone);
+				float h3 = clampf((4000.0f - 3.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+				float h5 = clampf((4000.0f - 5.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+				v->fq = m * h3 * (1.0f / 9.0f) * 1.3f;
+				v->fk = m * h5 * (1.0f / 25.0f) * 1.3f;
+				v->hold = fexp2(-clampf(v->note - 64.0f, 0.0f, 36.0f) * (0.4f / 6.0206f));
 			}
 		}
 		break;
 	}
 	case GV_RIBBON: {
-		/* brass to reed (CHARACTER: two saws a few cents apart toward a narrow pulse, nasal as a
-		 * harmonica); a swell in, the filter following it (TONE), then the hand's pressure
-		 * growing: brighter, its vibrato deepening; the ribbon's glide between notes */
+		/* a muted brass (after the CS-80's soft brass): two saws a few cents apart through a
+		 * 24 dB low-pass that sits low, about two to three harmonics up, and opens only a little
+		 * as each note blows in, settling back as it holds (the brass "blat", kept gentle).
+		 * CHARACTER lifts the mute: from nearly closed toward a brighter horn. Legato notes slide
+		 * in a few hundredths of a second; a faint vibrato arrives late in long notes */
 		nvoice *v = &c->v[0];
 		const float chr = P.ch[ch][CP_CHAR];
 		if (c->target_note < 0.0f) {
 			v->ainc = 0.0f;
 			break;
 		}
-		c->glide_note += (c->target_note - c->glide_note) * (1.0f - dcoef(0.5f, sdt));
+		c->glide_note += (c->target_note - c->glide_note) * (1.0f - dcoef(0.12f, sdt));
 		if (v->stage == ST_ATT) {
-			v->env += sdt / (0.1f + 0.3f * len);
+			v->env += sdt / (0.07f + 0.15f * len);
 			if (v->env >= 1.0f) {
 				v->env = 1.0f;
 				v->stage = ST_DEC;
@@ -1714,35 +1714,38 @@ static void chan_control(chan *c, int ch, float dt)
 		} else if (v->stage == ST_DEC && !frozen) {
 			v->hold -= sdt;
 			if (v->hold <= 0.0f) {
-				if (playing && rnd() < 0.3f + 0.35f * eff_activity(ch))
-					ribbon_note(c, ch, base);          /* on, without lifting the hand */
+				if (playing && rnd() < 0.25f + 0.3f * eff_activity(ch))
+					ribbon_note(c, ch, base);          /* on to the next, legato */
 				else
 					v->stage = ST_REL;
 			}
 		} else if (v->stage == ST_REL || (!playing && v->stage != ST_IDLE)) {
 			v->stage = ST_REL;
-			v->env *= dcoef(0.6f + 2.4f * len, sdt);
+			v->env *= dcoef(0.35f + 1.2f * len, sdt);
 			if (v->env < 0.0005f) {
 				v->env = 0.0f;
 				v->stage = ST_IDLE;
 			}
 		}
 		v->t += sdt;
-		float at = v->stage == ST_REL ? 0.0f : clampf((v->t - 0.35f) * (1.0f / 1.4f), 0.0f, 1.0f);
-		c->lfo1 += sub_inc(5.2f, speed);
-		float vib = 1.0f + (0.0008f + (0.004f + 0.003f * chr) * at) * sin_u(c->lfo1);
+		/* the filter's own envelope: up quickly with the breath, back to 60 % over 0.4 s */
+		float fe = v->stage == ST_REL ? v->env : v->t < 0.08f ? v->t * (1.0f / 0.08f) :
+		           0.6f + 0.4f * fexp2(-(v->t - 0.08f) * 3.6f);
+		float late = clampf((v->t - 0.8f) * (1.0f / 1.5f), 0.0f, 1.0f);
+		c->lfo1 += sub_inc(4.8f, speed);
+		float vib = 1.0f + 0.0018f * late * (v->stage == ST_REL ? 0.0f : 1.0f) * sin_u(c->lfo1);
 		float hz = mtof(c->glide_note) * speed * pbend * vib;
-		v->ic = hz_inc(hz * 1.0025f);
-		v->ic2 = hz_inc(hz * (1.0f / 1.0025f));
-		float e = v->env;
-		float fc = (260.0f + 4000.0f * tone * tone) * (0.3f + 0.7f * e) * (1.0f + 0.7f * at) * fexp2((c->glide_note - 60.0f) * (1.0f / 36.0f));
-		fc = clampf(fc, 1.5f * hz, 6000.0f);
-		v->fk = 2.0f * sin_u((uint32_t)(clampf(fc / VSR, 0.0f, 0.2f) * 2147483648.0f));
-		v->fq = 0.95f - 0.4f * chr;                /* the reed is more resonant: nasal */
-		v->idx2 = chr;
-		v->ratio = 0.5f - 0.36f * chr;            /* the pulse's width */
-		v->idx = v->iinc = 0.0f;
-		float a = e * v->vel * 0.5f;
+		v->ic = hz_inc(hz * 1.0017f);
+		v->ic2 = hz_inc(hz * (1.0f / 1.0017f));
+		/* cutoff in harmonics of the note (tracking a little under 1:1), capped low */
+		float harm = (1.3f + 1.2f * chr) + (0.8f + 1.6f * chr + 1.2f * tone) * fe;
+		float fc = hz * harm * fexp2(-(c->glide_note - 60.0f) * (1.0f / 72.0f));
+		float cap = 1400.0f + 1800.0f * chr;
+		cap = cap < 1.6f * hz ? 1.6f * hz : cap;           /* never below the note itself */
+		fc = clampf(fc, 1.2f * hz, cap);
+		v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.005f, 0.8f);   /* 1 - e^(-2 pi fc / sr) */
+		v->fq = 0.35f;                             /* a little resonance: a horn's body */
+		float a = v->env * v->vel * 0.8f;
 		v->ainc = (a - v->amp) * (1.0f / VSUB);
 		if (v->stage == ST_IDLE && v->amp < 0.0002f)
 			v->amp = v->ainc = 0.0f;
@@ -2164,44 +2167,21 @@ static void nv_render_saws(nvoice *v, float *out, int five)
 	v->pc = a; v->pc2 = b; v->pm = c3; v->pc3 = d; v->pc4 = e;
 	v->amp = amp; v->f1 = f1; v->f2 = f2;
 }
-/* strings: a saw each side (the chorus between them), each through two poles of its own */
-static void nv_render_juno(nvoice *v, float *A, float *B)
-{
-	uint32_t a = v->pc, b = v->pc2;
-	const uint32_t ia = v->ic, ib = v->ic2;
-	float amp = v->amp, ai = v->ainc, f1 = v->f1, f2 = v->f2, g1 = v->idx2, g2 = v->menv2;
-	const float k = v->fk;
-	for (uint32_t i = 0; i < VSUB; i++) {
-		float x = blep_saw(a, ia), y = blep_saw(b, ib);
-		a += ia;
-		b += ib;
-		f1 += k * (x - f1);
-		f2 += k * (f1 - f2);
-		g1 += k * (y - g1);
-		g2 += k * (g1 - g2);
-		A[i] += f2 * amp;
-		B[i] += g2 * amp;
-		amp += ai;
-	}
-	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = f1; v->f2 = f2; v->idx2 = g1; v->menv2 = g2;
-}
-/* glow: a sine and a triangle (fq: how much triangle), through a gentle pole */
+/* glow: built from its first three odd harmonics (a triangle's, softened), each weighed
+ * per note (fq: the third's, fk: the fifth's), so nothing above them exists to alias or bite */
 static void nv_render_glow(nvoice *v, float *out)
 {
 	uint32_t pc = v->pc;
 	const uint32_t ic = v->ic;
-	float amp = v->amp, ai = v->ainc, f1 = v->f1;
-	const float k = v->fk, m = v->fq, g = v->hold > 0.0f ? v->hold : 1.0f;
+	float amp = v->amp, ai = v->ainc;
+	const float w3 = v->fq, w5 = v->fk, g = v->hold > 0.0f ? v->hold : 1.0f;
 	for (uint32_t i = 0; i < VSUB; i++) {
-		float t = (float)pc * (1.0f / 4294967296.0f);
-		float tri = 1.0f - 4.0f * (t > 0.5f ? t - 0.5f : 0.5f - t);
-		float x = sin_u(pc) * (1.0f - m) + tri * m;
+		float x = sin_u(pc) - w3 * sin_u(3u * pc) + w5 * sin_u(5u * pc);
 		pc += ic;
-		f1 += k * (x - f1);
-		out[i] += f1 * amp * g;
+		out[i] += x * amp * g;
 		amp += ai;
 	}
-	v->pc = pc; v->amp = amp; v->f1 = f1;
+	v->pc = pc; v->amp = amp;
 }
 /* seq: a saw through a resonant state-variable low-pass */
 static void nv_render_seq(nvoice *v, float *out)
@@ -2224,27 +2204,88 @@ static void nv_render_seq(nvoice *v, float *out)
 	v->pc = pc; v->amp = amp; v->f1 = lo; v->f2 = bp;
 }
 
-/* ribbon: two saws a few cents apart, or a narrow pulse (idx2: how much), through a resonant
- * state-variable low-pass */
+/* a 24 dB low-pass: four one-poles with a little feedback (q) from the last; its states in
+ * f1, f2, idx2, menv2 */
+#define LADDER(x, y)                                     \
+	do {                                                 \
+		float u_ = (x) - q * l4;                         \
+		l1 += g * (u_ - l1);                             \
+		l2 += g * (l1 - l2);                             \
+		l3 += g * (l2 - l3);                             \
+		l4 += g * (l3 - l4);                             \
+		(y) = l4 * (1.0f + 0.6f * q);                    \
+	} while (0)
+/* ribbon: two saws a few cents apart through the ladder */
 static void nv_render_ribbon(nvoice *v, float *out)
 {
 	uint32_t a = v->pc, b = v->pc2;
-	const uint32_t ia = v->ic, ib = v->ic2, w = (uint32_t)(v->ratio * 4294967296.0f);
-	float amp = v->amp, ai = v->ainc, lo = v->f1, bp = v->f2;
-	const float f = v->fk, q = v->fq, r = v->idx2;
+	const uint32_t ia = v->ic, ib = v->ic2;
+	float amp = v->amp, ai = v->ainc, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
+	const float g = v->fk, q = v->fq;
 	for (uint32_t i = 0; i < VSUB; i++) {
-		float sa = blep_saw(a, ia);
-		float x = (0.5f * (sa + blep_saw(b, ib))) * (1.0f - r) + 0.6f * r * (sa - blep_saw(a + w, ia));
+		float x = 0.5f * (blep_saw(a, ia) + blep_saw(b, ib)), y;
 		a += ia;
 		b += ib;
-		lo += f * bp;
-		float hi = x - lo - q * bp;
-		bp += f * hi;
-		bp = clampf(bp, -4.0f, 4.0f);
-		out[i] += lo * amp;
+		LADDER(x, y);
+		out[i] += y * amp;
 		amp += ai;
 	}
-	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = lo; v->f2 = bp;
+	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = l1; v->f2 = l2; v->idx2 = l3; v->menv2 = l4;
+}
+/* strings: one saw a note through the ladder (the width comes from the chorus after) */
+static void nv_render_str(nvoice *v, float *out)
+{
+	uint32_t a = v->pc;
+	const uint32_t ia = v->ic;
+	float amp = v->amp, ai = v->ainc, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
+	const float g = v->fk, q = v->fq;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = blep_saw(a, ia), y;
+		a += ia;
+		LADDER(x, y);
+		out[i] += y * amp;
+		amp += ai;
+	}
+	v->pc = a; v->amp = amp; v->f1 = l1; v->f2 = l2; v->idx2 = l3; v->menv2 = l4;
+}
+/* the Juno's chorus, on the strings channel: the mono strings through a short delay swept by a
+ * triangle LFO (I: ~0.5 Hz, toward II: ~0.86 Hz and deeper), about 1.7 to 5.4 ms, the left and
+ * right taps swept in opposite directions, each mixed with the dry. A gentle high-pass (about
+ * 150 Hz) first, as the Juno's, so the chords never turn thick. The delay line is the channel's
+ * string buffer, which the strings do not otherwise use */
+static inline int16_t to16(float x);
+static void juno_chorus(chan *c, int ch, float *A, float *B)
+{
+	int16_t *rb = c->ks;                         /* 256 samples, 1.0 = 8192 */
+	const float chr = P.ch[ch][CP_CHAR];
+	const float rate = 0.51f + 0.35f * chr, lo = 40.0f, span = (90.0f + 40.0f * chr) * speed;
+	/* the LFO once a block; the delays glide across it */
+	float ph = c->hq_t, hp = c->hq_vel;
+	float t0 = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;
+	ph += rate * (float)VSUB / VSR;
+	ph -= ph >= 1.0f ? 1.0f : 0.0f;
+	float t1 = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;
+	float dl = lo + span * (0.5f + 0.5f * t0), dr = lo + span * (0.5f - 0.5f * t0);
+	const float dd = span * 0.5f * (t1 - t0) * (1.0f / VSUB);
+	uint32_t w = c->hq_i;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = A[i];
+		hp += 0.039f * (x - hp);                  /* ~150 Hz */
+		x -= hp;
+		rb[w] = to16(0.5f * x);
+		float pl = (float)(w + 256u) - dl, pr = (float)(w + 256u) - dr;
+		int il = (int)pl, ir = (int)pr;
+		float fl = pl - (float)il, fr = pr - (float)ir;
+		float a0 = rb[il & 255], a1 = rb[(il + 1) & 255], b0 = rb[ir & 255], b1 = rb[(ir + 1) & 255];
+		A[i] = 0.7f * x + (a0 + fl * (a1 - a0)) * (0.7f / 8192.0f);
+		B[i] = 0.7f * x + (b0 + fr * (b1 - b0)) * (0.7f / 8192.0f);
+		dl += dd;
+		dr -= dd;
+		w = (w + 1u) & 255u;
+	}
+	c->hq_t = ph;
+	c->hq_vel = hp;
+	c->hq_i = (uint8_t)w;
 }
 
 /* render the channel into its two sides, A and B; returns whether anything sounded */
@@ -2300,9 +2341,12 @@ static int chan_render(chan *c, float *A, float *B)
 	case GV_STRINGS:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
-				nv_render_juno(&c->v[i], A, B);
+				nv_render_str(&c->v[i], A);
 				any = 1;
 			}
+		/* the chorus runs on (a few ms of tail, and its line kept flowing) */
+		juno_chorus(c, (int)(c - CH), A, B);
+		any = 1;
 		break;
 	case GV_SUPER:
 		for (int i = 0; i < 3; i++)
@@ -3373,8 +3417,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* ---- audition only: the four new voices, in several octaves ---- */
 	/* Juno strings in the middle, a Glow lead an octave up, a round bass, soft swung rings */
 	{"Juno Hours", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
-	 {{35, 45, 50, 50, 15, 60, 50, 30, 72}, {45, 45, 55, 75, 40, 55, 60, 30, 66},
-	  {20, 25, 80, 50, 0, 20, 50, 40, 66}, {30, 30, 30, 50, 10, 20, 50, 28, 55}},
+	 {{35, 45, 50, 50, 15, 60, 50, 30, 69}, {45, 45, 55, 75, 40, 55, 60, 30, 63},
+	  {20, 25, 80, 50, 0, 20, 50, 40, 63}, {30, 30, 30, 50, 10, 20, 50, 28, 53}},
 	 {64, 35, 55, 50, 4, 1, 45, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 3, 0, 0}, 10, {3, 4, 1, 1}, 10, 0, {0, 0, 0, 0}},
 	/* two Glows two octaves apart, the high one a fifth above, a pad and a kalimba between */
 	{"Glow Garden", {GV_GLOW, GV_GLOW, GV_PAD, GV_KALIMBA},
@@ -3395,8 +3439,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
 	/* strings two octaves apart (the high ones a third above), a Glow in the middle, bells */
 	{"Strings at Night", {GV_STRINGS, GV_STRINGS, GV_GLOW, GV_BELLS},
-	 {{30, 35, 60, 25, 10, 55, 40, 20, 75}, {30, 55, 50, 75, 20, 65, 60, 60, 56},
-	  {40, 45, 55, 50, 35, 55, 50, 40, 64}, {35, 45, 55, 75, 40, 60, 55, 20, 53}},
+	 {{30, 35, 60, 25, 10, 55, 40, 20, 78}, {30, 55, 50, 75, 20, 65, 60, 60, 58},
+	  {40, 45, 55, 50, 35, 55, 50, 40, 66}, {35, 45, 55, 75, 40, 60, 55, 20, 55}},
 	 {46, 40, 65, 50, 5, 0, 35, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 2, 1}, 12, {3, 3, 3, 2}, 12, 0, {0, 1u << 2, 0, 0}},
 	/* ---- audition only: the new voices, after the artists we keep coming back to ---- */
 	/* Eno (Thursday Afternoon, Music for Airports): a slow sparse Glow up high, rare Juno chords
@@ -3415,8 +3459,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Autechre (Amber, Tri Repetae): a melancholy Glow, the Seq walking in eighths, swung
 	 * euclidean rings, Juno chords on the beat; ping-pong */
 	{"Repetae", {GV_GLOW, GV_SEQ, GV_PULSE, GV_STRINGS},
-	 {{45, 45, 60, 50, 40, 50, 40, 40, 71}, {70, 40, 40, 50, 35, 40, 60, 100, 64},
-	  {40, 30, 30, 50, 15, 25, 50, 30, 64}, {65, 40, 35, 50, 20, 50, 55, 30, 57}},
+	 {{45, 45, 60, 50, 40, 50, 40, 40, 68}, {70, 40, 40, 50, 35, 40, 60, 100, 61},
+	  {40, 30, 30, 50, 15, 25, 50, 30, 61}, {65, 40, 35, 50, 20, 50, 55, 30, 55}},
 	 {76, 40, 55, 50, 5, 1, 35, 55}, {GR_CHAMBER, GS_OCTAVE, 0}, {2, 2, 1, 1}, 10, {3, 3, 2, 2}, 10,
 	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
 	/* Aphex Twin (Avril 14th, SAW): a near-sine Glow an octave up, Juno chords on the bar
@@ -3442,8 +3486,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* dub techno: Juno chord stabs syncopated by their macro, thrown into ping-pong echoes, a
 	 * deep bass, a soft four-on-the-floor, a dark pad */
 	{"Dub Stabs", {GV_STRINGS, GV_BASS, GV_PULSE, GV_PAD},
-	 {{65, 30, 15, 50, 65, 45, 50, 40, 62}, {30, 20, 70, 50, 0, 15, 50, 30, 60},
-	  {80, 30, 25, 50, 5, 20, 50, 56, 50}, {25, 25, 85, 25, 15, 70, 50, 60, 39}},
+	 {{65, 30, 15, 50, 65, 45, 50, 40, 59}, {30, 20, 70, 50, 0, 15, 50, 30, 57},
+	  {80, 30, 25, 50, 5, 20, 50, 56, 48}, {25, 25, 85, 25, 15, 70, 50, 60, 37}},
 	 {100, 60, 55, 50, 5, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {3, 0, 0, 1}, 8, {4, 1, 1, 2}, 8,
 	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
 	/* synthwave: a supersaw bed, the Seq bouncing octaves in sixteenths, a Glow lead, four on
@@ -3455,14 +3499,14 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Vangelis (Blade Runner): a low brassy supersaw, a Glow lead with vibrato above, high
 	 * bells, rare Juno chords; a long hall */
 	{"Tears in Rain", {GV_SUPER, GV_GLOW, GV_BELLS, GV_STRINGS},
-	 {{30, 50, 80, 25, 20, 75, 50, 60, 67}, {40, 50, 70, 75, 45, 70, 55, 90, 67},
-	  {30, 45, 70, 75, 40, 70, 40, 75, 51}, {15, 40, 85, 50, 25, 65, 60, 50, 56}},
+	 {{30, 50, 80, 25, 20, 75, 50, 60, 64}, {40, 50, 70, 75, 45, 70, 55, 90, 64},
+	  {30, 45, 70, 75, 40, 70, 40, 75, 49}, {15, 40, 85, 50, 25, 65, 60, 50, 54}},
 	 {40, 50, 88, 50, 2, 5, 25, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 0, 1}, 14, {3, 3, 1, 2}, 14, 0, {0, 0, 0, 0}},
 	/* Boards of Canada: wide Juno chords (chorus II) on the bar, a Glow, soft swung rings, a
 	 * bass; with vinyl and its warble */
 	{"Hazy Kodak", {GV_STRINGS, GV_GLOW, GV_PULSE, GV_BASS},
-	 {{30, 30, 70, 50, 25, 55, 50, 100, 68}, {40, 40, 60, 50, 40, 55, 60, 70, 56},
-	  {45, 30, 35, 50, 10, 20, 50, 35, 52}, {25, 20, 80, 50, 0, 15, 50, 40, 64}},
+	 {{30, 30, 70, 50, 25, 55, 50, 100, 65}, {40, 40, 60, 50, 40, 55, 60, 70, 53},
+	  {45, 30, 35, 50, 10, 20, 50, 35, 50}, {25, 20, 80, 50, 0, 15, 50, 40, 61}},
 	 {62, 35, 55, 40, 4, 1, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 2, 1, 0}, 12, {3, 3, 2, 1}, 12, 0, {0, 0, 0, 0}},
 	/* Jean-Michel Jarre (Oxygene): the Seq bouncing, Juno chords on the half bar, a supersaw
 	 * swelling, soft euclidean rings; key travel in lifts */
@@ -3474,8 +3518,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* ambient techno (after Gas): a soft four-on-the-floor kick, dark Juno chords off the beat,
 	 * a pad and a drone, all in a foggy Bloom */
 	{"Fog Machine", {GV_PULSE, GV_STRINGS, GV_PAD, GV_DRONE},
-	 {{80, 20, 30, 50, 10, 45, 50, 53, 56}, {60, 25, 25, 50, 40, 60, 55, 40, 62},
-	  {25, 25, 90, 50, 10, 85, 50, 60, 49}, {35, 30, 70, 25, 10, 70, 50, 0, 45}},
+	 {{80, 20, 30, 50, 10, 45, 50, 53, 54}, {60, 25, 25, 50, 40, 60, 55, 40, 60},
+	  {25, 25, 90, 50, 10, 85, 50, 60, 47}, {35, 30, 70, 25, 10, 70, 50, 0, 43}},
 	 {98, 40, 75, 42, 7, 5, 20, 55}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 4, 1, 0}, 8, {1, 4, 2, 1}, 8, 0, {0, 0, 0, 0}},
 	/* minimal (after Glass and Reich): two Glows a third apart in eighths, the Seq in broken
 	 * thirds, Juno chords on the bar; one key, slowly turning */
@@ -3494,13 +3538,13 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Vangelis's CS-80 (Blade Runner): a Ribbon line swooping in, the hand pressing it brighter
 	 * and into vibrato; low chords, a pad, glass bells; a long hall */
 	{"Off-World", {GV_RIBBON, GV_STRINGS, GV_PAD, GV_BELLS},
-	 {{45, 55, 70, 50, 35, 75, 50, 15, 69}, {25, 35, 70, 25, 15, 70, 50, 60, 58},
-	  {40, 30, 80, 50, 10, 70, 50, 40, 52}, {40, 45, 75, 75, 40, 80, 60, 30, 52}},
+	 {{45, 55, 70, 50, 35, 75, 50, 15, 67}, {25, 35, 70, 25, 15, 70, 50, 60, 57},
+	  {40, 30, 80, 50, 10, 70, 50, 40, 51}, {40, 45, 75, 75, 40, 80, 60, 30, 51}},
 	 {30, 45, 88, 50, 2, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 1}, {2, 0, 1, 1}, 12, {4, 2, 3, 2}, 12, 0, {0, 0, 0, 0}},
 	/* the Ribbon as a reed, a harmonica's nasal pulse, over rolled harp chords and a drone */
 	{"Harmonica Rain", {GV_RIBBON, GV_GLOW, GV_HARP, GV_DRONE},
-	 {{50, 45, 55, 50, 40, 60, 45, 90, 89}, {60, 40, 60, 75, 45, 70, 65, 60, 82},
-	  {60, 45, 60, 50, 30, 70, 35, 50, 89}, {30, 30, 50, 50, 0, 60, 50, 0, 48}},
+	 {{50, 45, 55, 50, 40, 60, 45, 90, 85}, {60, 40, 60, 75, 45, 70, 65, 60, 78},
+	  {60, 45, 60, 50, 30, 70, 35, 50, 85}, {30, 30, 50, 50, 0, 60, 50, 0, 46}},
 	 {40, 40, 75, 50, 7, 4, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {1, 1, 1, 0}, 10, {3, 3, 4, 1}, 10, 0, {0, 0, 0, 0}},
 	/* French house: a slapped Funk line, off-beat chord stabs, four on the floor, a Seq high up,
 	 * ping-pong eighths (with the pump and the auto filter in the demo) */
@@ -3538,15 +3582,15 @@ static const recipe PIECES[GL_NPIECES] = {
 	 * strings stabbing in eighths, the Ribbon as the band's brass, a ground bass; the macros
 	 * moving in blocks, bar by bar */
 	{"Draughtsman", {GV_HARPSI, GV_STRINGS, GV_RIBBON, GV_BASS},
-	 {{90, 70, 35, 50, 15, 35, 40, 100, 60}, {85, 65, 25, 50, 10, 35, 60, 40, 55},
-	  {60, 65, 45, 50, 15, 40, 50, 35, 55}, {80, 45, 30, 50, 0, 10, 50, 50, 65}},
+	 {{90, 70, 35, 50, 15, 35, 40, 100, 56}, {85, 65, 25, 50, 10, 35, 60, 40, 51},
+	  {60, 65, 45, 50, 15, 40, 50, 35, 51}, {80, 45, 30, 50, 0, 10, 50, 50, 61}},
 	 {92, 30, 40, 50, 2, 5, 30, 40}, {GR_CHAMBER, GS_OCTAVE, 7}, {1, 1, 2, 0}, 6, {3, 4, 3, 2}, 6,
 	 (1u << 5), {0, 0, 0, 0}},
 	/* more Nyman than Nyman: two harpsichords a third apart, one in sixteenths, one in
 	 * eighths; strings driving in eighths, a running bass */
 	{"Nyman Nyman", {GV_HARPSI, GV_HARPSI, GV_STRINGS, GV_BASS},
-	 {{90, 70, 30, 50, 10, 35, 30, 50, 55}, {70, 60, 40, 50, 10, 35, 70, 100, 62},
-	  {90, 60, 20, 50, 0, 30, 50, 30, 55}, {80, 50, 25, 50, 0, 10, 50, 70, 65}},
+	 {{90, 70, 30, 50, 10, 35, 30, 50, 53}, {70, 60, 40, 50, 10, 35, 70, 100, 60},
+	  {90, 60, 20, 50, 0, 30, 50, 30, 53}, {80, 50, 25, 50, 0, 10, 50, 70, 62}},
 	 {100, 25, 35, 50, 9, 5, 40, 50}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 2, 1}, 6, {4, 3, 4, 3}, 6,
 	 (1u << 5), {0, 4, 0, 0}},
 	/* harp glissandi washing up and down a Lydian scale, a Glow above, a pad and a soft bass */
