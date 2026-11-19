@@ -346,7 +346,10 @@ static int place(int pc, float from, int lo, int hi)
 /* plucked or struck (bright into the reverb), rather than held */
 static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0,
                                        0, 0, 1, 1};
-static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, 69, 55, 57,
+#ifndef GLOW_HOME
+#define GLOW_HOME 57                       /* glow: an octave below where it began (A3) */
+#endif
+static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, GLOW_HOME, 55, 57,
                                       67, 40, 62, 60};
 
 /* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
@@ -1095,21 +1098,30 @@ static int nearest_chord(int n)
 }
 /* three voices of the chord, each moved as little as it can from where it was (common tones
  * held), kept apart and near home: a keyboard player's voice leading */
-static void lead_voices(chan *c, int base, int *out)
+static void lead_voices(chan *c, int base, int *out, int differ)
 {
 	int ctr = base < 45 ? 45 : base > 62 ? 62 : base;
 	int lo = ctr - 4, hi = ctr + 13;
-	int sets[3][3], ns = 0;
+	int sets[6][3], ns = 0, col[6];
 	if (chord_n >= 4) {
 		static const int8_t S[3][3] = {{0, 1, 2}, {1, 2, 3}, {0, 1, 3}};
-		for (int i = 0; i < 3; i++, ns++)
+		for (int i = 0; i < 3; i++, ns++) {
 			for (int j = 0; j < 3; j++)
 				sets[ns][j] = chord_pc[S[i][j]];
+			col[ns] = 0;
+		}
 	} else {
 		for (int j = 0; j < 3; j++)
 			sets[0][j] = chord_pc[j % chord_n];
+		col[0] = 0;
 		ns = 1;
 	}
+	/* colours: the ninth for the root, the sixth for the fifth (a little dearer, so mostly used
+	 * to keep a re-bowed chord from repeating) */
+	int n9 = (chord_pc[0] + deg_semis(1) + 24) % 12, n6 = (chord_pc[0] + deg_semis(5) + 24) % 12;
+	sets[ns][0] = n9; sets[ns][1] = chord_pc[1]; sets[ns][2] = chord_pc[2 % chord_n]; col[ns++] = 1;
+	sets[ns][0] = chord_pc[0]; sets[ns][1] = chord_pc[1]; sets[ns][2] = n6; col[ns++] = 1;
+	sets[ns][0] = n9; sets[ns][1] = chord_pc[1]; sets[ns][2] = n6; col[ns++] = 1;
 	static const int8_t PERM[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
 	int best = 1 << 30;
 	for (int st = 0; st < ns; st++)
@@ -1131,13 +1143,31 @@ static void lead_voices(chan *c, int base, int *out)
 			if (mx - mn > 19)
 				cost += 200;
 			int dc = (mn + mx) / 2 - (ctr + 5);
-			cost += dc * dc / 3;
+			cost += dc * dc / 3 + col[st] * 14;
+			/* never a voicing it had lately: its last four are remembered (in loop[2]); the same
+			 * notes again cost too much, the older the less */
+			if (differ || c->v[0].note > 0.0f)
+				for (int h = 0; h < 4; h++) {
+					int same = c->loop[2][3 * h] > 0;
+					for (int k = 0; k < 3; k++) {
+						int x = cand[k], hit = 0;
+						for (int j = 0; j < 3; j++)
+							hit |= x == c->loop[2][3 * h + j];
+						same &= hit;
+					}
+					if (same)
+						cost += 5000 - 1000 * h;
+				}
 			if (cost < best) {
 				best = cost;
 				for (int k = 0; k < 3; k++)
 					out[k] = cand[k];
 			}
 		}
+	for (int i = 11; i >= 3; i--)                  /* remembered */
+		c->loop[2][i] = c->loop[2][i - 3];
+	for (int k = 0; k < 3; k++)
+		c->loop[2][k] = (int8_t)out[k];
 }
 
 /* ---- strings, as a string machine is played: whole chords held, each new chord voice-led
@@ -1147,7 +1177,8 @@ static void lead_voices(chan *c, int base, int *out)
  * cents apart, the filter opening slower than the bow, a late vibrato, the voices spread) */
 static void strings_step(chan *c, int ch, uint32_t step, float act, int base)
 {
-	int every = act < 0.35f ? 0 : act < 0.6f ? 16 : act < 0.82f ? 8 : 4;
+	/* even held, it moves on to another voicing every two bars: never one chord droning */
+	int every = act < 0.35f ? 32 : act < 0.6f ? 16 : act < 0.82f ? 8 : 4;
 	int fresh = c->seen_chord != chord_count || c->v[0].note <= 0.0f;
 	if ((fresh && (step & 3u)) || !playing)
 		return;                                   /* a new chord comes in on a beat */
@@ -1156,12 +1187,11 @@ static void strings_step(chan *c, int ch, uint32_t step, float act, int base)
 		return;
 	c->seen_chord = chord_count;
 	int nt[3] = {0, 0, 0};
-	if (fresh)
-		lead_voices(c, base, nt);
+	lead_voices(c, base, nt, rebow);                /* a re-bow moves to another voicing too */
 	for (int k = 0; k < 3; k++) {
 		nvoice *v = &c->v[k];
-		float n = fresh ? ivl_note(ch, (float)nt[k]) : v->note;
-		int moved = fresh && n != v->note;
+		float n = ivl_note(ch, (float)nt[k]);
+		int moved = n != v->note;
 		if (v->note <= 0.0f)
 			v->ratio = n;                         /* its gliding pitch */
 		v->note = n;
@@ -1282,7 +1312,7 @@ static void ribbon_step(chan *c, int ch, uint32_t step, float act, int base)
 		c->seen_chord = chord_count;
 		int nt[3];
 		if (fresh)
-			lead_voices(c, base - 7, nt);
+			lead_voices(c, base - 7, nt, 0);
 		for (int k = 0; k < 3; k++) {
 			nvoice *v = &c->v[k];
 			if (!fresh)
@@ -1522,8 +1552,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			else if (c->voice == GV_MARIMBA)
 				ratio = 2.5f + 2.5f * P.ch[ch][CP_CHAR];
 			if (c->voice == GV_GLOW && alt_m[GV_GLOW])
-				while (note > (alt_m[GV_GLOW] == 3 ? 84 : 86))
-					note -= 12;                  /* audition: a ceiling at D6 (C6), leaps folded under it */
+				while (note > (alt_m[GV_GLOW] == 3 ? 72 : 74))
+					note -= 12;                  /* a ceiling at D5, leaps folded under it */
 			if (!sounding(v))
 				make_room(v);
 			nv_trigger(v, (float)note, c->voice == GV_FLUTE ? vel : vel * 1.35f, ratio, vp);
@@ -2023,8 +2053,11 @@ static void chan_control(chan *c, int ch, float dt)
 			 * (4 ms); low bells ring longer; the brightness fades on its own, longer when bright */
 			float att = 0.004f + 0.046f * clampf(1.0f - 2.0f * tone, 0.0f, 1.0f);
 			float ring = clampf(1.0f + (60.0f - v->note) * 0.015f, 0.5f, 1.6f);
-			nv_perc(v, att, expmap(len, 1.0f, 10.0f) * ring / speed, (0.35f + 1.5f * tone) / speed,
-			        0.3f + 2.0f * tone, dt);
+			/* its macro, in the upper half of its glide, mutes the bell: a hand on it, a felt
+			 * mallet: shorter, darker, a softer strike */
+			float mu = mac_depth[ch] * clampf(mac_u[ch][1], 0.0f, 1.0f);
+			nv_perc(v, att + 0.02f * mu, expmap(len, 1.0f, 10.0f) * ring * (1.0f - 0.8f * mu) / speed,
+			        (0.35f + 1.5f * tone) * (1.0f - 0.6f * mu) / speed, (0.3f + 2.0f * tone) * (1.0f - 0.65f * mu), dt);
 			nv_pitch(v, v->note);
 		}
 		break;
@@ -2072,12 +2105,15 @@ static void chan_control(chan *c, int ch, float dt)
 						 * 4 kHz, a little third. Its macro, while its glide is in the upper half, blends
 						 * up to 30 % of the breathy one in: the breath, and less of the octave */
 						float b = 0.3f * mac_depth[ch] * clampf(mac_u[ch][1], 0.0f, 1.0f);
-						w2 = (1.0f - b) * mm * 0.3f * clampf((4000.0f - 2.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
-						w3 = (1.0f - b) * mm * 0.06f * clampf((3000.0f - 3.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f) +
-						     b * mm * (0.6f / 9.0f) * clampf((2500.0f - 3.0f * f0) * (1.0f / 1200.0f), 0.0f, 1.0f);
+						/* and from C3 up its overtones fade away, gone by G3: up there it is the note
+						 * alone, nothing to be shrill with */
+						const float lowk = clampf((55.0f - v->note) * (1.0f / 7.0f), 0.0f, 1.0f);
+						w2 = lowk * (1.0f - b) * mm * 0.3f * clampf((4000.0f - 2.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+						w3 = lowk * ((1.0f - b) * mm * 0.06f * clampf((3000.0f - 3.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f) +
+						     b * mm * (0.6f / 9.0f) * clampf((2500.0f - 3.0f * f0) * (1.0f / 1200.0f), 0.0f, 1.0f));
 						v->bend = b * (0.02f + 0.04f * chr + 0.08f * v->menv) * (0.6f + 0.6f * tone);
 						v->ratio = clampf(2.0f * sin_u((uint32_t)(clampf(f0 / VSR, 0.0f, 0.2f) * 2147483648.0f)), 0.01f, 1.2f);
-						g = fexp2(-up * (0.5f / 6.0206f));
+						g = fexp2(-clampf(v->note - 52.0f, 0.0f, 36.0f) * (0.5f / 6.0206f));
 					} else {
 						/* breathy: a sine with breath around it (noise through a narrow band at the
 						 * note, more on the attack), as a flute or ocarina stays sweet up high */
@@ -3993,19 +4029,19 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* ---- audition only: the four new voices, in several octaves ---- */
 	/* Juno strings in the middle, a Glow lead an octave up, a round bass, soft swung rings */
 	{"Juno Hours", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
-	 {{35, 45, 50, 50, 15, 60, 50, 30, 69}, {45, 45, 55, 75, 40, 55, 60, 30, 63},
-	  {20, 25, 80, 50, 0, 20, 50, 40, 63}, {30, 30, 30, 50, 10, 20, 50, 28, 53}},
+	 {{35, 45, 50, 50, 15, 60, 50, 30, 66}, {45, 45, 55, 75, 40, 55, 60, 30, 60},
+	  {20, 25, 80, 50, 0, 20, 50, 40, 60}, {30, 30, 30, 50, 10, 20, 50, 28, 51}},
 	 {64, 35, 55, 50, 4, 1, 45, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 3, 0, 0}, 10, {3, 4, 1, 1}, 10, 0, {0, 0, 0, 0}},
 	/* two Glows two octaves apart, the high one a fifth above, a pad and a kalimba between */
 	{"Glow Garden", {GV_GLOW, GV_GLOW, GV_PAD, GV_KALIMBA},
-	 {{40, 40, 70, 25, 30, 55, 35, 20, 76}, {40, 55, 60, 100, 45, 65, 65, 60, 55},
-	  {30, 35, 85, 50, 10, 75, 50, 60, 63}, {35, 50, 50, 75, 40, 55, 45, 50, 60}},
+	 {{40, 40, 70, 25, 30, 55, 35, 20, 73}, {40, 55, 60, 100, 45, 65, 65, 60, 53},
+	  {30, 35, 85, 50, 10, 75, 50, 60, 60}, {35, 50, 50, 75, 40, 55, 45, 50, 57}},
 	 {40, 45, 70, 50, 9, 3, 30, 60}, {GR_BLOOM, GS_OCTAVE, 2}, {2, 3, 0, 1}, 12, {3, 4, 2, 2}, 12,
 	 GL_FLAG_PINGPONG, {0, 2u << 2, 0, 0}},
 	/* the Seq galloping low across three octaves, Juno strings high, a bass, a 4/4 pulse */
 	{"Neon Ladder", {GV_SEQ, GV_STRINGS, GV_BASS, GV_PULSE},
-	 {{75, 50, 40, 25, 35, 40, 45, 67, 60}, {30, 50, 55, 75, 20, 60, 55, 60, 49},
-	  {25, 30, 80, 50, 0, 20, 50, 50, 53}, {55, 40, 25, 50, 10, 20, 50, 60, 49}},
+	 {{75, 50, 40, 25, 35, 40, 45, 67, 57}, {30, 50, 55, 75, 20, 60, 55, 60, 47},
+	  {25, 30, 80, 50, 0, 20, 50, 50, 51}, {55, 40, 25, 50, 10, 20, 50, 60, 47}},
 	 {90, 40, 50, 50, 0, 5, 40, 55}, {GR_HALL, GS_OCTAVE, 5}, {3, 1, 0, 1}, 8, {4, 2, 1, 2}, 8, 0, {0, 0, 0, 0}},
 	/* the supersaw low and slow, a Glow above it, a drone, gongs: heavy, for a big moment */
 	{"Supernova", {GV_SUPER, GV_GLOW, GV_DRONE, GV_GONG},
@@ -4042,8 +4078,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* Aphex Twin (Avril 14th, SAW): a near-sine Glow an octave up, Juno chords on the bar
 	 * ringing long, a dark pad, tails; reverse swells */
 	{"Avril", {GV_GLOW, GV_STRINGS, GV_PAD, GV_TAILS},
-	 {{50, 40, 65, 75, 30, 55, 45, 0, 65}, {25, 35, 85, 50, 20, 60, 55, 20, 54},
-	  {30, 30, 85, 25, 10, 80, 50, 60, 50}, {30, 40, 70, 50, 45, 65, 60, 50, 43}},
+	 {{50, 40, 65, 75, 30, 55, 45, 0, 61}, {25, 35, 85, 50, 20, 60, 55, 20, 51},
+	  {30, 30, 85, 25, 10, 80, 50, 60, 47}, {30, 40, 70, 50, 45, 65, 60, 50, 41}},
 	 {36, 40, 70, 50, 0, 0, 30, 55}, {GR_HALL, GS_OCTAVE, 2}, {1, 2, 0, 2}, 14, {2, 3, 1, 3}, 14,
 	 GL_FLAG_REVERSE, {0, 0, 0, 0}},
 	/* Nyman and Reich: chugging Juno chords on every eighth, the Seq in broken thirds in
@@ -4062,8 +4098,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* dub techno: Juno chord stabs syncopated by their macro, thrown into ping-pong echoes, a
 	 * deep bass, a soft four-on-the-floor, a dark pad */
 	{"Dub Stabs", {GV_STRINGS, GV_BASS, GV_PULSE, GV_PAD},
-	 {{65, 30, 15, 50, 65, 45, 50, 40, 56}, {30, 20, 70, 50, 0, 15, 50, 30, 54},
-	  {80, 30, 25, 50, 5, 20, 50, 56, 46}, {25, 25, 85, 25, 15, 70, 50, 60, 35}},
+	 {{65, 30, 15, 50, 65, 45, 50, 40, 59}, {30, 20, 70, 50, 0, 15, 50, 30, 57},
+	  {80, 30, 25, 50, 5, 20, 50, 56, 48}, {25, 25, 85, 25, 15, 70, 50, 60, 37}},
 	 {100, 60, 55, 50, 5, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {3, 0, 0, 1}, 8, {4, 1, 1, 2}, 8,
 	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
 	/* synthwave: a supersaw bed, the Seq bouncing octaves in sixteenths, a Glow lead, four on
