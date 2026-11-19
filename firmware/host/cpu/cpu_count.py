@@ -15,7 +15,8 @@ import capstone as cs
 
 ELF = sys.argv[1]
 TOOL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].endswith('-') else None
-configs = [a for a in sys.argv[2:] if all(ch in '0123456789abcdefghijmd' for ch in a) and len(a.split('m')[0].split('d')[0]) == 4] or ['0127']
+# the first four characters are the voices (base 36, 0-n); after them, m<mask> and d<dist>
+configs = [a for a in sys.argv[2:] if len(a) >= 4 and all(ch in '0123456789abcdefghijklmn' for ch in a[:4]) and all(ch in '0123456789md' for ch in a[4:])] or ['0127']
 NM = TOOL + 'nm' if TOOL else 'arm-zephyr-eabi-nm'
 OBJCOPY = TOOL + 'objcopy' if TOOL else 'arm-zephyr-eabi-objcopy'
 
@@ -65,11 +66,11 @@ def run(voices):
     # cfg_* live in .data: patch their load image in flash, which reset() copies to RAM
     lma = lambda a: syms['_sidata'] + (a - syms['_sdata'])
     dist = None
-    if 'd' in voices:                      # 0127d241: distortion type 2, amount 4, after the effects
-        voices, dd = voices.split('d')
+    voices, opt = voices[:4], voices[4:]
+    if 'd' in opt:                         # 0127d241: distortion type 2, amount 4, after the effects
+        opt, dd = opt.split('d')
         dist = int(dd[0]) | int(dd[1]) << 4 | int(dd[2]) << 8
-    mute = int(voices.split('m')[1]) if 'm' in voices else 0
-    voices = voices.split('m')[0]
+    mute = int(opt.split('m')[1]) if 'm' in opt else 0
     mu.mem_write(lma(syms['cfg_voices']), bytes(int(ch, 36) for ch in voices))
     mu.mem_write(lma(syms['cfg_mute']), bytes([mute | 0x80]))
     if dist is not None and 'cfg_dist' in syms:
@@ -113,10 +114,11 @@ def run(voices):
 PROF = {} if '--prof' in sys.argv else None
 STRESS = '--stress' in sys.argv
 names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp',
-         'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails', 'Pulse', 'Strings', 'Glow', 'Seq', 'Super']
+         'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails', 'Pulse', 'Strings', 'Glow', 'Seq', 'Super',
+         'Ribbon', 'Funk', 'Harp', 'Harpsichord']
 for v in configs:
     avg, worst = run(v)
-    vv = v.split('m')[0].split('d')[0]
+    vv = v[:4]
     print(f"{v:8s} {' + '.join(names[int(c, 36)] for c in vv):40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
 
 if PROF is not None:

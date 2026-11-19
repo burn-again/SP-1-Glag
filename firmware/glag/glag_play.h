@@ -48,6 +48,7 @@ void gl_world(int what, float v)
 	case GW_TEX_LEVEL: W.tex_lvl = clampf(v, 0.0f, 1.0f); break;
 	case GW_REVERSE: W.rev = clampf(v, 0.0f, 1.0f); break;
 	case GW_AUTOF: W.autof = clampf(v, 0.0f, 1.0f); break;
+	case GW_COMP: comp_amt = clampf(v, 0.0f, 1.0f); break;
 	default: break;
 	}
 }
@@ -68,7 +69,7 @@ static int voice_role(int v)
 {
 	if (v == GV_PULSE)
 		return ROLE_DRUMS;
-	if (v == GV_BASS)
+	if (v == GV_BASS || v == GV_FUNK)
 		return ROLE_BASS;
 	if (v == GV_PAD || v == GV_DRONE || v == GV_FLUTE || v == GV_SWELL || v == GV_GONG)
 		return ROLE_HELD;

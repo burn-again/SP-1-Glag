@@ -264,9 +264,10 @@ static void index_pic(uint8_t *p, int idx, uint32_t now)
 {
 	memset(p, 0, 4);
 	uint8_t v = 255;
-	if (idx >= 16) {                       /* 17-20: a double flash */
+	if (idx >= 16) {                       /* 17-20: a double flash; 21-24: a triple */
 		uint32_t t = now % 900u;
-		p[idx & 3] = (t < 90u || (t >= 180u && t < 270u)) ? 255 : 20;
+		int on = t < 90u || (t >= 180u && t < 270u) || (idx >= 20 && t >= 360u && t < 450u);
+		p[idx & 3] = on ? 255 : 20;
 		return;
 	}
 	switch ((idx >> 2) & 3) {

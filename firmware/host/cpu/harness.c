@@ -20,6 +20,9 @@ int main(void)
 	gl_init(1234);
 	gl_patch p;
 	gl_piece(0, &p);
+#ifdef COMP
+	gl_world(GW_COMP, 1.0f);
+#endif
 	for (int c = 0; c < 4; c++)
 		p.voice[c] = cfg_voices[c];
 	if (cfg_stress & 1)

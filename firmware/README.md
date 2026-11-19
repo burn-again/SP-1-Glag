@@ -33,16 +33,20 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 | Pulse | a light pulse: soft kick, shaker (its noise made at the full 48 kHz from its own generator, its body at 3-12 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
-| Strings | after a Juno, struck as chords (never held): the chord's tones together below C5, 20 ms attack, 50 ms to 60 %, a short hold (Length 0.1-0.8 s), a long release (1.5-5 s); Activity: bar, half bar, beat, eighths; a PolyBLEP saw per side with the Juno's chorus, two poles tracking the keyboard by half | chorus I toward II |
+| Strings | after a Juno, struck as chords (never held), syncopated by nature (off-beat stabs, some downbeats left out; its macro pushes further), a chord arp that never strikes the same voicing twice running, often two notes, sometimes rolled: below C5, 20 ms attack, 50 ms to 60 %, a short hold (Length 0.1-0.8 s), a long release (1.5-5 s); Activity: bar, half bar, beat, eighths; a PolyBLEP saw per side with the Juno's chorus, two poles tracking the keyboard by half | chorus I toward II |
 | Glow | mostly triangle with a little sine, through a gentle pole that never closes below the note, leaning to the sine above E5 | half to all triangle |
 | Seq | a polysynth arp: saw and square through a gently opening low-pass, across three octaves of the chord | pattern: octave bounce (two octaves), broken thirds, gallop, walk |
-| Super | a supersaw: five saws spread on each chord note, through two poles | spread |
+| Super | a supersaw: five saws spread on each chord note, through two poles; sits 4 dB under the pad | spread |
+| Ribbon | after the CS-80 (Vangelis): one line, swooped into on the ribbon, glided between notes; a swell in, then the hand's pressure (aftertouch) opening the filter and deepening the vibrato; two saws a few cents apart or a narrow pulse, through a resonant low-pass | brass toward reed (a harmonica's nasal pulse) |
+| Funk | a funk bassist: a bar of sixteenths written afresh on each chord, always on the one, ghost notes, octave pops, slides up into the root; saw and square through a resonant low-pass with an envelope filter (its macro pushes the line off the beat) | fingers toward slap (the envelope filter's quack) |
+| Harp | Karplus-Strong strings (eight per channel, tuned by an all-pass): single plucks, rolled chords from the bottom, glissandi up or down an octave and a half of the scale | plucks, rolled chords, glissandi |
+| Harpsichord | quill-plucked strings running Nyman's figures through each chord (Alberti, up and down, rising threes, a ground), a bass note on each bar, dampers falling after the note's length | stops: lute (buff), 8', 8' and 4' |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
 character, which is each voice's own.
 
-**The channel macro.** On a channel or extended page the rocker drives that channel's macro (on Strings, Seq and Glow it also syncopates their rhythm): a slow
+**The channel macro.** On a channel or extended page the rocker drives that channel's macro (on Strings, Seq, Glow and Funk it also syncopates their rhythm): a slow
 random glide that pushes the voice's own controls around (tone, character, length, activity) and
 adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
@@ -67,7 +71,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 |---|---|---|
 | Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
-| | •• + T1-T4 | the next voice on that channel (all twenty, any channel, duplicates allowed; 17-20 show as a double flash) |
+| | •• + T1-T4 | the next voice on that channel (all twenty-four, any channel, duplicates allowed; 17-20 show as a double flash, 21-24 a triple) |
 | Channel page | F1 F2 F3 F4 | character, tone, length, register (5 octave steps) |
 | | FFWD tap | one step more of this channel's macro (4 steps) |
 | | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |
@@ -274,9 +278,18 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 | Tails x 4 | 47 % | 70 % | 66-97 % |
 | Pulse x 4 | 57 % | 79 % | 80-111 % |
 | Arp, Swell, EP, Gong | 54 % | 69 % | 76-96 % |
-| Bells x 4 + distortion at 4 | 62 %% | 77 %% | 87-108 %% |
+| Bells x 4 + distortion at 4 | 62 % | 77 % | 87-108 % |
+| Ribbon x 4 | 65 % | 69 % | 91-97 % |
+| Funk x 4 | 58 % | 64 % | 81-90 % |
+| Harp x 4 | 73 % | 77 % | 102-108 % |
+| Harpsichord x 4 | 71 % | 82 % | 99-115 % |
+| Strings, Ribbon, Harp, Harpsichord | 66 % | 72 % | 92-101 % |
 
 Numbers from 0.6.2 (the filters around the tape and reverbs, and the Pulse's noise at 48 kHz, cost about 3 points; the table had last been measured before 0.6.0). Worst blocks past about 70 % on the model lean on the governor below. The Pulse has no notes to give way, so it has its own rule: only the first Pulse in a piece makes its hats at 48 kHz; a second, third or fourth makes them at 24 kHz, at half the cost (with distortion before the effects, all of them do).
+
+Harp and Harpsichord rows are the stress case (every channel at full activity and length); their strings, eight to a channel, each count half a voice in the budget, so under the governor they thin out before anything overruns.
+
+**A master compressor** (Playworld's `GW_COMP`, render with `WORLD=comp=0.5`; not yet on a control) glues the mix: a stereo-linked peak detector (10 ms in, 250 ms out) read once a millisecond, a threshold of -10 to -22 dBFS, a ratio of 1.5:1 to 6:1, a soft knee, a quarter of the reduction made up. It costs about 1 % of the CPU in the model and 12 bytes.
 
 A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools.
 
