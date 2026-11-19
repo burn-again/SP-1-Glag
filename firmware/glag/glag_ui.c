@@ -143,6 +143,21 @@ static void go(int pg, int ch, const gl_input *in)
 /* ---------------------------------------------------------------- pieces */
 
 static void macro_post(int c);
+static void say(int what, uint32_t now, uint32_t ms);
+/* Harmony's rocker: the echo a step longer or shorter (1/8 .. 2 bars, in order) */
+static void echo_step(int d, uint32_t now)
+{
+	int at = 0;
+	for (int i = 0; i < GL_NECHO; i++)
+		if (GL_ECHO_ORDER[i] == cur.space[GL_SP_ECHO])
+			at = i;
+	at += d;
+	at = at < 0 ? 0 : at >= GL_NECHO ? GL_NECHO - 1 : at;
+	cur.space[GL_SP_ECHO] = GL_ECHO_ORDER[at];
+	dirty = 1;
+	show_idx = at;
+	say(SH_INDEX, now, 1200);
+}
 static void load_piece(int i)
 {
 	undo_patch = cur;
@@ -383,6 +398,21 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			used_with_fn = 1;
 			ffwd_shift = page == PG_HOME;
 			ffwd_done = 0;
+			if (page == PG_HARMONY) {           /* the key's travel: off, fifths, lifts, relative, drops */
+				uint8_t f = cur.space[GL_SP_FLAGS], k = (uint8_t)((GL_FLAG_KEY(f) + 1u) % GL_NKEYWAY);
+				cur.space[GL_SP_FLAGS] = (uint8_t)((f & ~(7u << 2)) | (unsigned)(k << 2));
+				dirty = 1;
+				show_idx = k;
+				say(SH_INDEX, now, 1200);
+			} else if (on_channel()) {          /* this channel's interval: none, 3rd, 5th, 7th, 9th */
+				uint8_t x = cur.chx[chan], v = (uint8_t)((GL_CHX_IVL(x) + 1u) % GL_NIVL);
+				cur.chx[chan] = (uint8_t)((x & ~(7u << 2)) | (unsigned)(v << 2));
+				dirty = 1;
+				show_idx = v;
+				say(SH_INDEX, now, 1200);
+			}
+		} else if (page == PG_HARMONY) {        /* the echo: longer (glides there, tape-like) */
+			echo_step(1, now);
 		} else if (on_channel()) {
 			if (mac_step[chan] < MAC_STEPS)
 				mac_step[chan]++;
@@ -447,6 +477,19 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			used_with_fn = 1;
 			rwd_shift = page == PG_HOME;
 			rwd_saved = 0;
+			if (page == PG_HARMONY) {           /* the macros' shape: glide, bar steps, long rise */
+				uint8_t f = cur.space[GL_SP_FLAGS], k = (uint8_t)((GL_FLAG_SHAPE(f) + 1u) % GL_NSHAPE);
+				cur.space[GL_SP_FLAGS] = (uint8_t)((f & ~(3u << 5)) | (unsigned)(k << 5));
+				dirty = 1;
+				show_idx = k;
+				say(SH_INDEX, now, 1200);
+			} else if (on_channel()) {          /* this channel's time division: 1, 1/2, 1/3, 1/4 */
+				uint8_t x = cur.chx[chan], v = (uint8_t)((GL_CHX_DIV(x) + 1u) & 3u);
+				cur.chx[chan] = (uint8_t)((x & ~3u) | v);
+				dirty = 1;
+				show_idx = v;
+				say(SH_INDEX, now, 1200);
+			}
 		} else if (on_channel()) {
 			rwd_shift = 0;
 			rwd_mac = 1;
@@ -455,8 +498,11 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			rwd_shift = 0;
 			slow_on = 1;
 			gl_slow(1);
-		} else
+		} else {
 			rwd_shift = 0;
+			if (page == PG_HARMONY)             /* the echo: shorter */
+				echo_step(-1, now);
+		}
 	}
 	if (DOWN(GB_RWD) && rwd_mac && now - down_at[GB_RWD] >= TAP_MS) {
 		/* held: the glide doubles in length every 1.5 s, down to one every 64 s */

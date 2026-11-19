@@ -68,6 +68,8 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | FFWD tap | one step more of this channel's macro (4 steps) |
 | | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |
 | | RWD double tap | the macro off, its glide back to 8 s |
+| | •• + FFWD | its interval: none, a third, fifth, seventh or ninth above, in the scale (Register keeps the octave) |
+| | •• + RWD | its time division: 1, 1/2, 1/3, 1/4 of the steps |
 | | •• + its own T | extended page (its LED blinks); again to come back |
 | | another T | that channel's page |
 | Extended page | F1 F2 F3 F4 | echo send, reverb send, pan (centre detent), activity |
@@ -76,14 +78,17 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• + T1-T4 | the reverb: Hall, Chamber, Shimmer, Bloom (saved with the piece) |
 | | •• + T3 again (on Shimmer) | Shimmer's interval: an octave, a fifth, a minor seventh |
 | | •• + T1, T2 or T4 again | reverse swells on that reverb, on / off (saved with the piece) |
+| | FFWD / RWD | the echo time longer / shorter: 1/8, 1/8., 1/4, 1/4., 1/2, 1/2., 1 bar, 2 bars (the tape glides there) |
+| | •• + FFWD | key travel: off, up a fifth, lifts, relative, drops (a move every 3 minutes) |
+| | •• + RWD | the macros' shape: glide, steps on each bar, a long rise |
 | Anywhere | •• held + F1-F4 | the four channel levels |
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
 | | •• + PLAY twice | next piece (16, then back to 1) |
-| Home | FFWD tap | freeze, latched; tap again to let go (on Harmony the rocker alone does nothing, kept for later) |
+| Home | FFWD tap | freeze, latched; tap again to let go |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
-| Home | •• + FFWD | randomize the piece (voices kept, filter left open); elsewhere •• + the rocker is kept for later |
+| Home | •• + FFWD | randomize the piece (voices kept, filter left open) |
 | | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
 | | •• + RWD held 3 s | save the piece to its slot; the macros as they are become its scene |

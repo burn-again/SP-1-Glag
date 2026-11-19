@@ -311,7 +311,7 @@ h3.group { margin-top: 18px; }
       <article class="card term"><h3>Activity<span class="where">F4 on the extended page</span></h3><p>How busy the instrument is: how often it plays a new note. Low leaves long gaps, high plays most beats. On voices that hold notes, such as Pad and Drone, it sets how often they breathe in and out instead.</p><p class="try"><b>Try:</b> two busy channels and two sparse ones usually sounds better than four in the middle.</p></article>
     </div>
     <h3 class="group">The channel macro: the rocker on a channel page</h3>
-    <p class="note">On a channel page or its extended page, FFWD and RWD work that channel's macro instead of freeze and slow-down (those are on Home only; on Harmony the rocker alone is kept for later).</p>
+    <p class="note">On a channel page or its extended page, FFWD and RWD work that channel's macro instead of freeze and slow-down (those are on Home only; on Harmony the rocker sets the echo time). With •• held, FFWD steps the channel's interval and RWD its time division.</p>
     <div class="grid">
       <article class="card term"><h3>Macro<span class="where">FFWD on a channel page</span></h3><p>A slow, wandering hand on the channel's own controls. It glides tone, character, length and activity to new random places, and adds tremolo and octave leaps, each in the way that suits the voice: EP gets a suitcase tremolo, Pizz and Arp leap octaves, Bells change their metal, Shimmer's buzz wanders. Each FFWD tap adds a step, up to four; at full it swings twice as wide as at half, with leaps of two octaves. Every piece also hides a macro scene: on Home, hold •• + FFWD for 3 seconds to bring it in. Saving the piece (•• + RWD for 3 seconds on Home) makes the macros as they are its scene.</p><p class="try"><b>Try:</b> one step on a single channel, and let the rest of the piece stay put.</p></article>
       <article class="card term"><h3>Macro speed<span class="where">RWD held on a channel page</span></h3><p>Each glide starts at 8 seconds. Hold RWD and they get slower, twice as long every second and a half, down to one glide a minute. The play lights fill as it slows. A double tap on RWD turns the macro off and puts its speed back.</p><p class="try"><b>Try:</b> full macro, slowed right down: the voice changes so slowly you only notice after a while.</p></article>
@@ -361,7 +361,7 @@ h3.group { margin-top: 18px; }
     <header>
       <div class="eyebrow">4 · On every page</div>
       <h2 id="h-anywhere">Anywhere</h2>
-      <p>These work the same on every page, except the rocker on its own, which is freeze and slow-down on Home, the channel macro on channel pages, and nothing yet on Harmony. •• is the shift button: hold it, then press the other control.</p>
+      <p>These work the same on every page, except the rocker on its own, which is freeze and slow-down on Home, the channel macro on channel pages, and the echo time on Harmony. •• is the shift button: hold it, then press the other control.</p>
     </header>
     <div class="table-wrap">
       <table>
@@ -381,7 +381,7 @@ h3.group { margin-top: 18px; }
           <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span> <small>Home</small></td><td>Randomize the piece. Voices are kept and the DJ filter left open.</td><td><span class="ledrow sweep-up"><i></i><i></i><i></i><i></i></span> sweeps up</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> <small>Home</small></td><td>Undo the last randomize or piece change. Again redoes it.</td><td><span class="ledrow sweep-down"><i></i><i></i><i></i><i></i></span> sweeps down</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 3 s <small>Home</small></td><td>Save the piece to its slot, the macros as they are as its scene. It comes back whenever you step to that piece (until power-off, for now).</td><td>All eight lights flash three times</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span> held 3 s <small>Home</small></td><td>The piece's macro scene, on all four channels. On other pages •• with the rocker is kept for later.</td><td>The track lights flash, the play row shows each channel's step</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span> held 3 s <small>Home</small></td><td>The piece's macro scene, on all four channels. (On Harmony •• + FFWD / RWD step key travel / the macros' shape; on channel pages, the interval / time division.)</td><td>The track lights flash, the play row shows each channel's step</td></tr>
           <tr><td class="g"><span class="key">VOL−</span> <span class="key">VOL+</span></td><td>Output level, 3 dB steps</td><td>The level as a bar for a second</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> / <span class="key">VOL+</span></td><td>Distortion (next chapter)</td><td>Type and amount</td></tr>
         </tbody>
@@ -571,24 +571,24 @@ const PAGES = {
     f1: ["F1 · Character", "", ["The voice's own control: see Voices."]], f2: ["F2 · Tone", "", ["Dark to bright."]],
     f3: ["F3 · Length", "", ["How long its notes ring."]], f4: ["F4 · Register", "", ["Five octave steps."]],
     vol: VOL,
-    ffwd: ["FFWD · rocker up", "free", ["Tap: this channel's macro, one step more (four steps).", "~Held: the macro's shape: glide, bar steps, long rise.", "!•• + FFWD: nothing."]],
-    rwd: ["RWD · rocker down", "free", ["Held: the macro glides slower, 8 s to 64 s. Double tap: the macro off.", "!•• + RWD: nothing."]],
+    ffwd: ["FFWD · rocker up", "free", ["Tap: this channel's macro, one step more (four steps).", "•• + tap: its interval: none, a third, fifth, seventh or ninth above (Register keeps the octave).", "!Held: nothing."]],
+    rwd: ["RWD · rocker down", "", ["Held: the macro glides slower, 8 s to 64 s. Double tap: the macro off.", "•• + tap: its time division: 1, 1/2, 1/3, 1/4."]],
     tled: ["Track LEDs", "", ["This channel's light, steady."]],
     play: PLAY, prow: PROW, fn: FN, t: (n) => tCh(n, n === 2, false) },
   ext: { how: "Hold •• and tap the channel's own T on its page; again to go back. Shown for channel 2.", fl: ["ECHO", "VERB", "PAN", "ACT"], tl: ["CH1", "CH2", "CH3", "CH4"], led: "blink",
     f1: ["F1 · Echo send", "", ["How much goes to the tape echo."]], f2: ["F2 · Reverb send", "", ["How much goes to the reverb."]],
     f3: ["F3 · Pan", "", ["Left to right; a detent in the centre."]], f4: ["F4 · Activity", "", ["How often it plays."]],
     vol: VOL,
-    ffwd: ["FFWD · rocker up", "free", ["Tap: the channel macro, as on its page.", "!•• + FFWD: nothing."]],
-    rwd: ["RWD · rocker down", "free", ["Held: the macro slower. Double tap: off.", "!•• + RWD: nothing."]],
+    ffwd: ["FFWD · rocker up", "free", ["Tap: the channel macro, as on its page. •• + tap: its interval.", "!Held: nothing."]],
+    rwd: ["RWD · rocker down", "", ["Held: the macro slower. Double tap: off. •• + tap: its time division."]],
     tled: ["Track LEDs", "", ["This channel's light, blinking."]],
     play: PLAY, prow: PROW, fn: FN, t: (n) => tCh(n, n === 2, true) },
   har: { how: "Hold •• and press PLAY once, then wait a moment. One page for the whole instrument.", fl: ["ROOT", "MODE", "DRIFT", "MOTN"], tl: ["HALL", "CHMB", "SHIM", "BLOOM"], led: "chase",
     f1: ["F1 · Root", "", ["12 steps, C to B."]], f2: ["F2 · Mode", "", ["Eight: Ionian … pentatonic minor."]],
     f3: ["F3 · Drift", "", ["A new chord every 10 s to 4 min."]], f4: ["F4 · Motion", "", ["The slow tide, and how much the loops evolve."]],
     vol: VOL,
-    ffwd: ["FFWD · rocker up", "free", ["!Tap, held, •• + FFWD: nothing (kept for later)."]],
-    rwd: ["RWD · rocker down", "free", ["!Tap, held, •• + RWD: nothing (kept for later)."]],
+    ffwd: ["FFWD · rocker up", "free", ["Tap: the echo longer (1/8 … 2 bars); the tape glides there.", "•• + tap: key travel: off, up a fifth, lifts, relative, drops.", "!Held: nothing."]],
+    rwd: ["RWD · rocker down", "free", ["Tap: the echo shorter.", "•• + tap: the macros' shape: glide, bar steps, long rise.", "!Held: nothing."]],
     tled: ["Track LEDs", "", ["A slow chase."]],
     play: PLAY, prow: PROW, fn: FN,
     t: (n) => { const R = ["Hall", "Chamber", "Shimmer", "Bloom"][n - 1];
@@ -609,8 +609,8 @@ const PAGES = {
   shift: { how: "While •• is held, on any page.", fl: ["LVL1", "LVL2", "LVL3", "LVL4"], tl: ["T1", "T2", "T3", "T4"], led: "breathe", shift: true,
     f1: ["F1 · Level 1", "", ["Channel 1's level."]], f2: ["F2 · Level 2", "", ["Channel 2's level."]], f3: ["F3 · Level 3", "", ["Channel 3's level."]], f4: ["F4 · Level 4", "", ["Channel 4's level."]],
     vol: ["•• + VOL− / VOL+", "", ["VOL−: distortion amount, off to 4. VOL+: its type (Chebyshev, Overdrive, Fuzz, Fold, XOR).", "Held 3 s: off and the stack back to default / before, after, or on the reverb only."]],
-    ffwd: ["•• + FFWD", "free", ["Home: tap randomizes; held 3 s brings in the piece's macro scene.", "!Every other page: nothing."]],
-    rwd: ["•• + RWD", "free", ["Home: tap undoes; held 3 s saves the piece, its macros as its scene.", "!Every other page: nothing."]],
+    ffwd: ["•• + FFWD", "free", ["Home: tap randomizes; held 3 s brings in the macro scene. Harmony: key travel. Channel pages: the interval.", "!Playworld: nothing."]],
+    rwd: ["•• + RWD", "free", ["Home: tap undoes; held 3 s saves. Harmony: the macros' shape. Channel pages: the time division.", "!Playworld: nothing."]],
     tled: ["Track LEDs", "", ["As on the page you are on."]],
     play: ["•• + PLAY", "", ["Once: Harmony. Twice: the next piece."]],
     prow: ["Play row", "", ["As •• goes down: the battery, 1.5 s."]],

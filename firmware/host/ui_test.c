@@ -259,18 +259,36 @@ int main(void)
 	down(GB_FN); tap(GB_PLAY); run(500); up(GB_FN); run(600);
 	CHECK(out.page == PG_HARMONY, "on HARMONY (%d)", out.page);
 	tap(GB_FFWD); run(100);
-	CHECK(!gl_frozen, "the rocker alone does nothing on HARMONY");
+	CHECK(!gl_frozen, "FFWD on HARMONY does not freeze");
+	{
+		for (int k = 0; k < 10; k++) { tap(GB_FFWD); run(100); }
+		CHECK(glui_patch()->space[GL_SP_ECHO] == 4, "FFWD on HARMONY: the echo longer, up to 2 bars (%d)", glui_patch()->space[GL_SP_ECHO]);
+		for (int k = 0; k < 10; k++) { tap(GB_RWD); run(100); }
+		CHECK(glui_patch()->space[GL_SP_ECHO] == 5 && gl_speed > 0.99f, "RWD on HARMONY: shorter, down to an eighth, no slow-down (%d)", glui_patch()->space[GL_SP_ECHO]);
+		down(GB_FN); tap(GB_FFWD); run(100); up(GB_FN); run(200);
+		CHECK(GL_FLAG_KEY(glui_patch()->space[GL_SP_FLAGS]) == 1u, "•• + FFWD on HARMONY: key travel, up a fifth");
+		down(GB_FN); tap(GB_RWD); run(100); up(GB_FN); run(200);
+		CHECK(GL_FLAG_SHAPE(glui_patch()->space[GL_SP_FLAGS]) == 1u, "•• + RWD on HARMONY: the macros' shape, bar steps");
+	}
 	{	/* •• + the rocker is Home's only: on a channel page it does nothing (kept for later) */
 		down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);
 		tap(GB_T2); run(100);
 		gl_patch was = *glui_patch();
 		down(GB_FN); tap(GB_FFWD); run(100); up(GB_FN); run(300);
-		CHECK(memcmp(glui_patch(), &was, sizeof was) == 0, "•• + FFWD on a channel page does not randomize");
+		CHECK(memcmp(glui_patch()->ch, was.ch, sizeof was.ch) == 0 && GL_CHX_IVL(glui_patch()->chx[1]) == 1u,
+		      "•• + FFWD on a channel page: not a randomize, the interval a third (%u)", GL_CHX_IVL(glui_patch()->chx[1]));
+		for (int k = 0; k < 4; k++) { down(GB_FN); tap(GB_FFWD); run(100); up(GB_FN); run(200); }
+		CHECK(GL_CHX_IVL(glui_patch()->chx[1]) == 0u, "five steps round: none again");
 		int slot = 0;
 		down(GB_FN); down(GB_RWD);
 		for (int t = 0; t < 3300; t += 5) { glui_tick(now, &in, &out); if (out.save_slot) slot = out.save_slot; now += 5; }
 		up(GB_RWD); up(GB_FN); run(300);
 		CHECK(slot == 0, "•• + RWD held 3 s on a channel page does not save (slot %d)", slot);
+		CHECK(GL_CHX_DIV(glui_patch()->chx[1]) == 1u, "•• + RWD on a channel page: its time division, 1/2 (%u)", GL_CHX_DIV(glui_patch()->chx[1]));
+		down(GB_FN); tap(GB_RWD); run(100); up(GB_FN); run(200);
+		down(GB_FN); tap(GB_RWD); run(100); up(GB_FN); run(200);
+		down(GB_FN); tap(GB_RWD); run(100); up(GB_FN); run(200);
+		CHECK(GL_CHX_DIV(glui_patch()->chx[1]) == 0u, "four steps round: 1 again");
 	}
 	down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);
 

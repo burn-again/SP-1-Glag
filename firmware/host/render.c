@@ -68,6 +68,15 @@ int main(int argc, char **argv)
 					gl_world(k, (float)atof(eq + 1));
 		}
 	}
+	if (getenv("CHX")) {     /* CHX=channel:division:interval,... e.g. 2:1:0 = channel 3 at 1/2; 1:0:1 = channel 2 a third up */
+		char buf[128];
+		snprintf(buf, sizeof buf, "%s", getenv("CHX"));
+		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
+			int c = 0, d = 0, v = 0;
+			if (sscanf(t, "%d:%d:%d", &c, &d, &v) == 3 && c >= 0 && c < GL_NCH)
+				p.chx[c] = (uint8_t)((d & 3) | ((v & 7) << 2));
+		}
+	}
 	gl_post_patch(&p);
 	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
 		int t = 0, sh = 0;
@@ -94,7 +103,20 @@ int main(int argc, char **argv)
 	float fz0 = -1.0f, fz1 = -1.0f;
 	if (getenv("FREEZE"))      /* FREEZE=from,to in seconds */
 		sscanf(getenv("FREEZE"), "%f,%f", &fz0, &fz1);
+	/* ECHOSEQ=seconds:echo,... : the echo time stepped during the render (Harmony's rocker) */
+	float es_t[16]; int es_v[16], es_n = 0, es_i = 0;
+	if (getenv("ECHOSEQ")) {
+		char buf[256];
+		snprintf(buf, sizeof buf, "%s", getenv("ECHOSEQ"));
+		for (char *t = strtok(buf, ","); t && es_n < 16; t = strtok(0, ","))
+			if (sscanf(t, "%f:%d", &es_t[es_n], &es_v[es_n]) == 2)
+				es_n++;
+	}
 	for (uint32_t n = 0; n < frames; n += 96) {
+		if (es_i < es_n && (float)n / 48000.0f >= es_t[es_i]) {
+			p.space[GL_SP_ECHO] = (uint8_t)es_v[es_i++];
+			gl_post_patch(&p);
+		}
 		if (fz0 >= 0.0f)
 			gl_freeze((float)n / 48000.0f >= fz0 && (float)n / 48000.0f < fz1);
 		if (sweep_t >= 0)

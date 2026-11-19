@@ -274,12 +274,12 @@ class GlagCore {
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
     const st = new Uint8Array(w.memory.buffer, w.wg_state(), 104).slice();
-    const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), 184).slice();
+    const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), w.wg_patch_size()).slice();
     const msg = { t: "st", st: st.buffer, pt: pt.buffer };
     const slot = st[13];
     if (slot && slot !== this.lastSave) {
       this.lastSave = slot;
-      msg.save = { piece: slot - 1, bytes: new Uint8Array(w.memory.buffer, w.wg_saved(slot - 1), 184).slice().buffer };
+      msg.save = { piece: slot - 1, bytes: new Uint8Array(w.memory.buffer, w.wg_saved(slot - 1), w.wg_patch_size()).slice().buffer };
     }
     return msg;
   }
@@ -303,11 +303,11 @@ registerProcessor("glag", GlagNode);`;
 function b64(s) { const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
 function loadSaved() {
   const out = [];
-  try { for (let p = 0; p < 8; p++) { const s = localStorage.getItem("glag5-piece-" + p); if (s) out.push({ piece: p, bytes: b64(s) }); } } catch (e) {}
+  try { for (let p = 0; p < 8; p++) { const s = localStorage.getItem("glag6-piece-" + p); if (s) out.push({ piece: p, bytes: b64(s) }); } } catch (e) {}
   return out;
 }
 function storeSaved(piece, bytes) {
-  try { let s = ""; const u = new Uint8Array(bytes); for (const x of u) s += String.fromCharCode(x); localStorage.setItem("glag5-piece-" + piece, btoa(s)); } catch (e) {}
+  try { let s = ""; const u = new Uint8Array(bytes); for (const x of u) s += String.fromCharCode(x); localStorage.setItem("glag6-piece-" + piece, btoa(s)); } catch (e) {}
 }
 
 const startBtn = document.getElementById("start"), status = document.getElementById("status");

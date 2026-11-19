@@ -49,8 +49,9 @@ static struct {
 	int ph;                               /* 24 kHz samples into this 8 kHz one */
 	float acc, len, len_want, fb, mix, lp, hp, wow, l0, r0, l1, r1;
 } tp = {0, 0, 0.0f, 16000.0f, 16000.0f, 0.6f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 bars"};
-static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f};
+const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 bars", "1/8", "1/8.", "1/4"};
+static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.5f, 0.75f, 1.0f};
+const uint8_t GL_ECHO_ORDER[GL_NECHO] = {5, 6, 7, 0, 1, 2, 3, 4};
 
 static inline float tape_rd(float d)     /* d 8 kHz samples ago, interpolated */
 {
@@ -545,7 +546,8 @@ static void space_derive(float bpm)
  * takes the ring and fades in; freezing changes the decay */
 static void space_control(float dt, int freeze_changed)
 {
-	tp.len += (tp.len_want - tp.len) * (1.0f - dcoef(0.5f, dt));
+	/* the heads glide to a new length like a tape slowing or speeding up: no click, a short swoop */
+	tp.len += (tp.len_want - tp.len) * (1.0f - dcoef(1.6f, dt));
 	int want = P.space[GL_SP_REVERB] % GR_COUNT;
 	if (want != rv.cur) {
 		rv.fade -= dt / 0.08f;

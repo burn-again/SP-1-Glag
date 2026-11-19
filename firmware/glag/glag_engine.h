@@ -77,10 +77,21 @@ extern const char *const GL_MODE_NAME[GL_NMODES];
 /* The space: which reverb, the shimmer's interval, and the tape echo's length. */
 enum gl_reverb { GR_HALL, GR_CHAMBER, GR_SHIMMER, GR_BLOOM, GR_COUNT };
 enum gl_shimmer { GS_OCTAVE, GS_FIFTH, GS_SEVENTH, GS_COUNT };
-#define GL_NECHO 5                      /* a dotted quarter, a half, a dotted half, a bar, two bars */
+#define GL_NECHO 8                      /* a dotted quarter, a half, a dotted half, a bar, two bars, an eighth, a dotted eighth, a quarter */
 enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_NSP = 4 };
 #define GL_FLAG_REVERSE 1u              /* space[GL_SP_FLAGS]: reverse swells, ping-pong echo */
 #define GL_FLAG_PINGPONG 2u
+/* bits 2-4: key travel (0 off, 1 up a fifth, 2 lifts, 3 relative, 4 drops); bits 5-6: the macros'
+ * shape (0 glide, 1 steps on each bar, 2 a long rise) */
+#define GL_FLAG_KEY(f) (((f) >> 2) & 7u)
+#define GL_FLAG_SHAPE(f) (((f) >> 5) & 3u)
+#define GL_NKEYWAY 5
+#define GL_NSHAPE 3
+/* per channel (gl_patch.chx): bits 0-1 the time division (1, 1/2, 1/3, 1/4 of the steps),
+ * bits 2-4 the interval above what it would play (none, a third, fifth, seventh, ninth) */
+#define GL_CHX_DIV(x) ((x) & 3u)
+#define GL_CHX_IVL(x) (((x) >> 2) & 7u)
+#define GL_NIVL 5
 extern const char *const GL_REVERB_NAME[GR_COUNT];
 extern const char *const GL_SHIMMER_NAME[GS_COUNT];
 extern const char *const GL_ECHO_NAME[GL_NECHO];
@@ -92,6 +103,7 @@ typedef struct {
 	float g[GL_NGP];
 	uint8_t space[GL_NSP];          /* [GL_SP_REVERB] gl_reverb, [GL_SP_SHIMMER] gl_shimmer,
 	                                 * [GL_SP_ECHO] 0..GL_NECHO-1 */
+	uint8_t chx[GL_NCH];            /* per channel: time division and interval (GL_CHX_*) */
 } gl_patch;
 
 /* Stepped controls: how many positions they have (the UI snaps faders to these). 0 = smooth. */
@@ -126,6 +138,8 @@ void gl_macro(int ch, float depth, float period_s);
 enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW_SHAPE, GW_PINGPONG,
                      GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF, GW_FORM_KIND };
 void gl_world(int what, float v);
+/* echo times in order from shortest to longest (for stepping) */
+extern const uint8_t GL_ECHO_ORDER[GL_NECHO];
 
 /* ---- audio thread ---- */
 /* n stereo frames, interleaved int16, n a multiple of GL_SUB. gain 0..1 (volume). */

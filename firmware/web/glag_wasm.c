@@ -70,6 +70,7 @@ EXPORT void wg_tick(uint32_t now_ms)
 }
 EXPORT void *wg_state(void) { return &st; }
 EXPORT void *wg_patch(void) { return (void *)glui_patch(); }
+EXPORT int wg_patch_size(void) { return (int)sizeof(gl_patch); }
 /* n frames (a multiple of 48, at most 480), as interleaved float */
 EXPORT float *wg_render(uint32_t n)
 {

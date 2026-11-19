@@ -26,7 +26,8 @@ static struct {
 	float rev;
 	float autof;
 	int pp;
-} W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0};
+	int key_forced, shape_forced;
+} W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0};
 
 void gl_world(int what, float v)
 {
@@ -34,12 +35,13 @@ void gl_world(int what, float v)
 	case GW_FORM: W.form = clampf(v, 0.0f, 1.0f); W.form_init = 0; break;
 	case GW_FORM_BARS: W.form_bars = v < 1.0f ? 1.0f : v; break;
 	case GW_FORM_KIND: W.form_kind = (int)v % 3; break;
-	case GW_KEY_MIN: W.key_min = v; W.key_t = 0.0f; break;
+	case GW_KEY_MIN: W.key_min = v; W.key_t = 0.0f; W.key_forced = 1; break;
 	case GW_KEY_KIND: W.key_kind = (int)v; break;
 	case GW_PUMP: W.pump = clampf(v, 0.0f, 1.0f); break;
 	case GW_SHAPE:
 		for (int c = 0; c < GL_NCH; c++)
 			mac_shape[c] = (uint8_t)v;
+		W.shape_forced = 1;
 		break;
 	case GW_PINGPONG: W.pp = v > 0.5f; break;
 	case GW_TEXTURE: W.tex = (int)v; break;
@@ -50,7 +52,16 @@ void gl_world(int what, float v)
 	}
 }
 
-/* ---- form ---- */
+/* ---- song form ----
+ * One cycle of 4 x form_bars bars. Each track has its own arc, staggered by role: the held voices
+ * are there throughout; the plucks come in, then the bass, then the drums, fading in over bars
+ * while the whole grows busier. Then all four together; then they thin out in turn (drums, bass,
+ * the plucks to a shadow) while the filter closes and the space opens; then a build, the tracks
+ * back in one after another, the filter opening, the space swelling, a fill on its last bar; all
+ * four again; and out, back to the held voices, where the cycle starts over.
+ * Nothing jumps: every value is a smooth curve of where the song is, slewed again on top, the
+ * density never goes past 100 % (no notes cut short to make room), and the filter stays one kind
+ * of filter, gliding, for as long as the form is on. */
 static inline float fminf_(float a, float b) { return a < b ? a : b; }
 enum { ROLE_HELD, ROLE_PLUCK, ROLE_BASS, ROLE_DRUMS };
 static int voice_role(int v)
@@ -63,30 +74,36 @@ static int voice_role(int v)
 		return ROLE_HELD;
 	return ROLE_PLUCK;
 }
-enum { S_INTRO, S_BUILD, S_FULL, S_BREAK, S_PEAK };
-/* three arrangements, in sections and their lengths in 8ths of form_bars (8 = form_bars) */
-static const uint8_t FORM_SEC[3][6] = {{S_INTRO, S_BUILD, S_FULL, S_BREAK, S_BUILD, S_FULL},   /* arc */
-                                       {S_FULL, S_BREAK, S_BUILD, S_PEAK, S_BREAK, S_BUILD},   /* waves */
-                                       {S_INTRO, S_BUILD, S_PEAK, S_FULL, S_BREAK, S_BUILD}};  /* bloom */
-static const uint8_t FORM_LEN[3][6] = {{2, 4, 8, 6, 4, 8}, {8, 4, 4, 8, 4, 4}, {4, 8, 8, 8, 6, 6}};
-/* where in the form: the section, how far through it (0..1), and whether this is its last bar */
-static int form_where(float *prog, int *last_bar)
+/* keyframes (position 0..1, value), eased between with a smoothstep */
+typedef struct { float x, v; } kf;
+static float kf_at(const kf *k, int n, float x)
 {
-	const uint8_t *L = FORM_LEN[W.form_kind];
-	float unit = W.form_bars / 8.0f, total = 0.0f;
-	for (int k = 0; k < 6; k++)
-		total += (float)L[k] * unit;
-	float bar = fmodf_pos(((float)step_n + step_acc) / 16.0f, total);
-	for (int k = 0; k < 6; k++) {
-		float len = (float)L[k] * unit;
-		if (bar < len || k == 5) {
-			*prog = clampf(bar / len, 0.0f, 1.0f);
-			*last_bar = bar >= len - 1.0f;
-			return FORM_SEC[W.form_kind][k];
+	if (x <= k[0].x)
+		return k[0].v;
+	for (int i = 1; i < n; i++)
+		if (x <= k[i].x) {
+			float t = (x - k[i - 1].x) / (k[i].x - k[i - 1].x);
+			t = t * t * (3.0f - 2.0f * t);
+			return k[i - 1].v + (k[i].v - k[i - 1].v) * t;
 		}
-		bar -= len;
-	}
-	return S_FULL;
+	return k[n - 1].v;
+}
+/* each role's level through the cycle (the held voices stay) */
+static const kf ARC_PLUCK[] = {{0.08f, 0.0f}, {0.17f, 1.0f}, {0.57f, 1.0f}, {0.64f, 0.35f}, {0.70f, 0.35f},
+                               {0.75f, 1.0f}, {0.92f, 1.0f}, {0.99f, 0.0f}};
+static const kf ARC_BASS[] = {{0.18f, 0.0f}, {0.27f, 1.0f}, {0.55f, 1.0f}, {0.61f, 0.0f}, {0.73f, 0.0f},
+                              {0.78f, 1.0f}, {0.94f, 1.0f}, {0.995f, 0.0f}};
+static const kf ARC_DRUMS[] = {{0.28f, 0.0f}, {0.36f, 1.0f}, {0.53f, 1.0f}, {0.58f, 0.0f}, {0.76f, 0.0f},
+                               {0.81f, 0.55f}, {0.85f, 1.0f}, {0.93f, 1.0f}, {0.98f, 0.0f}};
+static const kf ARC_ACT[] = {{0.0f, 0.65f}, {0.40f, 1.0f}, {0.55f, 1.0f}, {0.63f, 0.7f}, {0.72f, 0.7f},
+                             {0.85f, 1.0f}, {0.94f, 1.0f}, {1.0f, 0.65f}};
+static const kf ARC_FILT[] = {{0.58f, 0.47f}, {0.67f, 0.30f}, {0.72f, 0.30f}, {0.85f, 0.47f}};   /* the DJ filter: open is 0.47 */
+static const kf ARC_SPACE[] = {{0.58f, 1.0f}, {0.66f, 1.2f}, {0.72f, 1.2f}, {0.84f, 1.4f}, {0.90f, 1.0f}};
+#define NK(a) ((int)(sizeof a / sizeof a[0]))
+static float form_pos(void)
+{
+	float cyc = 4.0f * W.form_bars;
+	return fmodf_pos(((float)step_n + step_acc) / 16.0f, cyc) / cyc;
 }
 static void form_tick(float dt)
 {
@@ -96,53 +113,47 @@ static void form_tick(float dt)
 		form_filt = -1.0f;
 		for (int c = 0; c < GL_NCH; c++)
 			w_lvl[c] = w_act[c] = 1.0f;
+		W.form_init = 0;
 		return;
 	}
-	float p;
-	int last;
-	int sec = form_where(&p, &last);
-	/* level and activity per role: held, plucks, bass, drums */
-	float lv[4], ac[4], space = 1.0f, filt = -1.0f;
-	ac[0] = ac[2] = ac[3] = 1.0f;
-	switch (sec) {
-	case S_INTRO:   /* no drums; the rest a little thinner, never silent */
-		lv[0] = 1.0f; lv[1] = 0.8f; lv[2] = 0.7f; lv[3] = 0.0f; ac[1] = 0.9f;
-		break;
-	case S_BUILD: {   /* from the intro to the full: drums fading in from halfway, the filter opening,
-	                   * the space swelling, and a fill on its last bar */
-		float q = p > 0.5f ? (p - 0.5f) * 2.0f : 0.0f;
-		lv[0] = 1.0f; lv[1] = 0.8f + 0.2f * p; lv[2] = 0.7f + 0.3f * p; lv[3] = q * q;
-		ac[1] = 0.9f + 0.3f * p;
-		space = 1.0f + 0.4f * p;
-		filt = 0.22f + 0.25f * p;
-		break;
-	}
-	case S_BREAK:
-		lv[0] = 1.0f; lv[1] = 0.8f; lv[2] = 0.0f; lv[3] = 0.0f; ac[1] = 0.7f;
-		space = 1.2f;
-		break;
-	case S_PEAK:
-		lv[0] = 1.0f; lv[1] = 1.1f; lv[2] = 1.0f; lv[3] = 1.0f; ac[1] = 1.3f; ac[3] = 1.25f;
-		break;
-	default:
-		lv[0] = lv[1] = lv[2] = lv[3] = 1.0f; ac[1] = 1.0f;
-		break;
-	}
-	/* sections fade over ~2 s; the very first tick takes its place at once (no drums at the
-	 * start of an intro) */
-	float k = W.form_init ? 1.0f - dcoef(2.0f, dt) : 1.0f;
+	float x = form_pos(), f = W.form;
+	/* a second pluck (or bass...) channel comes in a little after the first */
+	int seen[4] = {0, 0, 0, 0};
+	float k = W.form_init ? 1.0f - dcoef(0.6f, dt) : 1.0f;   /* a slew on top of the curves */
 	W.form_init = 1;
+	float act = kf_at(ARC_ACT, NK(ARC_ACT), x);
+	/* the anchor: a held voice stays throughout; with none (EP, Bass, Pulse, Kalimba...), the
+	 * first pluck does, so the song never starts or ends in silence */
+	int anchor = -1;
+	for (int c = 0; c < GL_NCH && anchor < 0; c++)
+		if (P.ch[c][CP_LEVEL] > 0.0f && voice_role(CH[c].want) == ROLE_HELD)
+			anchor = c;
+	for (int c = 0; c < GL_NCH && anchor < 0; c++)
+		if (P.ch[c][CP_LEVEL] > 0.0f && voice_role(CH[c].want) == ROLE_PLUCK)
+			anchor = c;
 	for (int c = 0; c < GL_NCH; c++) {
-		/* the voice it is becoming, and while it crossfades the one leaving: the quieter of the two
-		 * (a piece's old Pulse fading out under an intro was the drums at its start) */
 		int r = voice_role(CH[c].want), r0 = voice_role(CH[c].voice);
-		float l = 1.0f + W.form * (fminf_(lv[r], lv[r0]) - 1.0f), a = 1.0f + W.form * (ac[r] - 1.0f);
+		if (c == anchor)
+			r = r0 = ROLE_HELD;
+		float lvl = 1.0f, l0 = 1.0f, off = 0.035f * (float)seen[r]++;
+		float xs = fmodf_pos(x - off, 1.0f);
+		const kf *arc[4] = {0, ARC_PLUCK, ARC_BASS, ARC_DRUMS};
+		const int an[4] = {0, NK(ARC_PLUCK), NK(ARC_BASS), NK(ARC_DRUMS)};
+		if (r)
+			lvl = kf_at(arc[r], an[r], xs);
+		if (r0 && r0 != r)
+			l0 = kf_at(arc[r0], an[r0], xs);                  /* crossfading: the quieter */
+		float l = 1.0f + f * (fminf_(lvl, l0) - 1.0f);
+		float a = c == anchor ? 1.0f + f * (0.5f * (act + 1.0f) - 1.0f) : 1.0f + f * (act - 1.0f);
 		w_lvl[c] += (l - w_lvl[c]) * k;
 		w_act[c] += (a - w_act[c]) * k;
 	}
-	form_space += (1.0f + W.form * (space - 1.0f) - form_space) * (1.0f - dcoef(1.0f, dt));
-	form_filt = filt < 0.0f ? -1.0f : 0.47f - W.form * (0.47f - filt);
-	form_fill = sec == S_BUILD && last;
+	float sp = 1.0f + f * (kf_at(ARC_SPACE, NK(ARC_SPACE), x) - 1.0f);
+	form_space += (sp - form_space) * k;
+	form_filt = 0.47f - f * (0.47f - kf_at(ARC_FILT, NK(ARC_FILT), x));
+	/* the fill: the bar before the build lands (x = 0.85) */
+	float cyc = 4.0f * W.form_bars, bar = x * cyc, land = 0.85f * cyc;
+	form_fill = bar >= land - 1.0f && bar < land;
 }
 
 /* ---- key travel: on the bar, once the time is up ---- */
@@ -393,19 +404,20 @@ static void reverse_block(float *WL, float *WR, uint32_t n)
 static void autof_tick(void)
 {
 	static float was = -1.0f;
-	float v = -1.0f;
+	float v = -1.0f, base = P.g[GP_FILTER];
+	int centre = base > 0.47f && base < 0.53f;
 	if (W.autof > 0.0f) {
 		float ph = ((float)(step_n & 31u) + step_acc) / 32.0f;
 		float sw = 0.5f - 0.5f * sin_u((uint32_t)(ph * 4294967296.0f) + 0x40000000u);
-		v = P.g[GP_FILTER] - W.autof * 0.3f * sw;
-		if (P.g[GP_FILTER] > 0.47f && P.g[GP_FILTER] < 0.53f)
-			v = 0.47f - W.autof * 0.27f * sw;                  /* from open, down to ~500 Hz */
+		v = (centre ? 0.47f : base) - W.autof * (centre ? 0.27f : 0.3f) * sw;   /* from open, down to ~500 Hz */
 	}
-	if (form_filt >= 0.0f && (v < 0.0f || form_filt < v))
-		v = form_filt;
+	/* the form's filter only when the DJ filter is open (a high-pass of yours is left alone); it
+	 * is a low-pass at 18 kHz when "open", so it glides and never changes kind */
+	if (form_filt >= 0.0f && (centre || base < 0.47f))
+		v = v < 0.0f ? fminf_(form_filt, centre ? 0.47f : base) : fminf_(v, form_filt);
 	if (v < 0.0f) {
 		if (was >= 0.0f) {
-			filter_setup(P.g[GP_FILTER]);
+			filter_setup(base);
 			was = -1.0f;
 		}
 		return;
@@ -419,5 +431,17 @@ static void autof_tick(void)
 /* ---- the patch's flags, every control tick ---- */
 static void world_tick(void)
 {
-	w_pingpong = W.pp || (P.space[GL_SP_FLAGS] & GL_FLAG_PINGPONG);
+	uint8_t f = P.space[GL_SP_FLAGS];
+	w_pingpong = W.pp || (f & GL_FLAG_PINGPONG);
+	if (!W.key_forced) {             /* the piece's key travel: a move every 3 minutes */
+		unsigned k = GL_FLAG_KEY(f);
+		float want = k ? 3.0f : 0.0f;
+		if (want != W.key_min)
+			W.key_t = 0.0f;
+		W.key_min = want;
+		W.key_kind = k ? (int)k - 1 : 0;
+	}
+	if (!W.shape_forced)
+		for (int c = 0; c < GL_NCH; c++)
+			mac_shape[c] = (uint8_t)GL_FLAG_SHAPE(f);
 }

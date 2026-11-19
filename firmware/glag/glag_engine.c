@@ -380,9 +380,11 @@ static float eff_tone(int ch) { return clampf(P.ch[ch][CP_TONE] + 0.15f * arc, 0
 
 #define IDX_SCALE 683565275.6f            /* radians -> phase units */
 
+static int chan_of(const nvoice *v);
+static float ivl_note(int ch, float note);
 static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 {
-	v->note = note;
+	v->note = ivl_note(chan_of(v), note);
 	v->vel = vel;
 	v->ratio = ratio;
 	v->side = (uint8_t)(side & 1);
@@ -435,6 +437,36 @@ void gl_load(float frac)
 	fm_cap = fm_dist < gov_cap ? fm_dist : gov_cap;
 }
 static chan CH[GL_NCH];
+static int chan_of(const nvoice *v)
+{
+	for (int c = 0; c < GL_NCH; c++)
+		if (v >= CH[c].v && v < CH[c].v + NV)
+			return c;
+	return -1;
+}
+/* the channel's interval (GL_CHX_IVL): the note moved up that many steps of the scale, a third,
+ * fifth, seventh or ninth above, so a channel can play the harmony line to another */
+static float ivl_note(int ch, float note)
+{
+	static const int8_t STEPS[GL_NIVL] = {0, 2, 4, 6, 8};
+	if (ch < 0 || scale_n <= 0)
+		return note;
+	int iv = (int)GL_CHX_IVL(P.chx[ch]);
+	if (iv <= 0 || iv >= GL_NIVL)
+		return note;
+	int n = (int)(note + 0.5f);
+	int pc = ((n - root_pc) % 12 + 12) % 12, k = 0;
+	int rel[12];
+	for (int i = 0; i < scale_n; i++)
+		rel[i] = (scale_pc[i] - root_pc + 12) % 12;
+	for (int i = 0; i < scale_n; i++)                /* its step in the scale (or the one below) */
+		if (rel[i] <= pc)
+			k = i;
+	int st = scale_n == 7 ? STEPS[iv] : (STEPS[iv] * scale_n + 3) / 7;
+	int at = k + st;
+	int up = rel[at % scale_n] + 12 * (at / scale_n) - rel[k];
+	return note + (float)up;
+}
 static int nslots(int voice)
 {
 	switch (voice) {
@@ -867,7 +899,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			int fifth = rnd() < 0.5f * P.ch[ch][CP_CHAR];
 			int pc = fifth ? (chord_pc[0] + 7) % 12 : chord_pc[0];
 			int note = place(pc, (float)base, base - 6, base + 6);
-			c->target_note = (float)note;
+			c->target_note = ivl_note(ch, (float)note);
 			if (c->glide_note < 0.0f)
 				c->glide_note = (float)note;
 			nv_trigger(&c->v[0], (float)note, 0.8f, 0.5f, 0);
@@ -935,7 +967,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
 				break;                       /* no room: this pluck is skipped */
 			c->ks_next = (uint8_t)((k + 1) % KS_N);
-			float hz = mtof((float)note) * speed * pbend;
+			float hz = mtof(ivl_note(ch, (float)note)) * speed * pbend;
 			int len = (int)(VSR / hz);
 			if (len >= KS_LEN)
 				len = KS_LEN - 1;
@@ -1096,7 +1128,7 @@ static void chan_control(chan *c, int ch, float dt)
 						/* breathe in on this voice's tone of the chord */
 						int pc = chord_pc[i % chord_n];
 						float from = v->note > 0.0f ? v->note : (float)(base + 3 * i);
-						v->note = (float)place(pc, from, base - 2, base + 14);
+						v->note = ivl_note(ch, (float)place(pc, from, base - 2, base + 14));
 						v->stage = ST_DEC;
 						c->cyc[i] = 0.0f;
 						v->vel = 0.5f + 0.2f * rnd();
@@ -1248,7 +1280,7 @@ static void chan_control(chan *c, int ch, float dt)
 		if (c->seen_chord != chord_count || c->last_note != base) {
 			c->seen_chord = chord_count;
 			c->last_note = base;
-			c->target_note = (float)place(chord_pc[0], c->glide_note < 0.0f ? (float)base : c->glide_note, base - 5, base + 6);
+			c->target_note = ivl_note(ch, (float)place(chord_pc[0], c->glide_note < 0.0f ? (float)base : c->glide_note, base - 5, base + 6));
 		}
 		if (c->glide_note < 0.0f)
 			c->glide_note = c->target_note;
@@ -2050,8 +2082,12 @@ static void control(float dt)
 		}
 		if (playing && !frozen)
 			for (int c = 0; c < GL_NCH; c++)
-				if (!CH[c].fading)
-					chan_step(&CH[c], c, step_n);
+				if (!CH[c].fading) {
+					/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
+					uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
+					if (step_n % dv == 0u)
+						chan_step(&CH[c], c, step_n / dv);
+				}
 		step_n++;
 	}
 	for (int c = 0; c < GL_NCH; c++) {
@@ -2478,6 +2514,8 @@ void gl_piece(int i, gl_patch *out)
 	for (int k = 0; k < 3; k++)
 		out->space[k] = r->space[k];
 	out->space[3] = 0;
+	for (int c = 0; c < GL_NCH; c++)
+		out->chx[c] = 0;
 #ifdef GL_FORCE_REVERB                  /* for measuring each reverb's cost */
 	out->space[GL_SP_REVERB] = GL_FORCE_REVERB;
 #endif
