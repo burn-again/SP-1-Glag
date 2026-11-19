@@ -1880,7 +1880,14 @@ static void macro_tick(float dt)
 		float u1 = mac_u[c][0], u2 = mac_u[c][1];
 		d *= 1.0f + d;                       /* gentle at the first steps, twice as wide at full */
 		P.ch[c][CP_TONE] = clampf(Pb.ch[c][CP_TONE] + d * w[0] * 0.006f * u1, 0.0f, 1.0f);
-		P.ch[c][CP_CHAR] = clampf(Pb.ch[c][CP_CHAR] + d * w[1] * 0.007f * u2, 0.0f, 1.0f);
+		if (CH[c].voice == GV_PULSE) {
+			/* its Character is two things: rings (lower half) or the 4/4 grid (upper), and the
+			 * swing within each. The macro stays in the half it found and only swings it, gently
+			 * until the last step (the depth squared): a beat that shuffles only when you ask */
+			float b = Pb.ch[c][CP_CHAR], lo = b <= 0.5f ? 0.0f : 0.51f, hi = b <= 0.5f ? 0.5f : 1.0f;
+			P.ch[c][CP_CHAR] = clampf(b + d * mac_depth[c] * w[1] * 0.005f * u2, lo, hi);
+		} else
+			P.ch[c][CP_CHAR] = clampf(Pb.ch[c][CP_CHAR] + d * w[1] * 0.007f * u2, 0.0f, 1.0f);
 		P.ch[c][CP_LENGTH] = clampf(Pb.ch[c][CP_LENGTH] + d * w[4] * 0.005f * u2, 0.0f, 1.0f);
 		P.ch[c][CP_ACTIVITY] = clampf(Pb.ch[c][CP_ACTIVITY] + d * w[5] * 0.005f * u1, 0.0f, 1.0f);
 		mac_trem_ph[c] += dt * (3.0f + 2.0f * u2);   /* 1..5 Hz, wandering */

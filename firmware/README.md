@@ -42,10 +42,11 @@ character, which is each voice's own.
 random glide that pushes the voice's own controls around (tone, character, length, activity) and
 adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
-wide as at half, with two-octave leaps. Saving a piece (•• + RWD held) keeps its four macros and
-their glides with it, until power-off like the piece; loading a stock piece sets its own (most: off).
-Randomizing leaves them. Every piece also hides a macro scene (the eight after AMB-1 have one each,
-from a little life in Garden to everything at full in Tides), brought in or stored from Home.
+wide as at half, with two-octave leaps. A piece loads with its own macros (most: off) and hides a
+macro scene: •• + FFWD held 3 s brings it in on all four channels, and saving the piece (•• + RWD
+held 3 s) makes the macros as they are its new scene, until power-off. The eight after AMB-1 each
+have one, from a little life in Garden to everything at full in Tides. Randomizing leaves the macros.
+The Pulse's macro stays within its rings or its 4/4 beat, and its swing only gets wild at full.
 
 Boots on piece 1, *Garden*. Sixteen pieces. The first eight follow the stock pieces of
 [AMB-1](https://github.com/charlesvestal/fm1-amb) (Charles Vestal, MPL-2.0), in Glag's voices: its
@@ -78,14 +79,13 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• twice | Home |
 | | PLAY | grow / rest (resting stops new notes; the tails ring on) |
 | | •• + PLAY twice | next piece (16, then back to 1) |
-| Home and Harmony | FFWD tap | freeze, latched; tap again to let go |
+| Home | FFWD tap | freeze, latched; tap again to let go (on Harmony the rocker alone does nothing, kept for later) |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
 | Anywhere | •• + FFWD | randomize the piece (voices kept, filter left open) |
-| Home | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it (a tap still randomizes) |
-| | •• + RWD held 3 s | the macros as they are become this piece's scene (it saves the piece at 2 s on the way) |
+| | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
-| | •• + RWD held 2 s | save the piece to its slot |
+| | •• + RWD held 3 s | save the piece to its slot; the macros as they are become its scene |
 | | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
 | | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
