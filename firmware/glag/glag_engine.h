@@ -145,6 +145,8 @@ const char *gl_piece_name(int i);
 void gl_piece(int i, gl_patch *out);
 /* the piece's channel macros: steps 0..4 per channel, and seconds per glide */
 void gl_piece_macro(int i, uint8_t *steps, float *period_s);
+/* its hidden macro scene, the same way (brought in by hand) */
+void gl_piece_scene(int i, uint8_t *steps, float *period_s);
 /* A tasteful random patch, keeping the current voices and harmony root unless asked. */
 void gl_randomize(gl_patch *p, uint32_t seed);
 

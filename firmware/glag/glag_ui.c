@@ -9,6 +9,7 @@
 #define DOUBLE_MS 400u       /* two taps closer than this are a double tap */
 #define FREEZE_HOLD_MS 400u  /* FFWD held longer than this freezes only while held */
 #define SAVE_HOLD_MS 2000u   /* •• + RWD held this long saves */
+#define SCENE_HOLD_MS 3000u  /* on Home, •• + FFWD / RWD held this long: the macro scene in / stored */
 #define SHOW_MS 1000u        /* how long the play row shows a value */
 #define CATCH 0.02f          /* soft takeover: this close counts as reached */
 #define MOVE 0.008f          /* a fader moved more than this is being used */
@@ -24,6 +25,9 @@ static gl_patch saved[GL_NPIECES];
 static uint8_t saved_valid[GL_NPIECES];
 static uint8_t saved_mac[GL_NPIECES][4];     /* a saved piece's channel macros, with it */
 static float saved_mper[GL_NPIECES][4];
+/* each piece's hidden macro scene: from the piece, overwritten by •• + RWD held 3 s on Home */
+static uint8_t scene_mac[GL_NPIECES][4];
+static float scene_per[GL_NPIECES][4];
 static int piece;
 static int dirty = 1;
 
@@ -41,7 +45,7 @@ static int fn_taps;
 static int play_taps;                         /* •• + PLAY taps waiting to be counted */
 static uint32_t play_tap_at;
 static int freeze_latched, freeze_on, slow_on, playing = 1;
-static uint8_t rwd_shift, rwd_saved, ffwd_froze, started;
+static uint8_t rwd_shift, rwd_saved, rwd_scene, ffwd_froze, ffwd_shift, ffwd_done, started;
 /* distortion: type, amount (0 off .. 4), after the effects; and the •• + VOL presses in flight */
 #define DIST_HOLD_MS 3000u
 static int dist_type, dist_amt, dist_post;
@@ -57,7 +61,7 @@ static int rwd_taps;
 static uint32_t seed = 0x2545F491u;
 
 /* what the play row is showing */
-enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD, SH_REVERB };
+enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD, SH_REVERB, SH_MACROS };
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -205,6 +209,12 @@ float glui_target(int f, int *c)
 
 void glui_init(void)
 {
+	for (int i = 0; i < GL_NPIECES; i++) {
+		float per;
+		gl_piece_scene(i, scene_mac[i], &per);
+		for (int c = 0; c < 4; c++)
+			scene_per[i][c] = per;
+	}
 	piece = 0;
 	if (saved_valid[0])
 		cur = saved[0];
@@ -373,7 +383,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	/* ---- FFWD: freeze (tap latches, hold is momentary) on Home and Harmony; on a channel page,
 	 * one step more of that channel's macro; •• + FFWD: randomize, everywhere ---- */
 	if (PRESSED(GB_FFWD)) {
-		if (fn) {
+		if (fn && page == PG_HOME) {
+			/* on Home: a tap randomizes when it lets go; held 3 s brings in the macro scene */
+			used_with_fn = 1;
+			ffwd_shift = 1;
+			ffwd_done = 0;
+		} else if (fn) {
 			used_with_fn = 1;
 			undo_patch = cur;
 			undo_piece = piece;
@@ -394,6 +409,35 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			freeze_on = 1;
 			gl_freeze(1);
 			ffwd_froze = 1;
+		}
+	}
+	if (DOWN(GB_FFWD) && ffwd_shift && !ffwd_done) {
+		uint32_t held = now - down_at[GB_FFWD];
+		if (held >= SCENE_HOLD_MS) {
+			ffwd_done = 1;
+			for (int c = 0; c < 4; c++) {
+				mac_step[c] = scene_mac[piece][c];
+				mac_period[c] = scene_per[piece][c];
+				macro_post(c);
+			}
+			say(SH_MACROS, now, 1500);
+		} else if (held >= TAP_MS) {
+			show_val = (float)held / (float)SCENE_HOLD_MS;   /* the hold filling up */
+			say(SH_VALUE, now, 100);
+		}
+	}
+	if (RELEASED(GB_FFWD) && ffwd_shift) {
+		ffwd_shift = 0;
+		if (!ffwd_done && now - down_at[GB_FFWD] < TAP_MS) {
+			undo_patch = cur;
+			undo_piece = piece;
+			undo_valid = 1;
+			seed = seed * 1664525u + 1013904223u + now;
+			gl_randomize(&cur, seed);
+			dirty = 1;
+			uncatch_all(in);
+			show_dir = 1;
+			say(SH_SWEEP, now, 400);
 		}
 	}
 	if (RELEASED(GB_FFWD) && ffwd_froze) {
@@ -418,6 +462,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			used_with_fn = 1;
 			rwd_shift = 1;
 			rwd_saved = 0;
+			rwd_scene = 0;
 		} else if (on_channel()) {
 			rwd_shift = 0;
 			rwd_mac = 1;
@@ -456,6 +501,16 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		}
 		out->save_slot = (uint8_t)(piece + 1);
 		say(SH_FLASH, now, 900);
+	}
+	/* on Home, held on to 3 s: the macros as they are become this piece's scene */
+	if (DOWN(GB_RWD) && rwd_shift && rwd_saved && !rwd_scene && page == PG_HOME &&
+	    now - down_at[GB_RWD] >= SCENE_HOLD_MS) {
+		rwd_scene = 1;
+		for (int c = 0; c < 4; c++) {
+			scene_mac[piece][c] = mac_step[c];
+			scene_per[piece][c] = mac_period[c];
+		}
+		say(SH_MACROS, now, 1500);
 	}
 	if (RELEASED(GB_RWD)) {
 		if (rwd_shift) {
@@ -641,6 +696,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	case SH_HOLD:                                   /* •• + VOL held: filling toward 3 s */
 		index_pic(out->led_t, dist_type, now);
 		bar(out->led_p, show_val);
+		break;
+	case SH_MACROS:                                 /* the macro scene in or stored: each channel's step */
+		for (int c = 0; c < 4; c++) {
+			out->led_t[c] = ((now - flash_t0) / 150u) & 1u ? 0 : 255;
+			out->led_p[c] = (uint8_t)(mac_step[c] * 63u);
+		}
 		break;
 	case SH_FLASH: {                                /* saved: three flashes on all eight */
 		uint8_t on = ((now - flash_t0) / 150u) & 1u ? 0 : 255;

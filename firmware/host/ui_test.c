@@ -295,6 +295,30 @@ int main(void)
 	down(GB_FN); run(3500); up(GB_FN); run(500);
 	CHECK(out.page == pg, "•• held alone changes nothing in the UI");
 
+	/* the macro scene on Home: •• + FFWD held 3 s brings it in, •• + RWD held 3 s stores it */
+	glui_init(); run(500);
+	CHECK(out.page == PG_HOME && out.piece == 0 && out.macro[0] == 0, "back on Home, Garden, macros off");
+	down(GB_FN); down(GB_FFWD); run(2000);
+	CHECK(out.macro[0] == 0, "•• + FFWD held 2 s: not yet");
+	run(1200); up(GB_FFWD); up(GB_FN); run(300);
+	CHECK(out.macro[0] == 2 && out.macro[1] == 2 && out.macro[2] == 1 && out.macro[3] == 1,
+	      "•• + FFWD held 3 s: Garden's scene, 2 2 1 1 (%d %d %d %d)", out.macro[0], out.macro[1], out.macro[2], out.macro[3]);
+	gl_patch keep = *glui_patch();
+	CHECK(memcmp(glui_patch(), &keep, sizeof keep) == 0, "and no randomize on letting go");
+	tap(GB_T4); run(50); tap(GB_FFWD); run(100); tap(GB_FFWD); run(100); tap(GB_FFWD); run(100);
+	down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);
+	CHECK(out.page == PG_HOME && out.macro[3] == 4, "channel 4 to full, back Home (%d)", out.macro[3]);
+	down(GB_FN); down(GB_RWD); run(3200); up(GB_RWD); up(GB_FN); run(300);
+	down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
+	down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
+	CHECK(out.piece == 2 && out.macro[3] == 0, "two pieces on, macros off (%d)", out.macro[3]);
+	for (int k = 0; k < GL_NPIECES - 2; k++) {
+		down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
+	}
+	CHECK(out.piece == 0, "round to Garden again (%d)", out.piece);
+	down(GB_FN); down(GB_FFWD); run(3200); up(GB_FFWD); up(GB_FN); run(300);
+	CHECK(out.macro[0] == 2 && out.macro[3] == 4, "the stored scene comes back: channel 4 at full (%d %d)", out.macro[0], out.macro[3]);
+
 	printf("%d checks, %d failed\n", checks, fails);
 	return fails != 0;
 }

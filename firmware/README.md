@@ -44,7 +44,8 @@ adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
 wide as at half, with two-octave leaps. Saving a piece (•• + RWD held) keeps its four macros and
 their glides with it, until power-off like the piece; loading a stock piece sets its own (most: off).
-Randomizing leaves them.
+Randomizing leaves them. Every piece also hides a macro scene (the eight after AMB-1 have one each,
+from a little life in Garden to everything at full in Tides), brought in or stored from Home.
 
 Boots on piece 1, *Garden*. Sixteen pieces. The first eight follow the stock pieces of
 [AMB-1](https://github.com/charlesvestal/fm1-amb) (Charles Vestal, MPL-2.0), in Glag's voices: its
@@ -81,6 +82,8 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
 | Anywhere | •• + FFWD | randomize the piece (voices kept, filter left open) |
+| Home | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it (a tap still randomizes) |
+| | •• + RWD held 3 s | the macros as they are become this piece's scene (it saves the piece at 2 s on the way) |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
 | | •• + RWD held 2 s | save the piece to its slot |
 | | VOL+ / VOL- | output level (Wakes' 3 dB steps) |

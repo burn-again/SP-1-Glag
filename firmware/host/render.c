@@ -42,7 +42,10 @@ int main(int argc, char **argv)
 	{	/* the piece's channel macros; MACRO=4444 (steps per channel) and MPER=seconds override */
 		uint8_t st[GL_NCH];
 		float per;
-		gl_piece_macro(piece, st, &per);
+		if (getenv("SCENE"))   /* SCENE=1: the piece's hidden macro scene brought in */
+			gl_piece_scene(piece, st, &per);
+		else
+			gl_piece_macro(piece, st, &per);
 		if (getenv("MACRO"))
 			for (int c = 0; c < GL_NCH && getenv("MACRO")[c]; c++)
 				st[c] = (uint8_t)(getenv("MACRO")[c] - '0');
