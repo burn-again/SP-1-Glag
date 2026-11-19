@@ -8,16 +8,17 @@
   --bg: #e9ebee; --fg: #1f2329; --muted: #5e646e; --line: #cdd1d7; --panel: #f6f6f4;
   --body: #f6f6f4; --body-edge: #cfd2d6; --slot: #d9dce0; --thumb: #ffffff;
   --led: #ff8a2a; --led-off: #c9ccd1; --led-ink: #a8500f;
+  --free: #b35a00; --plan: #3d63b8; --cs-bg: #eef0f2; --sh-bg: #e4ebf8; --sh-line: #8fa8d8; --sh-ink: #2c4f9e;
   --display: "Syne", system-ui, sans-serif; --text: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a; --panel: #1d2024;
   --body: #23262b; --body-edge: #363b42; --slot: #17191c; --thumb: #c9ccd1;
-  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; color-scheme: dark } }
+  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; --free: #f0a53a; --plan: #8fb0f5; --cs-bg: #111316; --sh-bg: #16213a; --sh-line: #4f6fb0; --sh-ink: #9fbcff; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #15171a; --fg: #e6e7e9; --muted: #9aa0a8; --line: #30343a; --panel: #1d2024;
   --body: #23262b; --body-edge: #363b42; --slot: #17191c; --thumb: #c9ccd1;
-  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; color-scheme: dark }
+  --led: #ff9a45; --led-off: #3a3e45; --led-ink: #ffb06b; --free: #f0a53a; --plan: #8fb0f5; --cs-bg: #111316; --sh-bg: #16213a; --sh-line: #4f6fb0; --sh-ink: #9fbcff; color-scheme: dark }
 body { background: var(--bg); color: var(--fg); font-family: var(--text); font-size: 15px; line-height: 1.55; }
 main { max-width: 1080px; margin: 0 auto; padding-block: 32px 72px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 48px; }
 h1 { font-family: var(--display); font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.05; margin: 0; letter-spacing: -0.01em; }
@@ -34,7 +35,54 @@ nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 nav.toc a { font-family: var(--mono); font-size: 13px; color: var(--fg); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
 nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--led); outline: none; }
 
-/* ---- control map ---- */
+
+/* ---- control surface: the device in the middle, a callout per control around it ---- */
+.tag { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; white-space: nowrap; vertical-align: 2px; }
+.tag.free { color: var(--free); }
+.tag.plan { color: var(--plan); }
+.tab small { font: 10.5px var(--mono); color: var(--plan); }
+.how { color: var(--muted); max-width: 72ch; }
+.cs { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px) minmax(0, 1fr); grid-template-areas: "top top top" "left dev right" "bot bot bot"; gap: 22px 26px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--cs-bg); }
+.cs.shift { --cbox-bg: var(--sh-bg); --cbox-line: var(--sh-line); --cbox-head: var(--sh-ink); }
+.cs-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.cs-lines path { fill: none; stroke: var(--cbox-line, var(--line)); stroke-width: 1.3; }
+.cs-lines circle { fill: var(--cbox-line, var(--muted)); }
+.cs-top, .cs-bot { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.cs-top { grid-area: top; } .cs-bot { grid-area: bot; }
+.cs-left, .cs-right { display: grid; gap: 14px; align-content: center; }
+.cs-left { grid-area: left; } .cs-right { grid-area: right; }
+.cs-dev { grid-area: dev; margin: 0; align-self: center; position: relative; z-index: 1; }
+.cs-dev svg { width: 100%; height: auto; display: block; overflow: visible; }
+.cbox { position: relative; z-index: 1; background: var(--cbox-bg, var(--panel)); border: 1px solid var(--cbox-line, var(--line)); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; line-height: 1.45; min-width: 0; }
+.cbox h3 { font: 600 14px var(--text); margin: 0 0 4px; color: var(--cbox-head, var(--fg)); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.cbox p { color: var(--muted); }
+.cbox p + p { margin-top: 2px; }
+.cbox .nothing { color: var(--free); font-weight: 600; }
+.cbox .planned { color: var(--plan); }
+.d-body { fill: var(--body); stroke: var(--body-edge); stroke-width: 1.5; }
+.d-strip { fill: color-mix(in srgb, var(--body-edge) 55%, var(--body)); }
+.d-pill, .d-rock { fill: color-mix(in srgb, var(--body-edge) 80%, var(--body)); }
+.d-arr { fill: var(--body); }
+.d-slot { fill: var(--slot); }
+.d-thumb { fill: var(--thumb); stroke: var(--body-edge); }
+.d-flab { fill: var(--fg); font: 600 9.5px var(--mono); letter-spacing: .04em; }
+.d-btn { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+.d-btn.hot { stroke: var(--led); stroke-width: 2; stroke-dasharray: 2.5 2.5; }
+.d-blab { fill: var(--muted); font: 600 9px var(--mono); }
+.d-led { fill: var(--led-off); }
+.d-play { fill: var(--led); }
+.d-fn { fill: var(--bg); stroke: var(--line); }
+.cs.shift .d-fn { stroke: var(--sh-ink); stroke-width: 2.5; }
+.d-dot { fill: var(--fg); }
+@media (max-width: 860px) {
+  .cs { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "dev" "top" "left" "right" "bot"; }
+  .cs-dev { max-width: 260px; justify-self: center; }
+  .cs-top, .cs-bot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cs-lines { display: none; }
+}
+@media (max-width: 480px) { .cs-top, .cs-bot { grid-template-columns: minmax(0, 1fr); } .cs { padding: 12px; } }
+
+/* ---- control map (old) ---- */
 .map { display: grid; grid-template-columns: minmax(0, 470px) minmax(0, 1fr); gap: 24px; align-items: start; }
 @media (max-width: 880px) { .map { grid-template-columns: minmax(0, 1fr); } }
 .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -114,6 +162,7 @@ h3.group { margin-top: 18px; }
 .flow svg { width: 100%; height: auto; display: block; max-width: 900px; }
 .flow-box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
 .flow-box.home { stroke: var(--led); stroke-width: 2; }
+.flow-box.plan { stroke: var(--plan); stroke-dasharray: 5 4; }
 .flow-t { fill: var(--fg); font: 600 15px var(--display); }
 .flow-s { fill: var(--muted); font: 11.5px var(--mono); }
 .flow-a { fill: none; stroke: var(--muted); stroke-width: 1.5; }
@@ -139,39 +188,40 @@ h3.group { margin-top: 18px; }
   <section class="chapter" id="controls" aria-labelledby="h-controls">
     <header>
       <div class="eyebrow">1 · The controls</div>
-      <h2 id="h-controls">Control map</h2>
-      <p>The SP-1 has four faders, four track buttons with a light above each, a row of four play lights, PLAY, ••, a volume rocker and a FFWD / RWD rocker. What the faders and track buttons do depends on the page you are on. Choose a page to see the map change.</p>
+      <h2 id="h-controls">Control surface</h2>
+      <p>Every control on the SP-1, for each page: what it does there, with •• and held. Anything marked <span class="tag free">part free</span> still has a gesture with nothing on it, spelled out in orange; <span class="tag plan">planned</span> is designed but not built yet. The •• held layer is drawn in blue.</p>
     </header>
     <div class="tabs" role="tablist" aria-label="Page">
-      <button class="tab" role="tab" id="tab-home" aria-selected="true" data-page="home">Home</button>
-      <button class="tab" role="tab" id="tab-ch" aria-selected="false" data-page="ch">Channel</button>
-      <button class="tab" role="tab" id="tab-ext" aria-selected="false" data-page="ext">Extended</button>
-      <button class="tab" role="tab" id="tab-har" aria-selected="false" data-page="har">Harmony</button>
-      <button class="tab" role="tab" id="tab-shift" aria-selected="false" data-page="shift">•• held</button>
+      <button class="tab" role="tab" aria-selected="true" data-page="home">Home</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="ch">Channel</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="ext">Extended</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="har">Harmony</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="pw">Playworld <small>planned</small></button>
+      <button class="tab" role="tab" aria-selected="false" data-page="shift">•• held</button>
     </div>
-    <div class="map">
-      <figure class="device" style="margin:0">
-        <svg viewBox="0 0 470 560" role="img" aria-labelledby="svg-title">
-          <title id="svg-title">Schematic of the SP-1's controls, labelled for the chosen page</title>
-          <rect class="svg-body" x="4" y="4" width="462" height="552" rx="34"/>
-          <text class="svg-small" x="34" y="44">TRACK LIGHTS</text>
-          <g id="tleds"></g>
-          <g id="faders"></g>
-          <g id="tbtns"></g>
-          <text class="svg-small" x="34" y="448">PLAY LIGHTS</text>
-          <g id="pleds"></g>
-          <g id="btnrow"></g>
+    <p class="how" id="cs-how"></p>
+    <div class="cs" id="cs">
+      <svg class="cs-lines" id="cs-lines" aria-hidden="true"></svg>
+      <div class="cs-top"><div class="cbox" data-k="f1"></div><div class="cbox" data-k="f2"></div><div class="cbox" data-k="f3"></div><div class="cbox" data-k="f4"></div></div>
+      <div class="cs-left"><div class="cbox" data-k="vol"></div><div class="cbox" data-k="ffwd"></div><div class="cbox" data-k="rwd"></div><div class="cbox" data-k="tled"></div></div>
+      <figure class="cs-dev">
+        <svg viewBox="0 0 300 400" role="img" aria-labelledby="cs-title">
+          <title id="cs-title">The SP-1, drawn plainly</title>
+          <rect class="d-body" x="14" y="12" width="276" height="380" rx="22"/>
+          <path class="d-strip" d="M216 12 H268 a22 22 0 0 1 22 22 V370 a22 22 0 0 1 -22 22 H216 Z"/>
+          <rect class="d-pill" id="a-vol" x="62" y="4" width="38" height="10" rx="5"/><rect class="d-pill" x="108" y="4" width="38" height="10" rx="5"/>
+          <rect class="d-rock" x="4" y="58" width="13" height="66" rx="6"/>
+          <path class="d-arr" id="a-ffwd" d="M10.5 70 l-4 7 h8 z"/><path class="d-arr" id="a-rwd" d="M10.5 112 l-4 -7 h8 z"/>
+          <g id="cs-faders"></g>
+          <g id="cs-tleds"></g>
+          <g id="cs-tbtns"></g>
+          <path class="d-play" id="a-play" d="M244 58 l13 22 h-26 z"/>
+          <g id="cs-pleds"></g>
+          <circle class="d-fn" id="a-fn" cx="250" cy="344" r="14"/><circle class="d-dot" cx="250" cy="339" r="2.6"/><circle class="d-dot" cx="250" cy="349" r="2.6"/>
         </svg>
-        <figcaption>Schematic, not to scale: it shows every control and how they relate, not the SP-1's exact shape.</figcaption>
       </figure>
-      <div class="detail" aria-live="polite">
-        <div>
-          <div class="pagename" id="d-name">Home</div>
-          <p class="how" id="d-how"></p>
-        </div>
-        <dl class="rows" id="d-faders"></dl>
-        <dl class="rows" id="d-buttons"></dl>
-      </div>
+      <div class="cs-right"><div class="cbox" data-k="play"></div><div class="cbox" data-k="prow"></div><div class="cbox" data-k="fn"></div></div>
+      <div class="cs-bot"><div class="cbox" data-k="t1"></div><div class="cbox" data-k="t2"></div><div class="cbox" data-k="t3"></div><div class="cbox" data-k="t4"></div></div>
     </div>
   </section>
 
@@ -180,10 +230,10 @@ h3.group { margin-top: 18px; }
     <header>
       <div class="eyebrow">2 · Pages</div>
       <h2 id="h-pages">Getting around</h2>
-      <p>Glag starts on Home. Every channel has its own page and an extended page behind it. Harmony is one page for the whole instrument. Tap •• twice from anywhere to come back Home.</p>
+      <p>Glag starts on Home. Every channel has its own page and an extended page behind it. Harmony is one page for the whole instrument; Playworld (planned) another, behind PLAY. Tap •• twice from anywhere to come back Home.</p>
     </header>
     <div class="flow" style="overflow-x:auto">
-      <svg viewBox="0 0 900 330" role="img" aria-labelledby="flow-title" style="min-width:640px">
+      <svg viewBox="0 0 900 420" role="img" aria-labelledby="flow-title" style="min-width:640px">
         <title id="flow-title">How the pages connect</title>
         <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="flow-head" d="M0 0 L10 5 L0 10 z"/></marker></defs>
         <rect class="flow-box home" x="20" y="125" width="180" height="96" rx="14"/>
@@ -213,6 +263,14 @@ h3.group { margin-top: 18px; }
         <text class="flow-lbl" x="214" y="250">•• + PLAY once</text>
         <path class="flow-a" d="M470 215 L 470 138" marker-end="url(#ah)"/>
         <text class="flow-lbl" x="480" y="182">T1-T4</text>
+        <rect class="flow-box plan" x="20" y="316" width="180" height="88" rx="14"/>
+        <text class="flow-t" x="110" y="350" text-anchor="middle">Playworld</text>
+        <text class="flow-s" x="110" y="372" text-anchor="middle">form · key · pump</text>
+        <text class="flow-s" x="110" y="388" text-anchor="middle">texture (planned)</text>
+        <path class="flow-a" d="M95 221 L 95 314" marker-end="url(#ah)"/>
+        <path class="flow-a" d="M125 314 L 125 223" marker-end="url(#ah)"/>
+        <text class="flow-lbl" x="134" y="262">PLAY held 2 s,</text>
+        <text class="flow-lbl" x="134" y="278">both ways</text>
         <text class="flow-lbl" x="20" y="30">From any page: •• twice → Home</text>
         <text class="flow-lbl" x="20" y="50">On Home: •• + T1-T4 → next voice</text>
       </svg>
@@ -489,30 +547,76 @@ const PIECES = [
   ["Lobby 84", "EP Pizz Bass Swell", "80 BPM · F Ionian · Chamber"],
   ["Long Haul", "Pizz Tails Swell Gong", "70 BPM · A pentatonic minor · Hall"],
 ];
+/* ---------------- the control surface: per page, a callout for every control ----------------
+ * A line starting "!" is a gesture with nothing on it (orange); "~" is planned (blue). */
+const VOL = ["VOL− / VOL+", "", ["Output level, 3 dB steps.", "•• + VOL−: distortion amount. •• + VOL+: its type."]];
+const PROW = ["Play row (LEDs by PLAY)", "", ["Each channel's notes. A fader's value while it moves, a voice or piece number, a still glow when frozen, three flashes on a save."]];
+const FN = ["•• (shift)", "", ["Hold: the •• layer (the mixer, the shifted controls).", "Two taps: Home. Hold 3 s alone: power off."]];
+const PLAY = ["PLAY", "plan", ["Tap: grow / rest (no new notes; the tails ring on).", "•• + PLAY once: Harmony; twice: the next piece.", "~Held 2 s: Playworld."]];
+const tCh = (n, own, ext) => own
+  ? [`T${n} · This channel`, "free", [ext ? "•• + tap: back to its page." : "•• + tap: its extended page.", "!Tap: nothing (you are here).", "!Held: nothing."]]
+  : [`T${n} · Channel ${n}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: channel ${n}'s extended page.`, "!Held: nothing."]];
 const PAGES = {
-  home: { name: "Home", how: "Where Glag starts. Tap •• twice from anywhere to return.",
-    f: [["Tempo", "20-120 BPM"], ["Delay", "echo amount"], ["Reverb", "space and size"], ["DJ filter", "left low-pass · centre off · right high-pass"]],
-    t: "breathe", hot: [0, 1, 2, 3],
-    b: [["T1-T4", "<b>Open that channel's page</b>"], ["•• + T1-T4", "<b>That channel's next voice</b> <span>(all sixteen, in order)</span>"], ["•• + PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["FFWD / RWD", "<b>Freeze / slow down</b>"]] },
-  ch: { name: "Channel page", how: "Tap a channel's T on Home. Shown here for channel 2.",
-    f: [["Character", "the voice's own control"], ["Tone", "dark to bright"], ["Length", "how long notes ring"], ["Register", "five octave steps"]],
-    t: "one", hot: [1],
-    b: [["Another T", "<b>That channel's page</b>"], ["•• + its own T", "<b>Its extended page</b>"], ["•• + another T", "<b>That channel's extended page</b>"], ["FFWD / RWD", "<b>The channel macro</b>: FFWD a step more · RWD held slower · RWD twice off"]] },
-  ext: { name: "Extended page", how: "Hold •• and tap the channel's own T on its page. Again to go back.",
-    f: [["Echo send", "how much goes to the delay"], ["Reverb send", "how much goes to the reverb"], ["Pan", "centre detent"], ["Activity", "how often it plays"]],
-    t: "blink", hot: [1],
-    b: [["•• + its own T", "<b>Back to its channel page</b>"], ["T1-T4", "<b>That channel's page</b>"], ["FFWD / RWD", "<b>The channel macro</b>, as on the channel page"]] },
-  har: { name: "Harmony", how: "Hold •• and press PLAY once, then wait a moment. One page for the whole instrument.",
-    f: [["Root", "12 steps, C to B"], ["Mode", "8 steps: Ionian … pentatonic minor"], ["Drift", "a new chord every 10 s to 4 min"], ["Motion", "the slow tide, and how much it evolves"]],
-    t: "chase", hot: [0, 1, 2, 3],
-    b: [["T1-T4", "<b>That channel's page</b>"], ["•• + T1-T4", "<b>The reverb</b>: Hall, Chamber, Shimmer, Bloom · •• + T3 again: Shimmer's interval"], ["•• twice", "<b>Home</b>"], ["FFWD / RWD", "<b>Freeze / slow down</b>"]] },
-  shift: { name: "•• held", how: "While •• is held, on any page, the faders are the mixer.",
-    f: [["Level 1", "channel 1"], ["Level 2", "channel 2"], ["Level 3", "channel 3"], ["Level 4", "channel 4"]],
-    t: "breathe", hot: [],
-    b: [["+ T (Home)", "<b>Next voice</b> on that channel"], ["+ PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["+ FFWD / RWD (Home)", "<b>Randomize / undo</b> · FFWD held 3 s: the macro scene · RWD held 3 s saves"], ["+ VOL− / VOL+", "<b>Distortion</b> amount / type"]] },
+  home: { how: "Where Glag starts. Tap •• twice from anywhere to come back.", fl: ["TEMPO", "DELAY", "REVRB", "DJF±"], tl: ["CH1", "CH2", "CH3", "CH4"], led: "breathe",
+    f1: ["F1 · Tempo", "", ["20 to 120 BPM."]], f2: ["F2 · Delay", "", ["The tape echo: how much, and how long it keeps repeating."]],
+    f3: ["F3 · Reverb", "", ["How long the space rings. Which space: on Harmony."]], f4: ["F4 · DJ filter", "", ["Centre: off. Left: low-pass. Right: high-pass."]],
+    vol: VOL,
+    ffwd: ["FFWD · rocker up", "", ["Tap: freeze, latched; tap again to let go. Held: freeze until you let go.", "•• + tap: randomize (voices kept). •• + held 3 s: the piece's macro scene."]],
+    rwd: ["RWD · rocker down", "free", ["Held: the record slows to 10 BPM; let go and it springs back.", "•• + tap: undo (again: redo). •• + held 3 s: save the piece, its macros as its scene.", "!Tap: nothing."]],
+    tled: ["Track LEDs (over T1–T4)", "", ["All four breathing: you are on Home."]],
+    play: PLAY, prow: PROW, fn: FN,
+    t: (n) => [`T${n} · Channel ${n}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: channel ${n}'s next voice.`, "!Held: nothing."]] },
+  ch: { how: "Tap a channel's T on Home. Shown for channel 2.", fl: ["CHAR", "TONE", "LEN", "REG"], tl: ["CH1", "CH2", "CH3", "CH4"], led: "one",
+    f1: ["F1 · Character", "", ["The voice's own control: see Voices."]], f2: ["F2 · Tone", "", ["Dark to bright."]],
+    f3: ["F3 · Length", "", ["How long its notes ring."]], f4: ["F4 · Register", "", ["Five octave steps."]],
+    vol: VOL,
+    ffwd: ["FFWD · rocker up", "free", ["Tap: this channel's macro, one step more (four steps).", "~Held: the macro's shape: glide, bar steps, long rise.", "!•• + FFWD: nothing."]],
+    rwd: ["RWD · rocker down", "free", ["Held: the macro glides slower, 8 s to 64 s. Double tap: the macro off.", "!•• + RWD: nothing."]],
+    tled: ["Track LEDs", "", ["This channel's light, steady."]],
+    play: PLAY, prow: PROW, fn: FN, t: (n) => tCh(n, n === 2, false) },
+  ext: { how: "Hold •• and tap the channel's own T on its page; again to go back. Shown for channel 2.", fl: ["ECHO", "VERB", "PAN", "ACT"], tl: ["CH1", "CH2", "CH3", "CH4"], led: "blink",
+    f1: ["F1 · Echo send", "", ["How much goes to the tape echo."]], f2: ["F2 · Reverb send", "", ["How much goes to the reverb."]],
+    f3: ["F3 · Pan", "", ["Left to right; a detent in the centre."]], f4: ["F4 · Activity", "", ["How often it plays."]],
+    vol: VOL,
+    ffwd: ["FFWD · rocker up", "free", ["Tap: the channel macro, as on its page.", "!•• + FFWD: nothing."]],
+    rwd: ["RWD · rocker down", "free", ["Held: the macro slower. Double tap: off.", "!•• + RWD: nothing."]],
+    tled: ["Track LEDs", "", ["This channel's light, blinking."]],
+    play: PLAY, prow: PROW, fn: FN, t: (n) => tCh(n, n === 2, true) },
+  har: { how: "Hold •• and press PLAY once, then wait a moment. One page for the whole instrument.", fl: ["ROOT", "MODE", "DRIFT", "MOTN"], tl: ["HALL", "CHMB", "SHIM", "BLOOM"], led: "chase",
+    f1: ["F1 · Root", "", ["12 steps, C to B."]], f2: ["F2 · Mode", "", ["Eight: Ionian … pentatonic minor."]],
+    f3: ["F3 · Drift", "", ["A new chord every 10 s to 4 min."]], f4: ["F4 · Motion", "", ["The slow tide, and how much the loops evolve."]],
+    vol: VOL,
+    ffwd: ["FFWD · rocker up", "free", ["!Tap, held, •• + FFWD: nothing (kept for later)."]],
+    rwd: ["RWD · rocker down", "free", ["!Tap, held, •• + RWD: nothing (kept for later)."]],
+    tled: ["Track LEDs", "", ["A slow chase."]],
+    play: PLAY, prow: PROW, fn: FN,
+    t: (n) => { const R = ["Hall", "Chamber", "Shimmer", "Bloom"][n - 1];
+      return [`T${n} · ${R}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: the ${R} reverb.`,
+        n === 3 ? "•• + tap again: Shimmer's interval (octave, fifth, seventh)." : "!•• + tap again: nothing.", "!Held: nothing."]]; } },
+  pw: { how: "Planned. Hold PLAY for 2 s on Home to enter; again to leave. What you set here is saved with the piece, and the piece as it plays is saved at power-off and comes back at power-on.", fl: ["FORM", "KEY", "PUMP", "TEX"], tl: ["PING", "REV", "AUTO", "KEY"], led: "outer",
+    f1: ["F1 · Form", "plan", ["~Off (one scene) through the piece moving between a sparse intro, full and a breakdown."]],
+    f2: ["F2 · Key travel", "plan", ["~Off, then a new key every 8 down to 2 minutes."]],
+    f3: ["F3 · Pump", "plan", ["~The kick ducks everything else. Off unless a Pulse plays."]],
+    f4: ["F4 · Texture", "plan", ["~The bed's level. •• + T1–T4 picks which."]],
+    vol: VOL,
+    ffwd: ["FFWD · rocker up", "free", ["!Tap, held, •• + FFWD: nothing (kept for later)."]],
+    rwd: ["RWD · rocker down", "free", ["!Tap, held, •• + RWD: nothing (kept for later)."]],
+    tled: ["Track LEDs", "plan", ["~The outer two breathing."]],
+    play: ["PLAY", "plan", ["Tap: grow / rest.", "~Held 2 s: back to Home.", "•• + PLAY once: Harmony; twice: the next piece."]], prow: PROW, fn: FN,
+    t: (n) => { const A = [["Ping-pong", "the echo bounces left and right", "rain"], ["Reverse", "reverse swells", "vinyl"], ["Auto filter", "the DJ filter sweeps on its own", "tape hiss"], ["Key style", "fifths, lifts or relative", "surf"]][n - 1];
+      return [`T${n} · ${A[0]}`, "plan", [n === 4 ? `~Tap: the key's way: ${A[1]}.` : `~Tap: ${A[1]}, on / off.`, `~•• + tap: the ${A[2]} texture.`, "!Held: nothing."]]; } },
+  shift: { how: "While •• is held, on any page.", fl: ["LVL1", "LVL2", "LVL3", "LVL4"], tl: ["T1", "T2", "T3", "T4"], led: "breathe", shift: true,
+    f1: ["F1 · Level 1", "", ["Channel 1's level."]], f2: ["F2 · Level 2", "", ["Channel 2's level."]], f3: ["F3 · Level 3", "", ["Channel 3's level."]], f4: ["F4 · Level 4", "", ["Channel 4's level."]],
+    vol: ["•• + VOL− / VOL+", "", ["VOL−: distortion amount, off to 4. VOL+: its type (Chebyshev, Overdrive, Fuzz, Fold, XOR).", "Held 3 s: off and the stack back to default / before, after, or on the reverb only."]],
+    ffwd: ["•• + FFWD", "free", ["Home: tap randomizes; held 3 s brings in the piece's macro scene.", "!Every other page: nothing."]],
+    rwd: ["•• + RWD", "free", ["Home: tap undoes; held 3 s saves the piece, its macros as its scene.", "!Every other page: nothing."]],
+    tled: ["Track LEDs", "", ["As on the page you are on."]],
+    play: ["•• + PLAY", "", ["Once: Harmony. Twice: the next piece."]],
+    prow: ["Play row", "", ["As •• goes down: the battery, 1.5 s."]],
+    fn: ["•• held", "", ["This layer while held; let go: back to the page.", "Held 3 s alone: power off."]],
+    t: (n) => [`•• + T${n}`, "free", [`Home: channel ${n}'s next voice. Channel pages: channel ${n}'s extended page. Harmony: the ${["Hall", "Chamber", "Shimmer", "Bloom"][n - 1]}.`, `~Playworld: the ${["rain", "vinyl", "tape hiss", "surf"][n - 1]} texture.`, "!Held 2 s: nothing."]] },
 };
 
-/* ---------------- the schematic ---------------- */
 const NS = "http://www.w3.org/2000/svg";
 const el = (tag, attrs, parent, text) => {
   const n = document.createElementNS(NS, tag);
@@ -521,48 +625,58 @@ const el = (tag, attrs, parent, text) => {
   parent.appendChild(n);
   return n;
 };
-const X = [95, 195, 295, 395];
-const tleds = document.getElementById("tleds"), fg = document.getElementById("faders");
-const tb = document.getElementById("tbtns"), pl = document.getElementById("pleds"), br = document.getElementById("btnrow");
-const tLed = X.map((x) => el("circle", { cx: x, cy: 70, r: 7, class: "svg-led" }, tleds));
-const fl = [], fs = [];
-const POS = [0.55, 0.4, 0.7, 0.5];
-X.forEach((x, i) => {
-  el("rect", { x: x - 20, y: 96, width: 40, height: 220, rx: 20, class: "svg-slot" }, fg);
-  const h = 196 * POS[i];
-  el("rect", { x: x - 20, y: 316 - h - 24, width: 40, height: h + 24, rx: 20, class: "svg-fill" }, fg);
-  el("rect", { x: x - 17, y: 316 - h - 24, width: 34, height: 22, rx: 11, class: "svg-thumb" }, fg);
-  el("text", { x: x, y: 112 - 24, "text-anchor": "middle", class: "svg-small" }, fg, "F" + (i + 1));
-  fl.push(el("text", { x: x, y: 336, "text-anchor": "middle", class: "svg-flabel" }, fg, ""));
-  fs.push(el("text", { x: x, y: 351, "text-anchor": "middle", class: "svg-fsub" }, fg, ""));
+const FX = [52, 96, 140, 184];
+const gF = document.getElementById("cs-faders"), gT = document.getElementById("cs-tbtns"), gL = document.getElementById("cs-tleds"), gP = document.getElementById("cs-pleds");
+const fLab = FX.map((x, i) => {
+  el("circle", { id: "a-f" + (i + 1), cx: x, cy: 40, r: 0.1, fill: "none" }, gF);
+  const t = el("text", { x, y: 56, "text-anchor": "middle", class: "d-flab" }, gF, "");
+  el("rect", { x: x - 5, y: 66, width: 10, height: 172, rx: 5, class: "d-slot" }, gF);
+  el("circle", { cx: x, cy: 152, r: 13, class: "d-thumb" }, gF);
+  return t;
 });
-const tBtn = X.map((x, i) => {
-  const r = el("rect", { x: x - 38, y: 372, width: 76, height: 38, rx: 10, class: "svg-btn" }, tb);
-  el("text", { x: x, y: 396, "text-anchor": "middle", class: "svg-txt" }, tb, "T" + (i + 1));
-  return r;
-});
-const pLed = [0, 1, 2, 3].map((i) => el("circle", { cx: 300 + i * 36, cy: 444, r: 7, class: "svg-led" }, pl));
-const BTN = [["••", "shift"], ["PLAY", ""], ["RWD", "slow/glide"], ["FFWD", "freeze/macro"], ["VOL−", ""], ["VOL+", ""]];
-const bBtn = BTN.map((b, i) => {
-  const x = 34 + i * 70;
-  const r = el("rect", { x, y: 476, width: 62, height: 48, rx: 10, class: "svg-btn" }, br);
-  el("text", { x: x + 31, y: 497, "text-anchor": "middle", class: "svg-txt" }, br, b[0]);
-  if (b[1]) el("text", { x: x + 31, y: 514, "text-anchor": "middle", class: "svg-fsub" }, br, b[1]);
-  return r;
-});
+const tLed = FX.map((x) => el("circle", { cx: x, cy: 268, r: 5.5, class: "d-led" }, gL));
+el("circle", { id: "a-tled", cx: FX[0] - 14, cy: 268, r: 0.1, fill: "none" }, gL);
+const tBtn = FX.map((x, i) => el("rect", { id: "a-t" + (i + 1), x: x - 16, y: 282, width: 32, height: 44, rx: 6, class: "d-btn" }, gT));
+const tLab = FX.map((x) => el("text", { x, y: 342, "text-anchor": "middle", class: "d-blab" }, gT, ""));
+[0, 1, 2, 3].forEach((i) => el("circle", { cx: 250, cy: 176 + i * 22, r: 5, class: "d-led" }, gP));
+el("circle", { id: "a-prow", cx: 250, cy: 209, r: 0.1, fill: "none" }, gP);
 
-/* ---------------- page switching ---------------- */
+const box = (k) => document.querySelector(`.cbox[data-k="${k}"]`);
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+function fill(k, d) {
+  const [title, tag, lines] = d;
+  box(k).innerHTML = `<h3>${esc(title)}${tag === "free" ? ' <span class="tag free">part free</span>' : tag === "plan" ? ' <span class="tag plan">planned</span>' : ""}</h3>` +
+    lines.map((l) => l[0] === "!" ? `<p class="nothing">${esc(l.slice(1))}</p>` : l[0] === "~" ? `<p class="planned">${esc(l.slice(1))}</p>` : `<p>${esc(l)}</p>`).join("");
+}
+const ANCHOR = { f1: "a-f1", f2: "a-f2", f3: "a-f3", f4: "a-f4", vol: "a-vol", ffwd: "a-ffwd", rwd: "a-rwd", tled: "a-tled", play: "a-play", prow: "a-prow", fn: "a-fn", t1: "a-t1", t2: "a-t2", t3: "a-t3", t4: "a-t4" };
+function lines() {
+  const cs = document.getElementById("cs"), svg = document.getElementById("cs-lines");
+  svg.innerHTML = "";
+  if (getComputedStyle(svg).display === "none") return;
+  const o = cs.getBoundingClientRect();
+  for (const k in ANCHOR) {
+    const b = box(k).getBoundingClientRect(), a = document.getElementById(ANCHOR[k]).getBoundingClientRect();
+    const ax = (a.left + a.right) / 2 - o.left, ay = (a.top + a.bottom) / 2 - o.top;
+    let d, sx, sy;
+    if (k[0] === "f" && k !== "fn") { sx = (b.left + b.right) / 2 - o.left; sy = b.bottom - o.top; const my = sy + (ay - sy) * 0.45; d = `M${sx} ${sy} V${my} H${ax} V${ay}`; }
+    else if (k[0] === "t" && k !== "tled") { sx = (b.left + b.right) / 2 - o.left; sy = b.top - o.top; const my = ay + (sy - ay) * 0.55; d = `M${sx} ${sy} V${my} H${ax} V${ay}`; }
+    else if (["vol", "ffwd", "rwd", "tled"].includes(k)) { sx = b.right - o.left; sy = (b.top + b.bottom) / 2 - o.top; const mx = sx + 12; d = `M${sx} ${sy} H${mx} L${ax} ${ay}`; }
+    else { sx = b.left - o.left; sy = (b.top + b.bottom) / 2 - o.top; const mx = sx - 12; d = `M${sx} ${sy} H${mx} L${ax} ${ay}`; }
+    el("path", { d }, svg);
+    el("circle", { cx: ax, cy: ay, r: 2.4 }, svg);
+  }
+}
 let anim = null;
 function setPage(key) {
   const p = PAGES[key];
   document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.page === key ? "true" : "false"));
-  document.getElementById("d-name").textContent = p.name;
-  document.getElementById("d-how").textContent = p.how;
-  p.f.forEach((f, i) => { fl[i].textContent = f[0]; fs[i].textContent = f[1].length > 16 ? "" : f[1]; });
-  document.getElementById("d-faders").innerHTML = p.f.map((f, i) => `<dt>F${i + 1}</dt><dd><b>${f[0]}</b> <span>${f[1]}</span></dd>`).join("");
-  document.getElementById("d-buttons").innerHTML = p.b.map((b) => `<dt>${b[0]}</dt><dd>${b[1]}</dd>`).join("");
-  tBtn.forEach((r, i) => r.setAttribute("class", "svg-btn" + (key !== "shift" && (key === "home" || key === "har" || p.hot.includes(i)) ? " hot" : "")));
-  bBtn.forEach((r, i) => r.setAttribute("class", "svg-btn" + ((key === "shift" && i === 0) || (key === "har" && (i === 0 || i === 1)) ? " hot" : "")));
+  document.getElementById("cs-how").textContent = p.how;
+  document.getElementById("cs").classList.toggle("shift", !!p.shift);
+  ["f1", "f2", "f3", "f4", "vol", "ffwd", "rwd", "tled", "play", "prow", "fn"].forEach((k) => fill(k, p[k]));
+  [1, 2, 3, 4].forEach((n) => fill("t" + n, p.t(n)));
+  fLab.forEach((t, i) => (t.textContent = p.fl[i]));
+  tLab.forEach((t, i) => (t.textContent = p.tl[i]));
+  tBtn.forEach((r, i) => r.setAttribute("class", "d-btn" + (p.t(i + 1)[1] === "free" ? " hot" : "")));
   if (anim) clearInterval(anim);
   let t = 0;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -570,17 +684,17 @@ function setPage(key) {
     t += 50;
     tLed.forEach((c, i) => {
       let a = 0;
-      if (p.t === "breathe") { const x = (t % 2000) / 1000; a = 0.12 + 0.35 * (x < 1 ? x : 2 - x); }
-      else if (p.t === "one") a = i === 1 ? 1 : 0;
-      else if (p.t === "blink") a = i === 1 && (reduce || Math.floor(t / 250) % 2) ? 1 : 0;
-      else if (p.t === "chase") a = i === Math.floor(t / 300) % 4 ? 1 : 0.16;
+      if (p.led === "breathe") { const x = (t % 2000) / 1000; a = 0.12 + 0.5 * (x < 1 ? x : 2 - x); }
+      else if (p.led === "one") a = i === 1 ? 1 : 0;
+      else if (p.led === "blink") a = i === 1 && (reduce || Math.floor(t / 250) % 2) ? 1 : 0;
+      else if (p.led === "chase") a = i === Math.floor(t / 300) % 4 ? 1 : 0.16;
+      else if (p.led === "outer") { const x = (t % 2000) / 1000; a = i === 0 || i === 3 ? 0.15 + 0.6 * (x < 1 ? x : 2 - x) : 0; }
       c.style.fill = a > 0.02 ? `color-mix(in srgb, var(--led) ${Math.round(a * 100)}%, var(--led-off))` : "";
     });
-    const glow = [0.5, 0.15, 0.85, 0.3];
-    pLed.forEach((c, i) => { const a = key === "shift" ? POS[i] : glow[(i + Math.floor(t / 700)) % 4]; c.style.fill = `color-mix(in srgb, var(--led) ${Math.round(a * 100)}%, var(--led-off))`; });
   };
   draw();
   if (!reduce) anim = setInterval(draw, 50);
+  requestAnimationFrame(lines);
 }
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setPage(t.dataset.page)));
 document.querySelector(".tabs").addEventListener("keydown", (e) => {
@@ -591,6 +705,8 @@ document.querySelector(".tabs").addEventListener("keydown", (e) => {
     n.focus(); setPage(n.dataset.page); e.preventDefault();
   }
 });
+window.addEventListener("resize", () => requestAnimationFrame(lines));
+if (document.fonts) document.fonts.ready.then(() => requestAnimationFrame(lines));
 setPage("home");
 
 /* ---------------- voices and pieces ---------------- */
