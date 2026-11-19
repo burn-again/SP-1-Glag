@@ -192,7 +192,7 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 
 /* ---- reverse: grains of the reverb's last second, played backwards and swelling ---- */
 #define RV_N 16384u                                  /* 1.4 s at 12 kHz */
-static float rvb[RV_N];
+static int16_t rvb[RV_N];                            /* 32 KB, 16-bit like the ring */
 static uint32_t rvb_w;
 static float rvb_g[2], rvb_k[2], rvb_on[2], rvb_last;
 static const float RV_G = 8000.0f;                   /* a grain: ~0.67 s (read and write part 2 grains: < RV_N) */
@@ -201,7 +201,7 @@ static void reverse_block(float *WL, float *WR, uint32_t n)
 	if (W.rev <= 0.0f)
 		return;
 	for (uint32_t i = 0; i < n; i += 2) {
-		rvb[rvb_w & (RV_N - 1u)] = 0.25f * (WL[i] + WR[i] + WL[i + 1] + WR[i + 1]);
+		rvb[rvb_w & (RV_N - 1u)] = to16(0.25f * (WL[i] + WR[i] + WL[i + 1] + WR[i + 1]));
 		rvb_w++;
 		float o[2] = {0.0f, 0.0f};
 		for (int k = 0; k < 2; k++) {
@@ -217,7 +217,7 @@ static void reverse_block(float *WL, float *WR, uint32_t n)
 			float t = 1.0f - rvb_g[k] / RV_G;                 /* 0 .. 1 through the grain */
 			uint32_t at = (uint32_t)(rvb_k[k] - t * RV_G);
 			float env = t * t * (t < 0.92f ? 1.0f : (1.0f - t) / 0.08f);   /* swelling, a quick end */
-			o[k] = rvb[at & (RV_N - 1u)] * env * rvb_on[k];
+			o[k] = from16(rvb[at & (RV_N - 1u)]) * env * rvb_on[k];
 			rvb_g[k] -= 1.0f;
 		}
 		float g = 2.2f * W.rev;
