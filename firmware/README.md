@@ -94,7 +94,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• + RWD held 3 s | save the piece to its slot; the macros as they are become its scene |
 | Anywhere | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
-| | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
+| | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Comb, XOR |
 | | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |
 | | •• + VOL+ held 3 s | distortion before the delay and reverb (default), after them, on the reverb only, or on the drums only (the Pulse, and so its echo and reverb), in turn |
 | | •• held 3 s | power off (Wakes', unchanged; so is the 30 s backstop) |
@@ -146,7 +146,7 @@ Five cheap waveshapers, outside the pieces (randomize and piece changes leave th
 | Chebyshev | a harmonic exciter: the signal is normalised by its own level, Chebyshev T2 adds the octave and T3 the twelfth, and the level is put back, so it colours without crushing |
 | Overdrive | soft saturation, warmer and denser with each amount |
 | Fuzz | a biased hard clip: uneven halves, a buzz |
-| Fold | a triangle wavefolder: past the edge the wave turns back on itself |
+| Comb | a comb filter tuned to the chord's root (C3..B3): it rings on the root and its harmonics, so what goes through takes on the key; it glides to each new root; amount is how long it rings |
 | XOR | the signal crushed to fewer bits (11 down to 5) and XORed with its own last sample: digital grit |
 
 Each amount is driven harder and brought back down, so a step changes the colour more than the

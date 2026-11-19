@@ -1771,7 +1771,7 @@ void gl_panic(void) { cmd_panic++; }
 /* ================================================================ distortion
  * Five cheap waveshapers, a few operations a sample each. Driven harder at each amount, then
  * brought back down so a step changes the colour more than the loudness. */
-const char *const GL_DIST_NAME[GD_COUNT] = {"Chebyshev", "Overdrive", "Fuzz", "Fold", "XOR"};
+const char *const GL_DIST_NAME[GD_COUNT] = {"Chebyshev", "Overdrive", "Fuzz", "Comb", "XOR"};
 static volatile uint8_t cmd_dist_type, cmd_dist_amt, cmd_dist_post;
 void gl_dist(int type, int amount, int post)
 {
@@ -1786,6 +1786,9 @@ static struct {
 	int32_t prev[10];          /* XOR: the last crushed sample per path (L, R, echo, reverb, wet L, wet R, the drums' four) */
 	float env[10];             /* Chebyshev: each path's level */
 	float c2, c3;              /* Chebyshev: how much octave (T2) and twelfth (T3) */
+	int16_t cb[10][512];       /* Comb: each path's line (10 KB) */
+	uint16_t cbw[10];
+	float cbd[10], cblp[10];   /* its length (gliding to the chord's root) and the damping in its loop */
 } dist;
 
 static void dist_setup(void)
@@ -1794,14 +1797,14 @@ static void dist_setup(void)
 		{1.2f, 1.6f, 2.2f, 3.0f},      /* Chebyshev: T2 and T3 harmonics growing */
 		{2.0f, 3.5f, 6.0f, 11.0f},     /* overdrive: soft saturation */
 		{3.0f, 6.0f, 12.0f, 25.0f},    /* fuzz: biased hard clip */
-		{1.5f, 2.3f, 3.4f, 5.0f},      /* fold: wave folding */
+		{0.62f, 0.78f, 0.88f, 0.94f},  /* comb: its feedback */
 		{1.0f, 1.0f, 1.0f, 1.0f},      /* XOR: crushed and XORed bits */
 	};
 	static const float MAKEUP[GD_COUNT][4] = {
 		{1.209f, 1.524f, 1.677f, 1.446f},
 		{0.42f, 0.307f, 0.238f, 0.188f},
 		{0.162f, 0.111f, 0.093f, 0.087f},
-		{0.66f, 0.486f, 0.373f, 0.306f},
+		{1.0f, 1.12f, 1.28f, 1.45f},   /* comb: what its thinning takes, on average over the places */
 		{1.333f, 1.952f, 2.26f, 1.839f},
 	};
 	dist.type = cmd_dist_type;
@@ -1863,15 +1866,37 @@ static void dist_block(float *x, uint32_t n, int path)
 			x[i] = (clampf(x[i] * g + 0.15f, -0.55f, 0.85f) - 0.15f) * k;
 		break;
 	}
-	case GD_FOLD: {
-		/* a triangle fold: past the edge the wave turns back on itself */
-		const float hg = g * 0.5f, wet = mix * 0.7f * mk, dk = dry * mk;
+	case GD_COMB: {
+		/* a comb filter tuned to the chord's root (C3..B3): it rings on the root and its
+		 * harmonics (the octave, fifth and third above), so whatever goes through takes on the
+		 * key. Its length glides to each new root (no click); the loop is damped a little, so the
+		 * ring is a string's, not a buzz. The paths run at 24 kHz, but L and R after the effects,
+		 * and the drums' noise, at 48. */
+		float sr = (path >= 8 || (path <= 1 && dist.post == 1)) ? GL_SR : VSR;
+		float want = sr / mtof((float)(48 + chord_pc[0]));
+		want = want > 500.0f ? 500.0f : want;
+		float d = dist.cbd[path] > 1.0f ? dist.cbd[path] : want, lp = dist.cblp[path];
+		/* before the effects and on the reverb only it thins more (a fuller sound into it): a
+		 * little more make-up there */
+		static const float MORE[4] = {1.0f, 1.1f, 1.25f, 1.45f};
+		const float m2 = (dist.post == 0 || dist.post == 2) ? MORE[dist.amt - 1] : 1.0f;
+		const float fb = g, wet = mix * (1.0f - fb) * 2.2f * mk * m2, dk = dry * mk * m2;
+		int16_t *b = dist.cb[path];
+		uint32_t w = dist.cbw[path];
 		for (uint32_t i = 0; i < n; i++) {
-			float v = x[i] * hg + 0.25f + 64.0f;        /* kept positive: (int) is then floor */
-			float t = v - (float)(int)v;
-			float tri = 1.0f - 4.0f * (t > 0.5f ? t - 0.5f : 0.5f - t);
-			x[i] = x[i] * dk + tri * wet;
+			d += (want - d) * 0.0005f;                    /* ~40 ms to a new root */
+			uint32_t k = (uint32_t)d;
+			float f = d - (float)k;
+			float a = from16(b[(w - k) & 511u]), c = from16(b[(w - k - 1u) & 511u]);
+			lp += 0.6f * (a + (c - a) * f - lp);
+			float y = x[i] + fb * lp;
+			w++;
+			b[w & 511u] = to16(y);
+			x[i] = x[i] * dk + y * wet;
 		}
+		dist.cbd[path] = d;
+		dist.cblp[path] = lp;
+		dist.cbw[path] = (uint16_t)(w & 511u);
 		break;
 	}
 	default: {

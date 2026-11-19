@@ -159,7 +159,7 @@ const CPU_BASE = 37.0, CPU_VOICE = [5.9, 7.8, 3.1, 5.0, 5.0, 4.5, 4.7, 2.5, 6.6,
   5.6, 5.2, 3.9, 6.0, 5.8, 5.8, 5.1], CPU_SCALE = 1.4;
 const B = { T1: 0, T2: 1, T3: 2, T4: 3, PLAY: 4, VOLUP: 5, VOLDN: 6, FFWD: 7, RWD: 8, FN: 9 };
 const PAGES = ["Home", "Channel", "Extended", "Harmony"];
-const DISTS = ["Chebyshev", "Overdrive", "Fuzz", "Fold", "XOR"];
+const DISTS = ["Chebyshev", "Overdrive", "Fuzz", "Comb", "XOR"];
 
 let faders = [0, 0, 0, 0], buttons = 0, node = null, ctx = null, state = null, patch = null;
 let pressed = 0;   /* buttons pressed since the engine last heard: a quick tap is never lost */
