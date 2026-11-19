@@ -138,6 +138,7 @@ static void go(int pg, int ch, const gl_input *in)
 
 /* ---------------------------------------------------------------- pieces */
 
+static void macro_post(int c);
 static void load_piece(int i)
 {
 	undo_patch = cur;
@@ -146,8 +147,18 @@ static void load_piece(int i)
 	piece = (i % GL_NPIECES + GL_NPIECES) % GL_NPIECES;
 	if (saved_valid[piece])
 		cur = saved[piece];
-	else
+	else {
+		/* a stock piece sets its channel macros too (most: off) */
+		uint8_t st[4];
+		float per;
 		gl_piece(piece, &cur);
+		gl_piece_macro(piece, st, &per);
+		for (int c = 0; c < 4; c++) {
+			mac_step[c] = st[c];
+			mac_period[c] = per;
+			macro_post(c);
+		}
+	}
 	dirty = 1;
 }
 

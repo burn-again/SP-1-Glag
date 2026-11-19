@@ -39,6 +39,18 @@ int main(int argc, char **argv)
 		p.ch[0][CP_REGISTER] = ((float)atof(getenv("REG")) + 2.0f) * 0.25f;
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
+	{	/* the piece's channel macros; MACRO=4444 (steps per channel) and MPER=seconds override */
+		uint8_t st[GL_NCH];
+		float per;
+		gl_piece_macro(piece, st, &per);
+		if (getenv("MACRO"))
+			for (int c = 0; c < GL_NCH && getenv("MACRO")[c]; c++)
+				st[c] = (uint8_t)(getenv("MACRO")[c] - '0');
+		if (getenv("MPER"))
+			per = (float)atof(getenv("MPER"));
+		for (int c = 0; c < GL_NCH; c++)
+			gl_macro(c, (float)st[c] / 4.0f, per);
+	}
 	gl_post_patch(&p);
 	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
 		int t = 0, sh = 0;

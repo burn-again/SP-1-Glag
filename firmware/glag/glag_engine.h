@@ -137,12 +137,14 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 22                   /* an audition build: six more */
+#define GL_NPIECES 27                   /* an audition build: eleven more */
 #else
 #define GL_NPIECES 16
 #endif
 const char *gl_piece_name(int i);
 void gl_piece(int i, gl_patch *out);
+/* the piece's channel macros: steps 0..4 per channel, and seconds per glide */
+void gl_piece_macro(int i, uint8_t *steps, float *period_s);
 /* A tasteful random patch, keeping the current voices and harmony root unless asked. */
 void gl_randomize(gl_patch *p, uint32_t seed);
 
