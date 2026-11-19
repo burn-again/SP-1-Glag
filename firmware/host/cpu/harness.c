@@ -20,6 +20,9 @@ int main(void)
 	gl_init(1234);
 	gl_patch p;
 	gl_piece(0, &p);
+#ifdef ALTV
+	gl_alt(ALTV, ALTM);
+#endif
 #ifdef COMP
 	gl_world(GW_COMP, 1.0f);
 #endif

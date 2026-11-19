@@ -377,6 +377,13 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{40, 90,  0, 40, 50, 40},   /* harp: plucks, rolled chords, glissandi */
 	{40, 70,  0, 40, 50, 50},   /* harpsichord: the stops, the figures */
 };
+/* audition only: another way to make a voice (0: as it is), to compare methods by ear */
+static uint8_t alt_m[GV_COUNT];
+void gl_alt(int voice, int method)
+{
+	if ((unsigned)voice < GV_COUNT)
+		alt_m[voice] = (uint8_t)method;
+}
 static float mac_depth[GL_NCH], mac_period[GL_NCH] = {8.0f, 8.0f, 8.0f, 8.0f};
 static float mac_ph[GL_NCH][2], mac_from[GL_NCH][2], mac_to[GL_NCH][2], mac_u[GL_NCH][2];
 static float mac_trem_ph[GL_NCH];
@@ -506,15 +513,17 @@ static int nslots(int voice)
 	case GV_GONG: return 2;
 	case GV_SHIMMER: return 4;
 	case GV_PULSE: return 0;                  /* no FM voices: outside the budget */
-	case GV_RIBBON: return 1;                 /* one line, gliding */
+	case GV_RIBBON: return alt_m[GV_RIBBON] == 3 ? 3 : 1;   /* one line (or a section's chord) */
 	case GV_FUNK: return 1;
-	case GV_HARP:
+	case GV_HARP: return alt_m[GV_HARP] == 3 ? 4 : 0;
 	case GV_HARPSI: return 0;                 /* strings: counted below */
 	default: return 3;
 	}
 }
 static int weight(int voice)
 {
+	if (voice == GV_RIBBON && alt_m[GV_RIBBON] >= 2)
+		return 2;                             /* FM brass */
 	return voice == GV_SUPER || voice == GV_RIBBON ? 4 : voice == GV_SWELL || voice == GV_EP ? 3 :
 	       voice == GV_GLOW ? 1 : 2;
 }
@@ -971,13 +980,24 @@ static int ks_take(chan *c)
 /* the harp: a string plucked, a finger's softness (TONE), ringing LENGTH (1.5..9 s), less up high */
 static void harp_pluck(chan *c, int ch, int note, float vel)
 {
-	int k = ks_take(c);
+	int k = alt_m[GV_HARP] == 3 ? 0 : ks_take(c);
 	if (k < 0)
 		return;
 	float n = ivl_note(ch, (float)note), tone = eff_tone(ch);
 	float T = expmap(P.ch[ch][CP_LENGTH], 1.5f, 9.0f) * clampf(1.0f - (n - 60.0f) * 0.025f, 0.35f, 1.3f);
 	vel *= clampf(1.0f - (60.0f - n) * 0.035f, 0.45f, 1.0f);   /* low strings carry more: evened out */
-	ks_pluck(c, k, mtof(n) * speed * pbend, vel * 2.0f, 0.07f + 0.25f * tone, 0.5f + 0.2f * tone, T, 1);
+	if (alt_m[GV_HARP] == 3) {                   /* audition: an FM harp (1:1, its index falling fast) */
+		nvoice *v = alloc(c, 4);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel * 0.6f, 1.0f, c->vnext++);
+		v->hold = T;
+		c->glow = vel;
+		return;
+	}
+	ks_pluck(c, k, mtof(n) * speed * pbend, vel * (alt_m[GV_HARP] == 2 ? 0.45f : 2.0f), 0.07f + 0.25f * tone, 0.5f + 0.2f * tone, T, 1);
+	if (alt_m[GV_HARP] == 2)
+		c->ks_hold[k] = -1.0f;                   /* audition: a finger's pull, not a burst of noise */
 	c->glow = vel;
 }
 /* the harpsichord: a quill's bright pluck; CHARACTER the stops: the lute (buff, dark and short),
@@ -1041,6 +1061,331 @@ static void ribbon_note(chan *c, int ch, int base)
 	v->note = n;
 	v->hold = expmap(len, 0.5f, 4.0f) * (0.6f + 0.8f * rnd());
 	c->glow = 0.8f;
+}
+
+/* ================================================================ audition methods */
+
+/* n moved k steps along the scale */
+static int scale_step(int n, int k)
+{
+	int dir = k > 0 ? 1 : -1;
+	for (int s = 0; s != k; s += dir) {
+		do
+			n += dir;
+		while (!in_scale(((n % 12) + 12) % 12));
+	}
+	return n;
+}
+/* the chord tone nearest n */
+static int nearest_chord(int n)
+{
+	int best = n, bd = 99;
+	for (int k = 0; k < chord_n; k++) {
+		int m = place(chord_pc[k], (float)n, n - 6, n + 6), d = m > n ? m - n : n - m;
+		if (d < bd) {
+			bd = d;
+			best = m;
+		}
+	}
+	return best;
+}
+/* three voices of the chord, each moved as little as it can from where it was (common tones
+ * held), kept apart and near home: a keyboard player's voice leading */
+static void lead_voices(chan *c, int base, int *out)
+{
+	int ctr = base < 45 ? 45 : base > 62 ? 62 : base;
+	int lo = ctr - 4, hi = ctr + 13;
+	int sets[3][3], ns = 0;
+	if (chord_n >= 4) {
+		static const int8_t S[3][3] = {{0, 1, 2}, {1, 2, 3}, {0, 1, 3}};
+		for (int i = 0; i < 3; i++, ns++)
+			for (int j = 0; j < 3; j++)
+				sets[ns][j] = chord_pc[S[i][j]];
+	} else {
+		for (int j = 0; j < 3; j++)
+			sets[0][j] = chord_pc[j % chord_n];
+		ns = 1;
+	}
+	static const int8_t PERM[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
+	int best = 1 << 30;
+	for (int st = 0; st < ns; st++)
+		for (int pm = 0; pm < 6; pm++) {
+			int cand[3], cost = 0;
+			for (int k = 0; k < 3; k++) {
+				float from = c->v[k].note > 0.0f ? c->v[k].note : (float)(ctr + 4 * k);
+				cand[k] = place(sets[st][PERM[pm][k]], from, lo, hi);
+				int d = cand[k] - (int)(from + 0.5f);
+				cost += d * d;
+			}
+			int mn = cand[0], mx = cand[0];
+			for (int k = 1; k < 3; k++) {
+				mn = cand[k] < mn ? cand[k] : mn;
+				mx = cand[k] > mx ? cand[k] : mx;
+			}
+			if (cand[0] == cand[1] || cand[0] == cand[2] || cand[1] == cand[2])
+				cost += 1000;
+			if (mx - mn > 19)
+				cost += 200;
+			int dc = (mn + mx) / 2 - (ctr + 5);
+			cost += dc * dc / 3;
+			if (cost < best) {
+				best = cost;
+				for (int k = 0; k < 3; k++)
+					out[k] = cand[k];
+			}
+		}
+}
+
+/* ---- strings, as a string machine is played: whole chords held, each new chord voice-led
+ * (common tones held on), ACTIVITY re-bowing it on the bar, the half bar or the beat. No
+ * syncopation. Methods: 1 Solina (8' and 4' saws, a 12 dB low-pass, the three-line ensemble),
+ * 2 Juno PWM (a pulse whose width sways, 24 dB, the Juno's chorus), 3 bowed (two saws a few
+ * cents apart, the filter opening slower than the bow, a late vibrato, the voices spread) */
+static void strings_step(chan *c, int ch, uint32_t step, float act, int base)
+{
+	int every = act < 0.35f ? 0 : act < 0.6f ? 16 : act < 0.82f ? 8 : 4;
+	int fresh = c->seen_chord != chord_count || c->v[0].note <= 0.0f;
+	if ((fresh && (step & 3u)) || !playing)
+		return;                                   /* a new chord comes in on a beat */
+	int rebow = !fresh && every && step % (uint32_t)every == 0u;
+	if (!fresh && !rebow)
+		return;
+	c->seen_chord = chord_count;
+	int nt[3] = {0, 0, 0};
+	if (fresh)
+		lead_voices(c, base, nt);
+	for (int k = 0; k < 3; k++) {
+		nvoice *v = &c->v[k];
+		float n = fresh ? ivl_note(ch, (float)nt[k]) : v->note;
+		int moved = fresh && n != v->note;
+		if (v->note <= 0.0f)
+			v->ratio = n;                         /* its gliding pitch */
+		v->note = n;
+		float vel = 0.8f + 0.15f * rnd();
+		if (moved || rebow || v->stage == ST_IDLE || v->stage == ST_REL) {
+			v->hold = v->stage == ST_IDLE ? 0.0f : 0.035f;   /* a breath between bows */
+			v->stage = ST_ATT;
+			v->vel = vel;
+			v->t = 0.0f;
+		}
+	}
+	c->glow = 0.8f;
+}
+static void strings_control(chan *c, int ch, float sdt, float tone, float len)
+{
+	const int m = alt_m[GV_STRINGS];
+	const float chr = P.ch[ch][CP_CHAR];
+	const float att = 0.12f + 0.55f * len, rel = 0.8f + 2.2f * len;
+	static const float GAIN[4] = {0.0f, 0.6f, 0.63f, 1.0f};
+	if (m == 2)
+		c->lfo2 += sub_inc(0.37f + 0.3f * chr, speed);   /* the pulse width's sway */
+	for (int k = 0; k < 3; k++) {
+		nvoice *v = &c->v[k];
+		if (!playing && v->stage != ST_IDLE)
+			v->stage = ST_REL;
+		if (v->stage == ST_ATT) {
+			if (v->hold > 0.0f) {
+				v->hold -= sdt;
+				v->env *= dcoef(0.25f, sdt);
+			} else {
+				v->env += sdt / att;
+				if (v->env >= 1.0f) {
+					v->env = 1.0f;
+					v->stage = ST_DEC;
+				}
+			}
+		} else if (v->stage == ST_DEC) {
+			v->env += (0.78f - v->env) * (1.0f - dcoef(6.0f, sdt));   /* settles a little */
+		} else if (v->stage == ST_REL) {
+			v->env *= dcoef(rel, sdt);
+			if (v->env < 0.0005f) {
+				v->env = 0.0f;
+				v->stage = ST_IDLE;
+			}
+		}
+		v->t += sdt;
+		if (v->note > 0.0f)
+			v->ratio += (v->note - v->ratio) * (1.0f - dcoef(0.06f, sdt));   /* a quick legato */
+		float hz = mtof(v->ratio > 1.0f ? v->ratio : 60.0f) * speed * pbend, e = v->env;
+		if (m == 1) {
+			v->ic = hz_inc(hz);
+			v->ic2 = hz_inc(hz * 2.0f);
+			float fc = (900.0f + 1800.0f * tone) * fexp2((v->ratio - 60.0f) * (1.0f / 48.0f));
+			v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.85f);
+		} else if (m == 2) {
+			v->ic = hz_inc(hz);
+			v->bend = 0.5f - (0.1f + 0.16f * chr) * (0.5f + 0.5f * sin_u(c->lfo2 + (uint32_t)k * 0x55555555u));
+			float fc = (400.0f + 2400.0f * tone * tone * (0.6f + 0.4f * e)) * fexp2((v->ratio - 60.0f) * (1.0f / 24.0f));
+			fc = clampf(fc, 1.5f * hz, 5000.0f);
+			v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.01f, 0.8f);
+			v->fq = 0.25f;
+		} else {
+			float late = clampf(v->t - 0.5f, 0.0f, 1.0f) * (v->stage == ST_REL ? 0.0f : 1.0f);
+			float vib = 1.0f + (0.002f + 0.002f * chr) * late * sin_u(lfo_vib + (uint32_t)k * 0x40000000u);
+			v->ic = hz_inc(hz * vib * 1.0035f);
+			v->ic2 = hz_inc(hz * vib / 1.0035f);
+			float bow = clampf(v->t / (att * 1.6f), 0.0f, 1.0f);
+			float fc = (300.0f + 2600.0f * tone * tone * (0.35f + 0.65f * bow * e)) * fexp2((v->ratio - 60.0f) * (1.0f / 24.0f));
+			fc = clampf(fc, 1.3f * hz, 5000.0f);
+			v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.01f, 0.8f);
+			v->fq = 0.2f;
+		}
+		v->idx = v->iinc = 0.0f;
+		float a = e * v->vel * GAIN[m];
+		v->ainc = (a - v->amp) * (1.0f / VSUB);
+		if (v->stage == ST_IDLE && v->amp < 0.0002f)
+			v->amp = v->ainc = 0.0f;
+	}
+}
+
+/* ---- ribbon as a muted brass. Methods 1 and 2 play phrases (two to four notes on the beat,
+ * stepwise, ending on a chord tone, rests between): 1 subtractive (two saws through a 24 dB
+ * low-pass whose cutoff follows the loudness, in harmonics of the note), 2 FM brass (carrier and
+ * modulator 1:1, the index rising with the envelope, kept low: muted). 3 is a brass section:
+ * the chord in three FM-brass voices, voice-led, held, re-blown on the bar or half bar */
+static void ribbon_blow(chan *c, int ch, int note, float vel, float gate)
+{
+	nvoice *v = &c->v[0];
+	float n = ivl_note(ch, (float)note);
+	if (alt_m[GV_RIBBON] == 2) {
+		if (!sounding(v))
+			make_room_w(v, 2);
+		nv_trigger(v, (float)note, vel, 1.0f, 0);
+	} else {
+		if (!sounding(v))
+			make_room_w(v, 4);
+		v->note = n;
+		v->vel = vel;
+		v->stage = ST_ATT;
+	}
+	v->hold = gate;
+	v->t = 0.0f;
+	c->target_note = n;
+	c->glide_note = n + 0.18f;                   /* blown hard: a touch sharp for an instant */
+	c->glow = vel;
+}
+static void ribbon_step(chan *c, int ch, uint32_t step, float act, int base)
+{
+	const float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+	if (alt_m[GV_RIBBON] == 3) {
+		int every = act < 0.4f ? 0 : act < 0.75f ? 16 : 8;
+		int fresh = c->seen_chord != chord_count || c->v[0].note <= 0.0f;
+		if ((fresh && (step & 3u)) || !playing)
+			return;
+		int again = !fresh && every && step % (uint32_t)every == 0u;
+		if (!fresh && !again)
+			return;
+		c->seen_chord = chord_count;
+		int nt[3];
+		if (fresh)
+			lead_voices(c, base - 7, nt);
+		for (int k = 0; k < 3; k++) {
+			nvoice *v = &c->v[k];
+			if (!fresh)
+				nt[k] = (int)(v->note + 0.5f);       /* (already moved by its interval) */
+			if (!sounding(v))
+				make_room_w(v, 2);
+			float keep = v->note;
+			nv_trigger(v, (float)nt[k], 0.75f + 0.15f * rnd(), 1.0f, k);
+			if (!fresh)
+				v->note = keep;
+			v->hold = every ? (float)every * step_s * 0.9f : 64.0f * step_s;
+		}
+		c->glow = 0.8f;
+		return;
+	}
+	if (c->arp_i) {
+		c->arp_i--;
+		return;
+	}
+	if (c->hq_i >= c->hq_n) {                   /* no phrase: perhaps one starts, on the bar */
+		if ((step & 15u) || !playing || rnd() >= 0.3f + 0.5f * act)
+			return;
+		static const int8_t RH[8][5] = {{8, 8, 0}, {4, 4, 8, 0}, {12, 4, 0}, {16, 0}, {4, 4, 4, 4, 0},
+		                                {8, 4, 4, 0}, {8, 8, 16, 0}, {4, 4, 8, 16, 0}};
+		const int8_t *rh = RH[rndi(8)];
+		int lo = base - 5, hi = base + 9, n = 0;
+		int cur = place(chord_pc[rndi(chord_n)], (float)(c->last_note > 0 ? c->last_note : base + 2), lo, hi);
+		while (n < 5 && rh[n]) {
+			if (n) {
+				int dir = cur > base + 5 ? -1 : cur < base - 2 ? 1 : (rnd() < 0.5f ? -1 : 1);
+				cur = scale_step(cur, dir * (rnd() < 0.7f ? 1 : 2));
+				if (n == 4 || !rh[n + 1])
+					cur = nearest_chord(cur);        /* the phrase ends on a chord tone */
+			}
+			c->hq[n] = (int8_t)cur;
+			c->loop[1][n] = rh[n];
+			n++;
+		}
+		c->last_note = cur;
+		c->hq_n = (uint8_t)n;
+		c->hq_i = 0;
+	}
+	int d = c->loop[1][c->hq_i], last = c->hq_i + 1 == c->hq_n;
+	ribbon_blow(c, ch, c->hq[c->hq_i], c->hq_i == 0 ? 0.85f : 0.72f, (float)d * step_s * (last ? 0.9f : 0.8f));
+	c->hq_i++;
+	c->arp_i = (uint8_t)(d - 1);
+}
+static void ribbon_control(chan *c, int ch, float sdt, float tone, float len)
+{
+	const int m = alt_m[GV_RIBBON];
+	const float chr = P.ch[ch][CP_CHAR];
+	const float att = 0.05f + 0.12f * len, rel = 0.25f + 0.8f * len;
+	static const float GAIN[4] = {0.0f, 0.8f, 0.38f, 0.18f};
+	c->glide_note += (c->target_note - c->glide_note) * (1.0f - dcoef(0.06f, sdt));
+	for (int k = 0; k < (m == 3 ? 3 : 1); k++) {
+		nvoice *v = &c->v[k];
+		if (v->stage == ST_IDLE && v->amp == 0.0f) {
+			v->ainc = v->iinc = 0.0f;
+			continue;
+		}
+		if (!playing && v->stage != ST_IDLE)
+			v->stage = ST_REL;
+		if (v->stage == ST_ATT) {
+			v->env += sdt / att;
+			if (v->env >= 1.0f) {
+				v->env = 1.0f;
+				v->stage = ST_DEC;
+			}
+		}
+		if (v->stage == ST_ATT || v->stage == ST_DEC) {
+			v->hold -= sdt;
+			if (v->stage == ST_DEC)
+				v->env += (0.85f - v->env) * (1.0f - dcoef(1.5f, sdt));
+			if (v->hold <= 0.0f)
+				v->stage = ST_REL;
+		} else if (v->stage == ST_REL) {
+			v->env *= dcoef(rel, sdt);
+			if (v->env < 0.0005f) {
+				v->env = 0.0f;
+				v->stage = ST_IDLE;
+			}
+		}
+		v->t += sdt;
+		float e = v->env;
+		float late = clampf((v->t - 0.9f) * (1.0f / 1.2f), 0.0f, 1.0f) * (v->stage == ST_REL ? 0.0f : 1.0f);
+		float vib = 1.0f + 0.0015f * late * sin_u(lfo_vib + (uint32_t)k * 0x30000000u);
+		float note = m == 3 ? v->note : c->glide_note;
+		float hz = mtof(note) * speed * pbend * vib;
+		if (m == 1) {
+			v->ic = hz_inc(hz * 1.0012f);
+			v->ic2 = hz_inc(hz / 1.0012f);
+			float harm = 1.15f + (1.0f + 1.4f * tone + 1.6f * chr) * e;
+			float fc = clampf(hz * harm * fexp2(-(note - 60.0f) * (1.0f / 60.0f)), 1.1f * hz, 3000.0f);
+			v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.005f, 0.8f);
+			v->fq = 0.3f;
+			v->idx = v->iinc = 0.0f;
+			float a = e * v->vel * GAIN[1];
+			v->ainc = (a - v->amp) * (1.0f / VSUB);
+			if (v->stage == ST_IDLE && v->amp < 0.0002f)
+				v->amp = v->ainc = 0.0f;
+		} else {
+			float idx = (0.25f + (0.7f + 1.0f * tone + 1.2f * chr) * e) * e;   /* index with the loudness */
+			v->ic = hz_inc(hz);
+			v->im = hz_inc(hz);
+			ramp(v, e * v->vel * GAIN[m], idx * IDX_SCALE);
+		}
+	}
 }
 
 /* ---- the sixteenth-note step: every voice's sequencer ---- */
@@ -1172,6 +1517,9 @@ static void chan_step(chan *c, int ch, uint32_t step)
 				ratio = (float)(1 + stepped(P.ch[ch][CP_CHAR], 3));
 			else if (c->voice == GV_MARIMBA)
 				ratio = 2.5f + 2.5f * P.ch[ch][CP_CHAR];
+			if (c->voice == GV_GLOW && alt_m[GV_GLOW])
+				while (note > (alt_m[GV_GLOW] == 3 ? 84 : 86))
+					note -= 12;                  /* audition: a ceiling at D6 (C6), leaps folded under it */
 			if (!sounding(v))
 				make_room(v);
 			nv_trigger(v, (float)note, c->voice == GV_FLUTE ? vel : vel * 1.35f, ratio, vp);
@@ -1182,6 +1530,10 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		break;
 	}
 	case GV_STRINGS: {
+		if (alt_m[GV_STRINGS]) {
+			strings_step(c, ch, step, act, base);
+			break;
+		}
 		/* a chord struck: on the bar, then (ACTIVITY) on the half bar, the beat, or eighths.
 		 * Its macro adds syncopation: stabs on the off-beat (and the "and" after), some downbeats
 		 * left out, as in dub chords. Each strike voiced afresh: an inversion, sometimes open
@@ -1284,6 +1636,10 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		break;
 	}
 	case GV_RIBBON: {
+		if (alt_m[GV_RIBBON]) {
+			ribbon_step(c, ch, step, act, base);
+			break;
+		}
 		/* a CS-80 line: long notes, swooped into, held while the hand presses (aftertouch:
 		 * brighter, more vibrato), sometimes glided straight on to the next (control) */
 		nvoice *v = &c->v[0];
@@ -1353,6 +1709,20 @@ static void chan_step(chan *c, int ch, uint32_t step)
 					c->hq[n - 1 - i] = t;
 				}
 			c->hq_dt = 0.028f + 0.02f * rnd();
+		}
+		if (alt_m[GV_HARP]) {
+			/* audition: each strum its own speed, slow, middling or fast; a roll easing out, a
+			 * glissando slower at its ends than its middle; now and then a roll comes down */
+			float r = rnd();
+			float sp = r < 0.3f ? 2.6f + 1.2f * rnd() : r < 0.7f ? 1.0f + 0.4f * rnd() : 0.4f + 0.15f * rnd();
+			c->hq_dt = (kind == 1 ? 0.04f : 0.035f) * sp;
+			c->arp_dir = (uint8_t)(kind == 1 ? 0 : 1);
+			if (kind == 1 && rnd() < 0.3f)
+				for (int i = 0; i < n / 2; i++) {
+					int8_t t = c->hq[i];
+					c->hq[i] = c->hq[n - 1 - i];
+					c->hq[n - 1 - i] = t;
+				}
 		}
 		c->hq_n = (uint8_t)n;
 		c->hq_i = 0;
@@ -1469,6 +1839,10 @@ static void chan_control(chan *c, int ch, float dt)
 		c->glow *= 0.95f;
 		break;
 	case GV_STRINGS: {
+		if (alt_m[GV_STRINGS]) {
+			strings_control(c, ch, sdt, tone, len);
+			break;
+		}
 		/* Juno strings as chords, never held drones: each struck chord rises in 20 ms, falls in
 		 * 50 ms to 60 %, holds a moment (LENGTH: 0.1 to 0.8 s), then rings away slowly
 		 * (LENGTH: 1.5 to 5 s). One saw a side, the Juno's chorus swaying them. */
@@ -1664,7 +2038,7 @@ static void chan_control(chan *c, int ch, float dt)
 				v->ainc = v->iinc = 0.0f;
 				continue;
 			}
-			nv_perc(v, sq ? 0.002f : 0.03f, dec / speed, mdec / speed, 1.0f, dt);
+			nv_perc(v, sq ? 0.002f : alt_m[GV_GLOW] ? 0.07f : 0.03f, dec / speed, mdec / speed, 1.0f, dt);
 			float vib = sq ? 1.0f : 1.0f + 0.0025f * sin_u(lfo_vib + (uint32_t)i * 0x30000000u);
 			v->ic = hz_inc(mtof(v->note) * speed * pbend * vib);
 			v->idx = v->iinc = 0.0f;
@@ -1677,6 +2051,38 @@ static void chan_control(chan *c, int ch, float dt)
 			} else {
 				/* mostly triangle (CHARACTER: from half to all), a darker filter that closes a little
 				 * as notes climb past C5, and a little quieter up there: soft, never shrill */
+				if (alt_m[GV_GLOW]) {
+					/* audition. 1 clean: the triangle's third and fifth, gone by 3 kHz; 2 warm: the
+					 * second and third (an ocarina's roundness); 3 dark: a triangle through a fixed
+					 * low-pass near 1 kHz that high notes fall into. All quieter as they climb */
+					const int gm = alt_m[GV_GLOW];
+					float f0 = mtof(v->note), chr = P.ch[ch][CP_CHAR];
+					float mm = (0.5f + 0.5f * chr) * (0.7f + 0.6f * tone), w2 = 0.0f, w3, w5 = 0.0f, g;
+					float up = clampf(v->note - 64.0f, 0.0f, 36.0f);
+					if (gm == 1) {
+						w3 = mm * (1.3f / 9.0f) * clampf((3000.0f - 3.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+						w5 = mm * (1.3f / 25.0f) * clampf((3000.0f - 5.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+						g = fexp2(-up * (0.5f / 6.0206f));
+					} else if (gm == 2) {
+						/* warm: the octave above (an even harmonic: round, not piercing) kept up to
+						 * 4 kHz, a little third */
+						w2 = mm * 0.3f * clampf((4000.0f - 2.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+						w3 = mm * 0.06f * clampf((3000.0f - 3.0f * f0) * (1.0f / 1500.0f), 0.0f, 1.0f);
+						g = fexp2(-up * (0.5f / 6.0206f));
+					} else {
+						/* breathy: a sine with breath around it (noise through a narrow band at the
+						 * note, more on the attack), as a flute or ocarina stays sweet up high */
+						w3 = mm * (0.6f / 9.0f) * clampf((2500.0f - 3.0f * f0) * (1.0f / 1200.0f), 0.0f, 1.0f);
+						w2 = (0.02f + 0.04f * chr + 0.08f * v->menv) * (0.6f + 0.6f * tone);   /* the breath's level */
+						v->ratio = clampf(2.0f * sin_u((uint32_t)(clampf(f0 / VSR, 0.0f, 0.2f) * 2147483648.0f)), 0.01f, 1.2f);
+						g = fexp2(-up * (0.5f / 6.0206f));
+					}
+					v->idx2 = w2;
+					v->fq = w3;
+					v->fk = w5;
+					v->hold = g;
+					continue;
+				}
 				/* a triangle's third and fifth (1/9, 1/25; CHARACTER and TONE from half to a little
 				 * past them), each faded out as it climbs past 2.5 kHz and gone by 4 kHz, where the
 				 * ear is keenest. And quieter as it climbs past E4, about 0.4 dB a semitone (the
@@ -1693,6 +2099,10 @@ static void chan_control(chan *c, int ch, float dt)
 		break;
 	}
 	case GV_RIBBON: {
+		if (alt_m[GV_RIBBON]) {
+			ribbon_control(c, ch, sdt, tone, len);
+			break;
+		}
 		/* a muted brass (after the CS-80's soft brass): two saws a few cents apart through a
 		 * 24 dB low-pass that sits low, about two to three harmonics up, and opens only a little
 		 * as each note blows in, settling back as it holds (the brass "blat", kept gentle).
@@ -1801,9 +2211,24 @@ static void chan_control(chan *c, int ch, float dt)
 			while (c->hq_t <= 0.0f && c->hq_i < c->hq_n) {
 				int last = c->hq_i + 1 == c->hq_n;
 				harp_pluck(c, ch, c->hq[c->hq_i++], c->hq_vel * (last ? 1.0f : 0.75f + 0.2f * rnd()));
-				c->hq_t += c->hq_dt;
+				float f = 1.0f;
+				if (alt_m[GV_HARP]) {
+					float x = c->hq_n > 1 ? (float)c->hq_i / (float)(c->hq_n - 1) : 0.0f;
+					f = c->arp_dir ? 1.0f + 0.55f * sin_u((uint32_t)(x * 4294967296.0f) + 0x40000000u) : 1.0f + 0.25f * x;
+				}
+				c->hq_t += c->hq_dt * f;
 			}
 		}
+		if (alt_m[GV_HARP] == 3)                     /* FM harp: the plucks as note voices */
+			for (int i = 0; i < 4; i++) {
+				nvoice *v = &c->v[i];
+				if (v->stage == ST_IDLE && v->amp == 0.0f) {
+					v->ainc = v->iinc = 0.0f;
+					continue;
+				}
+				nv_perc(v, 0.002f, v->hold / speed, 0.16f / speed, 0.5f + 2.0f * tone, dt);
+				nv_pitch(v, v->note);
+			}
 		break;
 	case GV_HARPSI:
 		/* the dampers falling on notes whose time is up */
@@ -2174,9 +2599,9 @@ static void nv_render_glow(nvoice *v, float *out)
 	uint32_t pc = v->pc;
 	const uint32_t ic = v->ic;
 	float amp = v->amp, ai = v->ainc;
-	const float w3 = v->fq, w5 = v->fk, g = v->hold > 0.0f ? v->hold : 1.0f;
+	const float w2 = v->idx2, w3 = v->fq, w5 = v->fk, g = v->hold > 0.0f ? v->hold : 1.0f;
 	for (uint32_t i = 0; i < VSUB; i++) {
-		float x = sin_u(pc) - w3 * sin_u(3u * pc) + w5 * sin_u(5u * pc);
+		float x = sin_u(pc) + w2 * sin_u(2u * pc) - w3 * sin_u(3u * pc) + w5 * sin_u(5u * pc);
 		pc += ic;
 		out[i] += x * amp * g;
 		amp += ai;
@@ -2254,6 +2679,79 @@ static void nv_render_str(nvoice *v, float *out)
  * 150 Hz) first, as the Juno's, so the chords never turn thick. The delay line is the channel's
  * string buffer, which the strings do not otherwise use */
 static inline int16_t to16(float x);
+/* audition strings: Solina (an 8' and a 4' saw through two poles) */
+static void nv_render_sol(nvoice *v, float *out)
+{
+	uint32_t a = v->pc, b = v->pc2;
+	const uint32_t ia = v->ic, ib = v->ic2;
+	float amp = v->amp, ai = v->ainc, f1 = v->f1, f2 = v->f2;
+	const float k = v->fk;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = blep_saw(a, ia) + 0.5f * blep_saw(b, ib);
+		a += ia;
+		b += ib;
+		f1 += k * (x - f1);
+		f2 += k * (f1 - f2);
+		out[i] += f2 * amp;
+		amp += ai;
+	}
+	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = f1; v->f2 = f2;
+}
+/* audition strings: Juno PWM (a pulse, two saws half a width apart, through the ladder) */
+static void nv_render_pwm(nvoice *v, float *out)
+{
+	uint32_t a = v->pc;
+	const uint32_t ia = v->ic, w = (uint32_t)(v->bend * 4294967296.0f);
+	float amp = v->amp, ai = v->ainc, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
+	const float g = v->fk, q = v->fq;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = 0.6f * (blep_saw(a, ia) - blep_saw(a + w, ia)), y;
+		a += ia;
+		LADDER(x, y);
+		out[i] += y * amp;
+		amp += ai;
+	}
+	v->pc = a; v->amp = amp; v->f1 = l1; v->f2 = l2; v->idx2 = l3; v->menv2 = l4;
+}
+/* the Solina's ensemble: three short delay lines (about 4 ms) swept by a slow and a fast LFO,
+ * each line a third of a turn from the next; left takes the first and half the second, right the
+ * third and half the second, with a little of the dry. A gentle high-pass first */
+static void solina_ensemble(chan *c, int ch, float *A, float *B)
+{
+	int16_t *rb = c->ks;
+	const float chr = P.ch[ch][CP_CHAR];
+	const float ctr = 96.0f, ds = (18.0f + 14.0f * chr) * speed, df = 2.2f * speed;
+	uint32_t s0 = c->lfo1, f0 = c->lfo2;
+	c->lfo1 += sub_inc(0.6f + 0.25f * chr, speed);
+	c->lfo2 += sub_inc(5.5f, speed);
+	float d[3], dd[3];
+	for (int j = 0; j < 3; j++) {
+		uint32_t o = (uint32_t)j * 0x55555555u;
+		d[j] = ctr + ds * sin_u(s0 + o) + df * sin_u(f0 + o);
+		dd[j] = (ctr + ds * sin_u(c->lfo1 + o) + df * sin_u(c->lfo2 + o) - d[j]) * (1.0f / VSUB);
+	}
+	float hp = c->hq_vel;
+	uint32_t w = c->hq_i;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = A[i];
+		hp += 0.039f * (x - hp);
+		x -= hp;
+		rb[w] = to16(0.5f * x);
+		float t[3];
+		for (int j = 0; j < 3; j++) {
+			float p = (float)(w + 256u) - d[j];
+			int ip = (int)p;
+			float f = p - (float)ip, a0 = rb[ip & 255], a1 = rb[(ip + 1) & 255];
+			t[j] = a0 + f * (a1 - a0);
+			d[j] += dd[j];
+		}
+		A[i] = 0.3f * x + (t[0] + 0.5f * t[1]) * (0.55f / 8192.0f);
+		B[i] = 0.3f * x + (t[2] + 0.5f * t[1]) * (0.55f / 8192.0f);
+		w = (w + 1u) & 255u;
+	}
+	c->hq_vel = hp;
+	c->hq_i = (uint8_t)w;
+}
 static void juno_chorus(chan *c, int ch, float *A, float *B)
 {
 	int16_t *rb = c->ks;                         /* 256 samples, 1.0 = 8192 */
@@ -2286,6 +2784,31 @@ static void juno_chorus(chan *c, int ch, float *A, float *B)
 	c->hq_t = ph;
 	c->hq_vel = hp;
 	c->hq_i = (uint8_t)w;
+}
+
+/* audition glow 3: a sine (a little third) and breath: noise from its own generator through a
+ * narrow band-pass at the note (ratio: its coefficient; idx2: the breath's level) */
+static void nv_render_glow3(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc, r = v->pm | 1u;
+	const uint32_t ic = v->ic;
+	float amp = v->amp, ai = v->ainc, lo = v->f1, bp = v->f2, nl = v->menv2;
+	const float w3 = v->fq, br = v->idx2 * 2.0f, f = v->ratio, g = 0.84f * (v->hold > 0.0f ? v->hold : 1.0f);
+	for (uint32_t i = 0; i < VSUB; i++) {
+		r ^= r << 13;
+		r ^= r >> 17;
+		r ^= r << 5;
+		float w = (float)(int32_t)r * (1.0f / 2147483648.0f);
+		nl += 0.35f * (w - nl);                  /* soft air: nothing hissy above ~1.4 kHz of it */
+		lo += f * bp;
+		float hi = 2.0f * nl - lo - 0.2f * bp;
+		bp += f * hi;
+		float x = sin_u(pc) - w3 * sin_u(3u * pc) + br * bp;
+		pc += ic;
+		out[i] += x * amp * g;
+		amp += ai;
+	}
+	v->pc = pc; v->pm = r; v->amp = amp; v->f1 = lo; v->f2 = bp; v->menv2 = nl;
 }
 
 /* render the channel into its two sides, A and B; returns whether anything sounded */
@@ -2338,16 +2861,36 @@ static int chan_render(chan *c, float *A, float *B)
 				any = 1;
 			}
 		break;
-	case GV_STRINGS:
+	case GV_STRINGS: {
+		const int m = alt_m[GV_STRINGS];
+		float mid[VSUB];
+		if (m == 3)
+			for (uint32_t i = 0; i < VSUB; i++)
+				mid[i] = 0.0f;
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
-				nv_render_str(&c->v[i], A);
-				any = 1;
+				if (m == 0)
+					nv_render_str(&c->v[i], A);
+				else if (m == 1)
+					nv_render_sol(&c->v[i], A);
+				else if (m == 2)
+					nv_render_pwm(&c->v[i], A);
+				else
+					nv_render_ribbon(&c->v[i], i == 0 ? A : i == 1 ? B : mid);   /* bowed: spread */
 			}
-		/* the chorus runs on (a few ms of tail, and its line kept flowing) */
-		juno_chorus(c, (int)(c - CH), A, B);
+		/* the ensemble or chorus runs on (a few ms of tail, and its line kept flowing) */
+		if (m == 1)
+			solina_ensemble(c, (int)(c - CH), A, B);
+		else if (m == 3)
+			for (uint32_t i = 0; i < VSUB; i++) {
+				A[i] += 0.7f * mid[i];
+				B[i] += 0.7f * mid[i];
+			}
+		else
+			juno_chorus(c, (int)(c - CH), A, B);
 		any = 1;
 		break;
+	}
 	case GV_SUPER:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
@@ -2356,7 +2899,13 @@ static int chan_render(chan *c, float *A, float *B)
 			}
 		break;
 	case GV_RIBBON:
-		if (c->v[0].amp > 0.0f || c->v[0].ainc > 0.0f) {
+		if (alt_m[GV_RIBBON] >= 2) {
+			for (int i = 0; i < (alt_m[GV_RIBBON] == 3 ? 3 : 1); i++)
+				if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+					nv_render(&c->v[i], A);
+					any = 1;
+				}
+		} else if (c->v[0].amp > 0.0f || c->v[0].ainc > 0.0f) {
 			nv_render_ribbon(&c->v[0], A);
 			any = 1;
 		}
@@ -2371,7 +2920,9 @@ static int chan_render(chan *c, float *A, float *B)
 	case GV_SEQ:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
-				if (c->voice == GV_GLOW)
+				if (c->voice == GV_GLOW && alt_m[GV_GLOW] == 3)
+					nv_render_glow3(&c->v[i], A);
+				else if (c->voice == GV_GLOW)
 					nv_render_glow(&c->v[i], A);
 				else
 					nv_render_seq(&c->v[i], A);
@@ -2465,6 +3016,12 @@ static int chan_render(chan *c, float *A, float *B)
 	case GV_KALIMBA:
 	case GV_HARP:
 	case GV_HARPSI:
+		if (c->voice == GV_HARP && alt_m[GV_HARP] == 3)
+			for (int i = 0; i < 4; i++)
+				if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+					nv_render(&c->v[i], c->v[i].side ? B : A);
+					any = 1;
+				}
 		for (int k = 0, nk = ks_count(c->voice); k < nk; k++) {
 			int len = c->ks_len[k];
 			if (!len)
@@ -2478,8 +3035,15 @@ static int chan_render(chan *c, float *A, float *B)
 			if (c->ks_fill[k]) {
 				float ea = c->ks_ea[k], lp = c->ks_elp[k], vel = c->ks_vel[k];
 				uint32_t m = c->ks_fill[k] < VSUB ? c->ks_fill[k] : VSUB;
+				const int shaped = c->ks_hold[k] < 0.0f;
+				const int at = len - (int)c->ks_fill[k];
 				for (; n < m; n++) {
-					lp += ea * ((rnd() * 2.0f - 1.0f) - lp);
+					float src = rnd() * 2.0f - 1.0f;     /* (drawn even when shaped: the dice stay in step) */
+					if (shaped) {                        /* the string pulled at a seventh of its length */
+						float q = (float)(at + (int)n) / (float)len;
+						src = (q < 0.14f ? q * (1.0f / 0.14f) : (1.0f - q) * (1.0f / 0.86f)) * 2.0f - 1.0f;
+					}
+					lp += ea * (src - lp);
 					float x = lp * vel;                      /* the string's units: 1.0 = 16000 */
 					b[i] = (int16_t)(x * 16000.0f);
 					out[n] += x * 1.8f;
@@ -3604,6 +4168,23 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{80, 50, 30, 50, 0, 10, 50, 90, 72}, {70, 60, 35, 50, 0, 15, 50, 70, 58},
 	  {75, 55, 25, 50, 20, 35, 55, 50, 48}, {55, 70, 40, 75, 25, 40, 45, 50, 63}},
 	 {80, 30, 35, 50, 4, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 0, 1, 1}, 8, {4, 3, 3, 3}, 8, 0, {0, 0, 0, 0}},
+	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
+	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
+	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},
+	  {45, 40, 40, 50, 0, 20, 50, 20, 40}, {30, 30, 60, 50, 30, 50, 60, 30, 35}},
+	 {64, 30, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 7}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	{"Lab Glow", {GV_GLOW, GV_GLOW, GV_PAD, GV_BASS},
+	 {{55, 50, 55, 75, 35, 65, 40, 60, 100}, {35, 50, 55, 100, 40, 65, 60, 60, 80},
+	  {40, 30, 80, 50, 10, 70, 50, 40, 24}, {40, 25, 70, 50, 0, 15, 50, 30, 32}},
+	 {50, 40, 70, 50, 5, 0, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 2, 0, 0}, 8, {3, 3, 0, 0}, 8, 0, {0, 0, 0, 0}},
+	{"Lab Ribbon", {GV_RIBBON, GV_PAD, GV_BASS, GV_PULSE},
+	 {{55, 45, 55, 50, 25, 55, 50, 25, 95}, {40, 30, 80, 50, 10, 70, 50, 40, 32},
+	  {50, 25, 60, 50, 0, 15, 50, 30, 42}, {40, 35, 35, 50, 0, 15, 50, 15, 30}},
+	 {56, 30, 65, 50, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 7}, {1, 0, 0, 0}, 8, {3, 0, 0, 0}, 8, 0, {0, 0, 0, 0}},
+	{"Lab Harp", {GV_HARP, GV_PAD, GV_BASS, GV_DRONE},
+	 {{60, 45, 65, 50, 25, 70, 45, 60, 90}, {35, 30, 80, 50, 10, 70, 55, 40, 32},
+	  {30, 20, 70, 50, 0, 20, 50, 30, 40}, {20, 25, 60, 50, 0, 50, 50, 0, 20}},
+	 {44, 30, 75, 50, 7, 0, 25, 40}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
 #endif
 };
 

@@ -137,6 +137,7 @@ void gl_panic(void);
  * depth 0 = off .. 1 = full (twice as wide as half); period_s: seconds per glide. Outside the
  * patch: the posted controls are the centre it moves around. */
 void gl_macro(int ch, float depth, float period_s);
+void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */
 enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW_SHAPE, GW_PINGPONG,
@@ -162,7 +163,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 62                   /* an audition build: forty-six more */
+#define GL_NPIECES 66                   /* an audition build: fifty more (four of them labs) */
 #else
 #define GL_NPIECES 16
 #endif

@@ -54,6 +54,16 @@ int main(int argc, char **argv)
 		for (int c = 0; c < GL_NCH; c++)
 			gl_macro(c, (float)st[c] / 4.0f, per);
 	}
+	if (getenv("ALT")) {     /* ALT=g1,k2: voice (base 36) and method, audition only */
+		const char *q = getenv("ALT");
+		while (q[0] && q[1]) {
+			int vi = q[0] <= '9' ? q[0] - '0' : q[0] - 'a' + 10;
+			gl_alt(vi, q[1] - '0');
+			q += 2;
+			if (*q == ',')
+				q++;
+		}
+	}
 	if (getenv("WORLD")) {   /* Playworld: WORLD=form=1,bars=8,key=0.5,kind=0,pump=1,shape=1,pp=1,tex=2,texl=0.6,rev=0.8,autof=1 */
 		static const char *K[] = {"form", "bars", "key", "kind", "pump", "shape", "pp", "tex", "texl", "rev", "autof", "fk", "comp"};
 		char buf[256];
