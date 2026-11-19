@@ -127,7 +127,7 @@ void gl_next_chord(void);
  * post 0: on the instruments, before the delay and reverb; 1: on everything, after them;
  * 2: on the reverb only (dirty tails, clean instruments); 3: on the drums only (the Pulse, and so
  * its echo and reverb). */
-enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_COMB, GD_XOR, GD_COUNT };
+enum gl_dist { GD_CHEBYSHEV, GD_OVERDRIVE, GD_FUZZ, GD_XOR, GD_COUNT };
 extern const char *const GL_DIST_NAME[GD_COUNT];
 void gl_dist(int type, int amount, int post);
 void gl_panic(void);
@@ -161,7 +161,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 32                   /* an audition build: sixteen more */
+#define GL_NPIECES 37                   /* an audition build: twenty-one more */
 #else
 #define GL_NPIECES 16
 #endif

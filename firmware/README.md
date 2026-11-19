@@ -33,9 +33,9 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 | Pulse | a light pulse: soft kick, shaker (its noise made at the full 48 kHz from its own generator, its body at 3-12 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
-| Strings | synth strings: two PolyBLEP saws a little apart, a slow chorus between them, swelling on the chord through two poles (Tone) | ensemble: spread and chorus |
+| Strings | after a Juno: a PolyBLEP saw on each side, the Juno's chorus swaying them opposite ways, a short ADSR (0.3 s in, 0.9 s out), two poles with half keyboard tracking | chorus I toward II |
 | Glow | a sine with a triangle mixed in, through a gentle pole, easing in | sine to triangle |
-| Seq | an analog arp: a saw through a resonant state-variable low-pass that snaps open on each note and closes over Length | pattern: octave bounce, broken thirds, gallop, walk |
+| Seq | a polysynth arp: saw and square through a gently opening low-pass, across three octaves of the chord | pattern: octave bounce (two octaves), broken thirds, gallop, walk |
 | Super | a supersaw: five saws spread on each chord note, through two poles | spread |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
@@ -98,7 +98,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | •• + RWD held 3 s | save the piece to its slot; the macros as they are become its scene |
 | Anywhere | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
-| | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Comb, XOR |
+| | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, XOR |
 | | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |
 | | •• + VOL+ held 3 s | distortion before the delay and reverb (default), after them, on the reverb only, or on the drums only (the Pulse, and so its echo and reverb), in turn |
 | | •• held 3 s | power off (Wakes', unchanged; so is the 30 s backstop) |
@@ -143,14 +143,13 @@ of them as long as you like: a slow servo keeps the tail's level, and Shimmer ke
 
 ## Distortion
 
-Five cheap waveshapers, outside the pieces (randomize and piece changes leave them alone):
+Four cheap waveshapers, outside the pieces (randomize and piece changes leave them alone):
 
 | Type | What it does |
 |---|---|
 | Chebyshev | a harmonic exciter: the signal is normalised by its own level, Chebyshev T2 adds the octave and T3 the twelfth, and the level is put back, so it colours without crushing |
 | Overdrive | soft saturation, warmer and denser with each amount |
 | Fuzz | a biased hard clip: uneven halves, a buzz |
-| Comb | a comb filter tuned to the chord's root (C3..B3): it rings on the root and its harmonics, so what goes through takes on the key; it glides to each new root; amount is how long it rings |
 | XOR | the signal crushed to fewer bits (11 down to 5) and XORed with its own last sample: digital grit |
 
 Each amount is driven harder and brought back down, so a step changes the colour more than the

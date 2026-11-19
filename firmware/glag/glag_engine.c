@@ -1045,13 +1045,14 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		int div = act < 0.25f ? 8 : act < 0.5f ? 4 : act < 0.65f ? 3 : act < 0.8f ? 2 : 1;
 		if (step % (uint32_t)div)
 			break;
-		int notes[8], n = 0;
-		for (int o = 0; o < 2; o++)
+		/* three octaves of the chord, from an octave below home */
+		int notes[12], n = 0;
+		for (int o = 0; o < 3; o++)
 			for (int k = 0; k < chord_n; k++)
-				notes[n++] = place(chord_pc[k], (float)(base + 12 * o + 2 * k), base + 12 * o - 1, base + 12 * o + 11);
+				notes[n++] = place(chord_pc[k], (float)(base - 12 + 12 * o + 2 * k), base - 13 + 12 * o, base - 1 + 12 * o);
 		int pat = stepped(P.ch[ch][CP_CHAR], 4), q = c->arp_i++, note;
-		if (pat == 0)
-			note = notes[(q >> 1) % chord_n] + ((q & 1) ? 12 : 0);
+		if (pat == 0)                                /* each tone, then two octaves up */
+			note = notes[(q >> 1) % chord_n] + ((q & 1) ? 24 : 0);
 		else if (pat == 1)
 			note = notes[((q >> 1) + (q & 1) * 2) % n];
 		else if (pat == 2) {
@@ -1060,6 +1061,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			note = notes[(q >> 2) % n];
 		} else {
 			int w = (int)c->arp_dir + (rnd() < 0.5f ? -1 : 1);
+			w += rnd() < 0.25f ? (rnd() < 0.5f ? -2 : 2) : 0;   /* now and then a wider step */
 			w = w < 0 ? 1 : w >= n ? n - 2 : w;
 			c->arp_dir = (uint8_t)w;
 			note = notes[w];
@@ -1159,9 +1161,9 @@ static void chan_control(chan *c, int ch, float dt)
 		const int sw = c->voice == GV_SWELL || an;
 		const float chr = P.ch[ch][CP_CHAR];
 		int nv = 2 + stepped(P.ch[ch][CP_ACTIVITY], 2);   /* 2 or 3 voices breathing */
-		float cycle = sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
+		float cycle = c->voice == GV_STRINGS ? 2.5f + 9.0f * len : sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
 		if (an)
-			c->lfo1 += sub_inc(0.37f, speed);           /* the strings' chorus, ~0.4 Hz */
+			c->lfo1 += sub_inc(c->voice == GV_STRINGS ? 0.5f + 0.35f * chr : 0.37f, speed);   /* chorus I 0.5 Hz .. II 0.85 */
 		float ratio = sw ? 1.0f : (chr < 0.5f ? 1.0f : 2.0f);
 		float detune = sw ? 0.0f : 0.12f * chr;
 		float spread = fexp2((4.0f + 14.0f * chr) * (1.0f / 1200.0f));   /* swell's second carrier */
@@ -1196,6 +1198,24 @@ static void chan_control(chan *c, int ch, float dt)
 			float x = c->cyc[i], e, idx, vib = 1.0f;
 			if (v->stage == ST_IDLE)
 				e = 0.0f;
+			else if (c->voice == GV_STRINGS) {
+				/* a Juno-ish ADSR, in seconds: ~0.3 s up, down to 0.8 over 0.4 s, held, ~0.9 s
+				 * away (each eased, never a step) */
+				float t = x * cycle * PAD_FACTOR[i], T = cycle * PAD_FACTOR[i];
+				float at = 0.3f, rl = 0.9f;
+				if (t < at) {
+					float u = t / at;
+					e = u * u * (3.0f - 2.0f * u);
+				} else if (t < at + 0.4f) {
+					float u = (t - at) / 0.4f;
+					e = 1.0f - 0.2f * u * u * (3.0f - 2.0f * u);
+				} else
+					e = 0.8f;
+				if (t > T - rl) {
+					float u = clampf((T - t) / rl, 0.0f, 1.0f);
+					e *= u * u * (3.0f - 2.0f * u);
+				}
+			}
 			else if (!sw) {
 				float s = sin_u((uint32_t)(x * 2147483648.0f));
 				e = s * s;
@@ -1219,20 +1239,32 @@ static void chan_control(chan *c, int ch, float dt)
 				 * the swell */
 				float hz0 = mtof(v->note) * speed * pbend * vib;
 				int sup = c->voice == GV_SUPER;
-				float cents = sup ? 6.0f + 40.0f * chr : 3.0f + 14.0f * chr;
-				float ch1 = 1.0f + 0.25f * sin_u(c->lfo1 + (uint32_t)i * 0x55555555u);   /* the chorus */
-				float d1 = fexp2(cents * ch1 * (1.0f / 1200.0f)), d2 = fexp2(cents * 2.1f * (1.0f / 1200.0f));
+				float d1, d2;
+				if (sup) {
+					float cents = 6.0f + 40.0f * chr;
+					float ch1 = 1.0f + 0.25f * sin_u(c->lfo1 + (uint32_t)i * 0x55555555u);
+					d1 = fexp2(cents * ch1 * (1.0f / 1200.0f));
+					d2 = fexp2(cents * 2.1f * (1.0f / 1200.0f));
+				} else {
+					/* the Juno's chorus: one saw per side, their pitch swaying opposite ways
+					 * (CHARACTER from chorus I, slow and gentle, toward II, faster and deeper) */
+					float depth = (0.0016f + 0.0034f * chr) * sin_u(c->lfo1);
+					d1 = 1.0f + depth;
+					d2 = 1.0f;
+				}
 				v->ic = hz_inc(hz0 * d1);
 				v->ic2 = hz_inc(hz0 / d1);
+				(void)d2;
 				if (sup) {
 					v->im = hz_inc(hz0);
 					v->ic3 = hz_inc(hz0 * d2);
 					v->ic4 = hz_inc(hz0 / d2);
 				}
-				float fc = 250.0f + (sup ? 6500.0f : 4500.0f) * tone * tone * (0.35f + 0.65f * e);
+				/* half keyboard tracking (a Juno's KYBD): high notes keep their brightness */
+				float fc = (250.0f + (sup ? 6500.0f : 4500.0f) * tone * tone * (0.35f + 0.65f * e)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f));
 				v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.9f);
 				v->idx = v->iinc = 0.0f;
-				float a = e * v->vel * (sup ? 0.58f : 0.95f);   /* level with the pad */
+				float a = e * v->vel * (sup ? 0.58f : 0.79f);   /* level with the pad */
 				v->ainc = (a - v->amp) * (1.0f / VSUB);
 				if (a <= 0.0f && v->amp < 0.0002f)
 					v->amp = v->ainc = 0.0f;
@@ -1277,11 +1309,13 @@ static void chan_control(chan *c, int ch, float dt)
 			v->ic = hz_inc(mtof(v->note) * speed * pbend * vib);
 			v->idx = v->iinc = 0.0f;
 			if (sq) {
-				float fc = 120.0f + 2600.0f * tone * tone + 3200.0f * v->menv * (0.4f + 0.6f * tone);
+				/* a polysynth's arp rather than a 303: the filter mostly open, a gentle snap,
+				 * little resonance */
+				float fc = (600.0f + 3400.0f * tone * tone + 1400.0f * v->menv * tone) * fexp2((v->note - 55.0f) * (1.0f / 24.0f));
 				v->fk = clampf(2.0f * sin_u((uint32_t)(clampf(fc / VSR, 0.0f, 0.16f) * 2147483648.0f)), 0.01f, 0.9f);
-				v->fq = 0.22f + 0.5f * (1.0f - P.ch[ch][CP_CHAR] * 0.5f) * 0.6f;   /* resonance */
+				v->fq = 1.1f;                          /* resonance: a touch */
 			} else {
-				float fc = 900.0f + 5000.0f * tone * tone;
+				float fc = (900.0f + 5000.0f * tone * tone) * fexp2((v->note - 64.0f) * (1.0f / 24.0f));
 				v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.9f);
 				v->fq = P.ch[ch][CP_CHAR];
 			}
@@ -1638,6 +1672,27 @@ static void nv_render_saws(nvoice *v, float *out, int five)
 	v->pc = a; v->pc2 = b; v->pm = c3; v->pc3 = d; v->pc4 = e;
 	v->amp = amp; v->f1 = f1; v->f2 = f2;
 }
+/* strings: a saw each side (the chorus between them), each through two poles of its own */
+static void nv_render_juno(nvoice *v, float *A, float *B)
+{
+	uint32_t a = v->pc, b = v->pc2;
+	const uint32_t ia = v->ic, ib = v->ic2;
+	float amp = v->amp, ai = v->ainc, f1 = v->f1, f2 = v->f2, g1 = v->idx2, g2 = v->menv2;
+	const float k = v->fk;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = blep_saw(a, ia), y = blep_saw(b, ib);
+		a += ia;
+		b += ib;
+		f1 += k * (x - f1);
+		f2 += k * (f1 - f2);
+		g1 += k * (y - g1);
+		g2 += k * (g1 - g2);
+		A[i] += f2 * amp;
+		B[i] += g2 * amp;
+		amp += ai;
+	}
+	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = f1; v->f2 = f2; v->idx2 = g1; v->menv2 = g2;
+}
 /* glow: a sine and a triangle (fq: how much triangle), through a gentle pole */
 static void nv_render_glow(nvoice *v, float *out)
 {
@@ -1664,13 +1719,14 @@ static void nv_render_seq(nvoice *v, float *out)
 	float amp = v->amp, ai = v->ainc, lo = v->f1, bp = v->f2;
 	const float f = v->fk, q = v->fq;
 	for (uint32_t i = 0; i < VSUB; i++) {
-		float x = blep_saw(pc, ic);
+		/* a saw and a square (two saws half a cycle apart) half and half: rounder */
+		float x = 0.75f * blep_saw(pc, ic) - 0.35f * blep_saw(pc + 0x80000000u, ic);
 		pc += ic;
 		lo += f * bp;
 		float hi = x - lo - q * bp;
 		bp += f * hi;
 		bp = clampf(bp, -4.0f, 4.0f);
-		out[i] += lo * amp * 1.3f;
+		out[i] += lo * amp * 1.5f;
 		amp += ai;
 	}
 	v->pc = pc; v->amp = amp; v->f1 = lo; v->f2 = bp;
@@ -1727,10 +1783,16 @@ static int chan_render(chan *c, float *A, float *B)
 			}
 		break;
 	case GV_STRINGS:
+		for (int i = 0; i < 3; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render_juno(&c->v[i], A, B);
+				any = 1;
+			}
+		break;
 	case GV_SUPER:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
-				nv_render_saws(&c->v[i], (i & 1) ? B : A, c->voice == GV_SUPER);
+				nv_render_saws(&c->v[i], (i & 1) ? B : A, 1);
 				any = 1;
 			}
 		break;
@@ -1972,7 +2034,7 @@ void gl_panic(void) { cmd_panic++; }
 /* ================================================================ distortion
  * Five cheap waveshapers, a few operations a sample each. Driven harder at each amount, then
  * brought back down so a step changes the colour more than the loudness. */
-const char *const GL_DIST_NAME[GD_COUNT] = {"Chebyshev", "Overdrive", "Fuzz", "Comb", "XOR"};
+const char *const GL_DIST_NAME[GD_COUNT] = {"Chebyshev", "Overdrive", "Fuzz", "XOR"};
 static volatile uint8_t cmd_dist_type, cmd_dist_amt, cmd_dist_post;
 void gl_dist(int type, int amount, int post)
 {
@@ -1987,9 +2049,6 @@ static struct {
 	int32_t prev[10];          /* XOR: the last crushed sample per path (L, R, echo, reverb, wet L, wet R, the drums' four) */
 	float env[10];             /* Chebyshev: each path's level */
 	float c2, c3;              /* Chebyshev: how much octave (T2) and twelfth (T3) */
-	int16_t cb[10][512];       /* Comb: each path's line (10 KB) */
-	uint16_t cbw[10];
-	float cbd[10], cblp[10];   /* its length (gliding to the chord's root) and the damping in its loop */
 } dist;
 
 static void dist_setup(void)
@@ -1998,14 +2057,12 @@ static void dist_setup(void)
 		{1.2f, 1.6f, 2.2f, 3.0f},      /* Chebyshev: T2 and T3 harmonics growing */
 		{2.0f, 3.5f, 6.0f, 11.0f},     /* overdrive: soft saturation */
 		{3.0f, 6.0f, 12.0f, 25.0f},    /* fuzz: biased hard clip */
-		{0.62f, 0.78f, 0.88f, 0.94f},  /* comb: its feedback */
 		{1.0f, 1.0f, 1.0f, 1.0f},      /* XOR: crushed and XORed bits */
 	};
 	static const float MAKEUP[GD_COUNT][4] = {
 		{1.209f, 1.524f, 1.677f, 1.446f},
 		{0.42f, 0.307f, 0.238f, 0.188f},
 		{0.162f, 0.111f, 0.093f, 0.087f},
-		{1.0f, 1.12f, 1.28f, 1.45f},   /* comb: what its thinning takes, on average over the places */
 		{1.333f, 1.952f, 2.26f, 1.839f},
 	};
 	dist.type = cmd_dist_type;
@@ -2027,7 +2084,7 @@ static void dist_setup(void)
  * loop per type with everything in locals: the type is decided once per buffer, not per sample. */
 static void dist_block(float *x, uint32_t n, int path)
 {
-	const float mk = dist.mk, g = dist.g, mix = dist.mix, dry = 1.0f - dist.mix;
+	const float mk = dist.mk, g = dist.g;
 	switch (dist.type) {
 	case GD_CHEBYSHEV: {
 		/* A harmonic exciter: the signal is brought to full scale by its own level (T_n makes
@@ -2065,39 +2122,6 @@ static void dist_block(float *x, uint32_t n, int path)
 		const float k = mk * 2.2f;
 		for (uint32_t i = 0; i < n; i++)                /* biased: uneven halves, a buzz */
 			x[i] = (clampf(x[i] * g + 0.15f, -0.55f, 0.85f) - 0.15f) * k;
-		break;
-	}
-	case GD_COMB: {
-		/* a comb filter tuned to the chord's root (C3..B3): it rings on the root and its
-		 * harmonics (the octave, fifth and third above), so whatever goes through takes on the
-		 * key. Its length glides to each new root (no click); the loop is damped a little, so the
-		 * ring is a string's, not a buzz. The paths run at 24 kHz, but L and R after the effects,
-		 * and the drums' noise, at 48. */
-		float sr = (path >= 8 || (path <= 1 && dist.post == 1)) ? GL_SR : VSR;
-		float want = sr / mtof((float)(48 + chord_pc[0]));
-		want = want > 500.0f ? 500.0f : want;
-		float d = dist.cbd[path] > 1.0f ? dist.cbd[path] : want, lp = dist.cblp[path];
-		/* before the effects and on the reverb only it thins more (a fuller sound into it): a
-		 * little more make-up there */
-		static const float MORE[4] = {1.0f, 1.1f, 1.25f, 1.45f};
-		const float m2 = (dist.post == 0 || dist.post == 2) ? MORE[dist.amt - 1] : 1.0f;
-		const float fb = g, wet = mix * (1.0f - fb) * 2.2f * mk * m2, dk = dry * mk * m2;
-		int16_t *b = dist.cb[path];
-		uint32_t w = dist.cbw[path];
-		for (uint32_t i = 0; i < n; i++) {
-			d += (want - d) * 0.0005f;                    /* ~40 ms to a new root */
-			uint32_t k = (uint32_t)d;
-			float f = d - (float)k;
-			float a = from16(b[(w - k) & 511u]), c = from16(b[(w - k - 1u) & 511u]);
-			lp += 0.6f * (a + (c - a) * f - lp);
-			float y = x[i] + fb * lp;
-			w++;
-			b[w & 511u] = to16(y);
-			x[i] = x[i] * dk + y * wet;
-		}
-		dist.cbd[path] = d;
-		dist.cblp[path] = lp;
-		dist.cbw[path] = (uint16_t)(w & 511u);
 		break;
 	}
 	default: {
@@ -2774,6 +2798,34 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {70, 40, 25, 25, 5, 25, 50, 0, 67}, {50, 45, 70, 50, 10, 45, 50, 40, 64}},
 	 {100, 15, 40, 50, 9, 0, 35, 30}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 0, 1}, 8, {2, 2, 1, 3}, 8,
 	 (3u << 2) | (1u << 5), {0, 1u << 2, 0, 0}},
+	/* ---- audition only: the four new voices, in several octaves ---- */
+	/* Juno strings in the middle, a Glow lead an octave up, a round bass, soft swung rings */
+	{"Juno Hours", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
+	 {{35, 45, 50, 50, 15, 60, 50, 30, 72}, {45, 45, 55, 75, 40, 55, 60, 30, 66},
+	  {20, 25, 80, 50, 0, 20, 50, 40, 66}, {30, 30, 30, 50, 10, 20, 50, 28, 55}},
+	 {64, 35, 55, 50, 4, 1, 45, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 3, 0, 0}, 10, {3, 4, 1, 1}, 10, 0, {0, 0, 0, 0}},
+	/* two Glows two octaves apart, the high one a fifth above, a pad and a kalimba between */
+	{"Glow Garden", {GV_GLOW, GV_GLOW, GV_PAD, GV_KALIMBA},
+	 {{40, 40, 70, 25, 30, 55, 35, 20, 76}, {40, 55, 60, 100, 45, 65, 65, 60, 55},
+	  {30, 35, 85, 50, 10, 75, 50, 60, 63}, {35, 50, 50, 75, 40, 55, 45, 50, 60}},
+	 {40, 45, 70, 50, 9, 3, 30, 60}, {GR_BLOOM, GS_OCTAVE, 2}, {2, 3, 0, 1}, 12, {3, 4, 2, 2}, 12,
+	 GL_FLAG_PINGPONG, {0, 2u << 2, 0, 0}},
+	/* the Seq galloping low across three octaves, Juno strings high, a bass, a 4/4 pulse */
+	{"Neon Ladder", {GV_SEQ, GV_STRINGS, GV_BASS, GV_PULSE},
+	 {{75, 50, 40, 25, 35, 40, 45, 67, 60}, {30, 50, 55, 75, 20, 60, 55, 60, 49},
+	  {25, 30, 80, 50, 0, 20, 50, 50, 53}, {55, 40, 25, 50, 10, 20, 50, 60, 49}},
+	 {90, 40, 50, 50, 0, 5, 40, 55}, {GR_HALL, GS_OCTAVE, 5}, {3, 1, 0, 1}, 8, {4, 2, 1, 2}, 8, 0, {0, 0, 0, 0}},
+	/* the supersaw low and slow, a Glow above it, a drone, gongs: heavy, for a big moment */
+	{"Supernova", {GV_SUPER, GV_GLOW, GV_DRONE, GV_GONG},
+	 {{35, 45, 70, 25, 15, 70, 50, 50, 63}, {35, 50, 60, 75, 45, 65, 60, 40, 58},
+	  {40, 40, 60, 25, 10, 60, 50, 0, 50}, {30, 40, 80, 25, 20, 75, 45, 60, 55}},
+	 {30, 45, 80, 50, 2, 5, 25, 70}, {GR_BLOOM, GS_OCTAVE, 3}, {3, 2, 0, 1}, 16, {4, 3, 2, 2}, 16,
+	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
+	/* strings two octaves apart (the high ones a third above), a Glow in the middle, bells */
+	{"Strings at Night", {GV_STRINGS, GV_STRINGS, GV_GLOW, GV_BELLS},
+	 {{30, 35, 60, 25, 10, 55, 40, 20, 70}, {30, 55, 50, 75, 20, 65, 60, 60, 53},
+	  {40, 45, 55, 50, 35, 55, 50, 40, 60}, {35, 45, 55, 75, 40, 60, 55, 20, 50}},
+	 {46, 40, 65, 50, 5, 0, 35, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 2, 1}, 12, {3, 3, 3, 2}, 12, 0, {0, 1u << 2, 0, 0}},
 #endif
 };
 
