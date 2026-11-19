@@ -120,6 +120,11 @@ void gl_panic(void);
  * patch: the posted controls are the centre it moves around. */
 void gl_macro(int ch, float depth, float period_s);
 
+/* Playworld (a prototype, outside the patch): see glag_play.h */
+enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW_SHAPE, GW_PINGPONG,
+                     GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF };
+void gl_world(int what, float v);
+
 /* ---- audio thread ---- */
 /* n stereo frames, interleaved int16, n a multiple of GL_SUB. gain 0..1 (volume). */
 void gl_render(int16_t *lr, uint32_t n, float gain);

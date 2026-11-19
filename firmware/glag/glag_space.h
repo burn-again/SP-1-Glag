@@ -69,8 +69,9 @@ static inline void tape_tick(float in, float *el, float *er)
 		tp.wow += 0.4f / TAPE_SR;
 		tp.wow -= tp.wow >= 1.0f ? 1.0f : 0.0f;
 		float w = 1.5f * sin_u((uint32_t)(tp.wow * 4294967296.0f));
-		float h1 = tape_rd(tp.len + w), h2 = tape_rd(0.75f * tp.len - w);
-		float y = tp.acc * (1.0f / 3.0f) + tp.fb * (0.6f * h1 + 0.4f * h2);
+		float h1 = tape_rd(tp.len + w), h2 = tape_rd((w_pingpong ? 0.5f : 0.75f) * tp.len - w);
+		/* ping-pong (Playworld): only the long head feeds back, so each repeat crosses sides */
+		float y = tp.acc * (1.0f / 3.0f) + tp.fb * (w_pingpong ? h1 : 0.6f * h1 + 0.4f * h2);
 		tp.lp += 0.75f * (y - tp.lp);                     /* darker each pass (~1.8 kHz) */
 		tp.hp += 0.1f * (tp.lp - tp.hp);                  /* and thinner (~140 Hz) */
 		y = tp.lp - tp.hp;
@@ -576,7 +577,7 @@ static void space_control(float dt, int freeze_changed)
 static void space_block(const float *E, const float *V, float *L, float *R)
 {
 	float WL[GL_SUB / 2], WRr[GL_SUB / 2], EL[GL_SUB / 2], ER[GL_SUB / 2];
-	const float fi = freeze_in, fade = rv.fade;
+	const float fi = freeze_in, fade = rv.fade * sp_duck;
 	/* The tape (8 kHz) between two elliptic low-passes (4 poles: flat to 2.4 kHz, -32 dB at 4,
 	 * -55 from 5): before it, so a note's upper harmonics can't fold back as off-pitch tones;
 	 * after it, for the mirror images its interpolation leaves (a 2093 Hz repeat had one at
@@ -590,12 +591,13 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 	for (uint32_t j = 0; j < GL_SUB / 2; j++)
 		X[j] = (0.5f * V[j] + (EL[j] + ER[j]) * 0.25f) * fi;
 	rv_block(X, WL, WRr);
+	reverse_block(WL, WRr, GL_SUB / 2);
 	if (dist.amt && dist.post == 2) {            /* dirty tails, clean instruments */
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
 	}
 	/* back up to 48 kHz as the voices are: each new sample, and a 4-point midpoint before it */
-	const float emix = tp.mix;
+	const float emix = tp.mix * sp_duck;
 	float u0 = sp_up[0], u1 = sp_up[1], u2 = sp_up[2], u3 = sp_up[3], u4 = sp_up[4], u5 = sp_up[5];
 	for (uint32_t i = 0; i < GL_SUB; i += 2) {
 		float ol = EL[i >> 1] * emix + WL[i >> 1] * fade, or_ = ER[i >> 1] * emix + WRr[i >> 1] * fade;

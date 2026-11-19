@@ -205,6 +205,12 @@ static uint8_t chord_pending;
 
 /* time */
 static float step_acc;                     /* 16ths */
+/* Playworld's hooks (glag_play.h): per channel level and activity from the form, the pump, the
+ * tape's ping-pong, the macros' shape, the key's travel */
+static float w_lvl[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f}, w_act[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
+static float pump_env, pump_tgt, sp_duck = 1.0f;
+static int w_pingpong, key_off, mode_swap;
+static uint8_t mac_shape[GL_NCH];
 static uint32_t step_n;
 static float speed = 1.0f, arc;
 static uint32_t lfo_vib, lfo_arc1, lfo_arc2, lfo_trem;
@@ -216,7 +222,17 @@ static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 whil
 static void harmony_update(void)
 {
 	int mode = stepped(P.g[GP_MODE], GL_NMODES);
-	int root = stepped(P.g[GP_ROOT], 12);
+	int root = (stepped(P.g[GP_ROOT], 12) + key_off) % 12;
+	if (mode_swap) {
+		/* the relative major / minor: the same notes, another home. Where each mode sits in its
+		 * major scale (Ionian .. Aeolian; the pentatonics as major and minor) */
+		static const int8_t AT[8] = {0, 2, 4, 5, 7, 9, 0, 9};
+		int maj = (root - AT[mode] + 12) % 12;
+		if (mode == 6) { mode = 7; root = (maj + 9) % 12; }
+		else if (mode == 7) { mode = 6; root = maj; }
+		else if (mode == 0 || mode == 3 || mode == 4) { mode = 5; root = (maj + 9) % 12; }
+		else { mode = 0; root = maj; }
+	}
 	if (mode == mode_cur && root == root_cur)
 		return;
 	int rel[12];
@@ -354,7 +370,7 @@ static int reg_base(const chan *c, int ch)
 	return HOME[c->voice] + 12 * (stepped(P.ch[ch][CP_REGISTER], 5) - 2) + jump;
 }
 
-static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
+static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * w_act[ch] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
 static float eff_tone(int ch) { return clampf(P.ch[ch][CP_TONE] + 0.15f * arc, 0.0f, 1.0f); }
 
 /* ================================================================ note voices */
@@ -745,6 +761,7 @@ static void pulse_fire(chan *c, int ch, int mask)
 		c->pk_fend = 48.0f * kp;
 		c->pk_ph = 0.0f;
 		c->pk_k = fexp2(-9.9658f / ((0.12f + 0.33f * l) * VSR));
+		pump_tgt = 1.0f;                          /* Playworld's pump */
 		c->glow = 1.0f;
 	}
 	if (mask & 2) {
@@ -1835,6 +1852,7 @@ static void dist_block(float *x, uint32_t n, int path)
 	}
 }
 
+static void reverse_block(float *WL, float *WR, uint32_t n);
 #include "glag_space.h"
 
 /* ================================================================ render */
@@ -1866,6 +1884,25 @@ static void macro_tick(float dt)
 			continue;
 		}
 		was_on[c] = 1;
+		if (mac_shape[c] == 1) {
+			/* steps: a new value for each on every bar, jumped to (a few ms of smoothing) */
+			static uint32_t bar_seen[GL_NCH];
+			if (step_n / 16u != bar_seen[c]) {
+				bar_seen[c] = step_n / 16u;
+				mac_to[c][0] = 2.0f * rnd() - 1.0f;
+				mac_to[c][1] = 2.0f * rnd() - 1.0f;
+			}
+			for (int k = 0; k < 2; k++)
+				mac_u[c][k] += (mac_to[c][k] - mac_u[c][k]) * 0.2f;
+		} else if (mac_shape[c] == 2) {
+			/* a long rise: from the bottom to the top over six glides, then back down in one */
+			for (int k = 0; k < 2; k++) {
+				mac_ph[c][k] += dt / (mac_period[c] * 7.0f * (k ? 1.1f : 1.0f));
+				mac_ph[c][k] -= mac_ph[c][k] >= 1.0f ? 1.0f : 0.0f;
+				float x = mac_ph[c][k] * 7.0f / 6.0f;
+				mac_u[c][k] = x <= 1.0f ? -1.0f + 2.0f * x * x : 1.0f - 2.0f * (x - 1.0f) * 6.0f;
+			}
+		} else
 		for (int k = 0; k < 2; k++) {
 			/* a cosine glide from one random value to the next, once per (slightly uneven) period */
 			mac_ph[c][k] += dt / (mac_period[c] * (k ? 1.37f : 1.0f));
@@ -1904,6 +1941,8 @@ static inline float macro_trem(int c)
 	return 1.0f - t * 0.5f * (1.0f + sin_u((uint32_t)(mac_trem_ph[c] * 4294967295.0f)));
 }
 
+#include "glag_play.h"
+
 static void control(float dt)
 {
 	uint32_t s = post_seq;
@@ -1921,6 +1960,9 @@ static void control(float dt)
 		dist_setup();
 	slowing = cmd_slow;
 	macro_tick(dt);
+	form_tick(dt);
+	key_tick(dt);
+	autof_tick();
 	if (cmd_panic != seen_panic) {
 		seen_panic = cmd_panic;
 		for (int c = 0; c < GL_NCH; c++) {
@@ -2005,7 +2047,7 @@ static void control(float dt)
 		chan_control(&CH[c], c, dt);
 		gl_glow[c] = CH[c].glow;
 		float l = P.ch[c][CP_LEVEL];
-		lvl_ch[c] = l * l * CH[c].fade;
+		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c];
 	}
 
 	/* the space (the patch-dependent parts are in derive()) */
@@ -2043,8 +2085,10 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 #define SI(i) ((i) >> (1 - VOICE_HALF))
 		const float sk = VOICE_HALF ? 1.0f : 0.5f;
 		int pulses = 0;
+		const float pg = pump_gain(dt, gl_tempo_bpm(P.g[GP_TEMPO]) * speed);   /* Playworld's pump */
+		sp_duck = pg;
 		for (int c = 0; c < GL_NCH; c++) {
-			float g = lvl_ch[c] * 0.5f * macro_trem(c);
+			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE ? 1.0f : pg);
 			if (g <= 0.0f)
 				continue;                   /* silent: its envelopes still run in control() */
 			int vo = CH[c].voice, st = STEREO[vo];
@@ -2109,6 +2153,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				VV[SI(i)] += m * vs;
 			}
 		}
+		texture_block(HL, HR, VSUB, VSR);           /* Playworld's bed, dry */
 		{	/* the dark send: 12 dB an octave from 1.5 kHz */
 			const float k = 0.3245f;              /* 1 - exp(-2 pi 1500 / 24000) */
 			float d1 = vd_s[0], d2 = vd_s[1];

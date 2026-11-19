@@ -54,6 +54,20 @@ int main(int argc, char **argv)
 		for (int c = 0; c < GL_NCH; c++)
 			gl_macro(c, (float)st[c] / 4.0f, per);
 	}
+	if (getenv("WORLD")) {   /* Playworld: WORLD=form=1,bars=8,key=0.5,kind=0,pump=1,shape=1,pp=1,tex=2,texl=0.6,rev=0.8,autof=1 */
+		static const char *K[] = {"form", "bars", "key", "kind", "pump", "shape", "pp", "tex", "texl", "rev", "autof"};
+		char buf[256];
+		snprintf(buf, sizeof buf, "%s", getenv("WORLD"));
+		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
+			char *eq = strchr(t, '=');
+			if (!eq)
+				continue;
+			*eq = 0;
+			for (int k = 0; k < 11; k++)
+				if (!strcmp(t, K[k]))
+					gl_world(k, (float)atof(eq + 1));
+		}
+	}
 	gl_post_patch(&p);
 	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
 		int t = 0, sh = 0;
