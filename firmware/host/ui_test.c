@@ -252,6 +252,18 @@ int main(void)
 	CHECK(out.page == PG_HARMONY, "on HARMONY (%d)", out.page);
 	tap(GB_FFWD); run(100);
 	CHECK(!gl_frozen, "the rocker alone does nothing on HARMONY");
+	{	/* •• + the rocker is Home's only: on a channel page it does nothing (kept for later) */
+		down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);
+		tap(GB_T2); run(100);
+		gl_patch was = *glui_patch();
+		down(GB_FN); tap(GB_FFWD); run(100); up(GB_FN); run(300);
+		CHECK(memcmp(glui_patch(), &was, sizeof was) == 0, "•• + FFWD on a channel page does not randomize");
+		int slot = 0;
+		down(GB_FN); down(GB_RWD);
+		for (int t = 0; t < 3300; t += 5) { glui_tick(now, &in, &out); if (out.save_slot) slot = out.save_slot; now += 5; }
+		up(GB_RWD); up(GB_FN); run(300);
+		CHECK(slot == 0, "•• + RWD held 3 s on a channel page does not save (slot %d)", slot);
+	}
 	down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);
 
 	/* •• + VOL: the distortion */

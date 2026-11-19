@@ -26,10 +26,11 @@
  *   HOME                 FFWD tap: freeze on/off (latched); FFWD held: freeze until released
  *                        RWD held: the record slows to 10 BPM over 10 s; release springs back
  *   HARMONY              the rocker alone does nothing (kept for later)
- *   anywhere
+ *   HOME (only; elsewhere •• + the rocker is kept for later)
  *                        •• + FFWD: randomize the piece        •• + RWD: undo (randomize or piece)
  *                        •• + FFWD held 3 s: the piece's macro scene on all four channels
  *                        •• + RWD held 3 s: save the piece to its slot, its macros as its scene
+ *   anywhere
  *                        VOL+ / VOL-: volume
  *                        •• + VOL- tap: distortion amount, off then 1-4
  *                        •• + VOL+ tap: distortion type (Chebyshev, overdrive, fuzz, fold, XOR)

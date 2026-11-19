@@ -255,7 +255,7 @@ h3.group { margin-top: 18px; }
     <h3 class="group">The channel macro: the rocker on a channel page</h3>
     <p class="note">On a channel page or its extended page, FFWD and RWD work that channel's macro instead of freeze and slow-down (those are on Home only; on Harmony the rocker alone is kept for later).</p>
     <div class="grid">
-      <article class="card term"><h3>Macro<span class="where">FFWD on a channel page</span></h3><p>A slow, wandering hand on the channel's own controls. It glides tone, character, length and activity to new random places, and adds tremolo and octave leaps, each in the way that suits the voice: EP gets a suitcase tremolo, Pizz and Arp leap octaves, Bells change their metal, Shimmer's buzz wanders. Each FFWD tap adds a step, up to four; at full it swings twice as wide as at half, with leaps of two octaves. Every piece also hides a macro scene: hold •• + FFWD for 3 seconds to bring it in. Saving the piece (•• + RWD for 3 seconds) makes the macros as they are its scene.</p><p class="try"><b>Try:</b> one step on a single channel, and let the rest of the piece stay put.</p></article>
+      <article class="card term"><h3>Macro<span class="where">FFWD on a channel page</span></h3><p>A slow, wandering hand on the channel's own controls. It glides tone, character, length and activity to new random places, and adds tremolo and octave leaps, each in the way that suits the voice: EP gets a suitcase tremolo, Pizz and Arp leap octaves, Bells change their metal, Shimmer's buzz wanders. Each FFWD tap adds a step, up to four; at full it swings twice as wide as at half, with leaps of two octaves. Every piece also hides a macro scene: on Home, hold •• + FFWD for 3 seconds to bring it in. Saving the piece (•• + RWD for 3 seconds on Home) makes the macros as they are its scene.</p><p class="try"><b>Try:</b> one step on a single channel, and let the rest of the piece stay put.</p></article>
       <article class="card term"><h3>Macro speed<span class="where">RWD held on a channel page</span></h3><p>Each glide starts at 8 seconds. Hold RWD and they get slower, twice as long every second and a half, down to one glide a minute. The play lights fill as it slows. A double tap on RWD turns the macro off and puts its speed back.</p><p class="try"><b>Try:</b> full macro, slowed right down: the voice changes so slowly you only notice after a while.</p></article>
     </div>
     <h3 class="group">Mixer</h3>
@@ -319,9 +319,10 @@ h3.group { margin-top: 18px; }
           <tr><td class="g"><span class="key">FFWD</span> tap <small>channel pages</small></td><td>One step more of that channel's macro (four steps)</td><td>The step as a bar</td></tr>
           <tr><td class="g"><span class="key">RWD</span> held <small>channel pages</small></td><td>The macro glides more slowly, from 8 s down to 64 s</td><td>A bar filling as it slows</td></tr>
           <tr><td class="g"><span class="key">RWD</span> twice <small>channel pages</small></td><td>The macro off</td><td>An empty bar</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span></td><td>Randomize the piece. Voices are kept and the DJ filter left open.</td><td><span class="ledrow sweep-up"><i></i><i></i><i></i><i></i></span> sweeps up</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span></td><td>Undo the last randomize or piece change. Again redoes it.</td><td><span class="ledrow sweep-down"><i></i><i></i><i></i><i></i></span> sweeps down</td></tr>
-          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 3 s</td><td>Save the piece to its slot, the macros as they are as its scene. It comes back whenever you step to that piece (until power-off, for now).</td><td>All eight lights flash three times</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span> <small>Home</small></td><td>Randomize the piece. Voices are kept and the DJ filter left open.</td><td><span class="ledrow sweep-up"><i></i><i></i><i></i><i></i></span> sweeps up</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> <small>Home</small></td><td>Undo the last randomize or piece change. Again redoes it.</td><td><span class="ledrow sweep-down"><i></i><i></i><i></i><i></i></span> sweeps down</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">RWD</span> held 3 s <small>Home</small></td><td>Save the piece to its slot, the macros as they are as its scene. It comes back whenever you step to that piece (until power-off, for now).</td><td>All eight lights flash three times</td></tr>
+          <tr><td class="g"><span class="key">••</span> + <span class="key">FFWD</span> held 3 s <small>Home</small></td><td>The piece's macro scene, on all four channels. On other pages •• with the rocker is kept for later.</td><td>The track lights flash, the play row shows each channel's step</td></tr>
           <tr><td class="g"><span class="key">VOL−</span> <span class="key">VOL+</span></td><td>Output level, 3 dB steps</td><td>The level as a bar for a second</td></tr>
           <tr><td class="g"><span class="key">••</span> + <span class="key">VOL−</span> / <span class="key">VOL+</span></td><td>Distortion (next chapter)</td><td>Type and amount</td></tr>
         </tbody>
@@ -508,7 +509,7 @@ const PAGES = {
   shift: { name: "•• held", how: "While •• is held, on any page, the faders are the mixer.",
     f: [["Level 1", "channel 1"], ["Level 2", "channel 2"], ["Level 3", "channel 3"], ["Level 4", "channel 4"]],
     t: "breathe", hot: [],
-    b: [["+ T (Home)", "<b>Next voice</b> on that channel"], ["+ PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["+ FFWD / RWD", "<b>Randomize / undo</b> · FFWD held 3 s: the macro scene · RWD held 3 s saves"], ["+ VOL− / VOL+", "<b>Distortion</b> amount / type"]] },
+    b: [["+ T (Home)", "<b>Next voice</b> on that channel"], ["+ PLAY", "<b>Once:</b> Harmony · <b>twice:</b> next piece"], ["+ FFWD / RWD (Home)", "<b>Randomize / undo</b> · FFWD held 3 s: the macro scene · RWD held 3 s saves"], ["+ VOL− / VOL+", "<b>Distortion</b> amount / type"]] },
 };
 
 /* ---------------- the schematic ---------------- */

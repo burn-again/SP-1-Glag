@@ -43,8 +43,8 @@ random glide that pushes the voice's own controls around (tone, character, lengt
 adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
 wide as at half, with two-octave leaps. A piece loads with its own macros (most: off) and hides a
-macro scene: •• + FFWD held 3 s brings it in on all four channels, and saving the piece (•• + RWD
-held 3 s) makes the macros as they are its new scene, until power-off. The eight after AMB-1 each
+macro scene: on Home, •• + FFWD held 3 s brings it in on all four channels, and saving the piece
+(•• + RWD held 3 s) makes the macros as they are its new scene, until power-off. The eight after AMB-1 each
 have one, from a little life in Garden to everything at full in Tides. Randomizing leaves the macros.
 The Pulse's macro stays within its rings or its 4/4 beat, and its swing only gets wild at full.
 
@@ -82,11 +82,11 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | Home | FFWD tap | freeze, latched; tap again to let go (on Harmony the rocker alone does nothing, kept for later) |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
-| Anywhere | •• + FFWD | randomize the piece (voices kept, filter left open) |
+| Home | •• + FFWD | randomize the piece (voices kept, filter left open); elsewhere •• + the rocker is kept for later |
 | | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
 | | •• + RWD held 3 s | save the piece to its slot; the macros as they are become its scene |
-| | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
+| Anywhere | VOL+ / VOL- | output level (Wakes' 3 dB steps) |
 | | •• + VOL- tap | distortion amount: off, 1, 2, 3, 4, off |
 | | •• + VOL+ tap | distortion type: Chebyshev, Overdrive, Fuzz, Fold, XOR |
 | | •• + VOL- held 3 s | distortion off, and the stack back to default (Chebyshev, off, before the effects) |

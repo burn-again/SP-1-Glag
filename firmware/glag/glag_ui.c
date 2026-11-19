@@ -374,9 +374,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	 * one step more of that channel's macro; •• + FFWD: randomize, everywhere ---- */
 	if (PRESSED(GB_FFWD)) {
 		if (fn) {
-			/* a tap randomizes when it lets go; held 3 s brings in the piece's macro scene */
+			/* Home only: a tap randomizes when it lets go; held 3 s brings in the piece's
+			 * macro scene. Elsewhere •• + FFWD is kept for later */
 			used_with_fn = 1;
-			ffwd_shift = 1;
+			ffwd_shift = page == PG_HOME;
 			ffwd_done = 0;
 		} else if (on_channel()) {
 			if (mac_step[chan] < MAC_STEPS)
@@ -438,8 +439,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	if (PRESSED(GB_RWD)) {
 		rwd_mac = 0;
 		if (fn) {
+			/* Home only: a tap undoes, held 3 s saves. Elsewhere kept for later */
 			used_with_fn = 1;
-			rwd_shift = 1;
+			rwd_shift = page == PG_HOME;
 			rwd_saved = 0;
 		} else if (on_channel()) {
 			rwd_shift = 0;
