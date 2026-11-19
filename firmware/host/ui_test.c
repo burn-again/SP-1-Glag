@@ -133,9 +133,9 @@ int main(void)
 
 	/* •• + T4 on HOME rotates channel 4's voice */
 	down(GB_FN); tap(GB_T4); up(GB_FN);
-	CHECK(glui_patch()->voice[3] == GV_PAD, "•• + T4: Pulse -> Pad, round to the first (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_STRINGS, "•• + T4: Pulse -> Strings (%d)", glui_patch()->voice[3]);
 	down(GB_FN); tap(GB_T4); up(GB_FN);
-	CHECK(glui_patch()->voice[3] == GV_BELLS, "•• + T4 again: Bells (%d)", glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_GLOW, "•• + T4 again: Glow (%d)", glui_patch()->voice[3]);
 	CHECK(out.page == PG_HOME, "rotating stays on HOME");
 	for (int k = 0; k < GV_COUNT - 2; k++) {
 		down(GB_FN); tap(GB_T4); up(GB_FN);

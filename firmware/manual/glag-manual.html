@@ -124,6 +124,8 @@ nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--led); outline: no
 .a-find { animation: blink .24s steps(1) infinite; }
 .a-flash { animation: blink .3s steps(1) 3; }
 .a-pulse { animation: breathe 1.2s ease-in-out infinite; }
+.a-double { animation: double .9s steps(1) infinite; }
+@keyframes double { 0% { background: var(--led); } 10% { background: var(--led-off); box-shadow: none; } 20% { background: var(--led); } 30% { background: var(--led-off); box-shadow: none; } }
 @keyframes breathe { 0%, 100% { background: color-mix(in srgb, var(--led) 12%, var(--led-off)); box-shadow: none; } 50% { background: color-mix(in srgb, var(--led) 45%, var(--led-off)); } }
 @keyframes blink { 0% { background: var(--led); } 50% { background: var(--led-off); box-shadow: none; } }
 .chase i { animation: chase 1.2s steps(1) infinite; background: color-mix(in srgb, var(--led) 18%, var(--led-off)); }
@@ -449,6 +451,7 @@ h3.group { margin-top: 18px; }
       <div class="card"><span class="k">5-8 · slow blink</span><div class="pic"><span class="ledrow"><i></i><i></i><i class="on a-blinkslow"></i><i></i></span> = 7</div></div>
       <div class="card"><span class="k">9-12 · fast blink</span><div class="pic"><span class="ledrow"><i class="on a-blinkfast"></i><i></i><i></i><i></i></span> = 9</div></div>
       <div class="card"><span class="k">13-16 · breathing</span><div class="pic"><span class="ledrow"><i></i><i class="a-pulse"></i><i></i><i></i></span> = 14</div></div>
+      <div class="card"><span class="k">17-20 · double flash (voices)</span><div class="pic"><span class="ledrow"><i></i><i></i><i class="on a-double"></i><i></i></span> = 19</div></div>
     </div>
     <h3>What you touched (play lights)</h3>
     <div class="grid">
@@ -464,9 +467,9 @@ h3.group { margin-top: 18px; }
   <!-- ============================================================ voices -->
   <section class="chapter" id="voices" aria-labelledby="h-voices">
     <header>
-      <div class="eyebrow">7 · Sixteen voices</div>
+      <div class="eyebrow">7 · Twenty voices</div>
       <h2 id="h-voices">Voices</h2>
-      <p>Any voice can sit on any channel, and two channels can share one. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads tone, length, register and activity the same way; <b>Character</b>, F1 on its channel page, is the one control that differs.</p>
+      <p>Any voice can sit on any channel, and two channels can share one. There are twenty; 17 to 20 show on the lights as a double flash. On Home, hold •• and tap a channel's T to step it to the next voice, in this order. Every voice reads tone, length, register and activity the same way; <b>Character</b>, F1 on its channel page, is the one control that differs.</p>
     </header>
     <div class="grid" id="voicegrid"></div>
   </section>
@@ -529,6 +532,10 @@ const VOICES = [
   ["Shimmer", "Buzzy FM swoops with fast vibrato and tremolo, echoed an octave up.", "buzz"],
   ["Tails", "Every note a different FM ratio, its brightness falling, blooming or rising.", "tail: falls, blooms, rises"],
   ["Pulse", "A light pulse: a soft kick, a shaker and a wood click on rings of 16, 12 and 7 steps, or a 4/4 beat with a snare on 2 and 4. Activity sets the hits, Tone the brightness, Length the decays, Register the kick's pitch.", "lower half: the rings, swung; upper half: the 4/4 beat, swung"],
+  ["Strings", "Synth strings in the 1970s way: two saws a little apart with a slow chorus between them, swelling in and out on the chord; Tone opens the filter. Its macro swells the filter and thickens the ensemble.", "ensemble: the spread and chorus"],
+  ["Glow", "A soft sine with a triangle mixed in, through a gentle filter, easing in. Its macro melts it between sine and triangle and gives it a breathing tremolo.", "sine to triangle"],
+  ["Seq", "An analog arp: a saw through a resonant filter that snaps open on each note and closes over Length. Its macro sweeps the cutoff and decay wide, as in acid lines, and turns the pattern.", "pattern: octave bounce, broken thirds, gallop, walk"],
+  ["Super", "A supersaw: five saws spread apart on each note of the chord, through a low-pass. Its macro breathes the spread and sweeps the filter.", "spread"],
 ];
 const PIECES = [
   ["Garden", "Pad Bells Bass Pulse", "72 BPM · D Dorian · Hall"],
@@ -711,9 +718,9 @@ if (document.fonts) document.fonts.ready.then(() => requestAnimationFrame(lines)
 setPage("home");
 
 /* ---------------- voices and pieces ---------------- */
-const numPic = (n) => {      /* the number picture for 1..16 */
+const numPic = (n) => {      /* the number picture for 1..20 */
   const i = n - 1, pos = i % 4, grp = Math.floor(i / 4);
-  const cls = ["on", "on a-blinkslow", "on a-blinkfast", "a-pulse"][grp];
+  const cls = ["on", "on a-blinkslow", "on a-blinkfast", "a-pulse", "on a-double"][grp];
   return `<span class="ledrow">${[0, 1, 2, 3].map((k) => `<i class="${k === pos ? cls : ""}"></i>`).join("")}</span>`;
 };
 document.getElementById("voicegrid").innerHTML = VOICES.map((v, i) => `

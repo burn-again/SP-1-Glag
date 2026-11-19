@@ -82,7 +82,8 @@ static inline int rndi(int n) { return (int)((rnd32() >> 8) % (uint32_t)n); }
 
 const char *const GL_VOICE_NAME[GV_COUNT] = {"Pad", "Bells", "Bass", "Piano", "Marimba",
                                              "Drone", "Kalimba", "Flute", "Arp", "Swell",
-                                             "EP", "Gong", "Pizz", "Shimmer", "Tails", "Pulse"};
+                                             "EP", "Gong", "Pizz", "Shimmer", "Tails", "Pulse",
+                                             "Strings", "Glow", "Seq", "Super"};
 const char *const GL_MODE_NAME[GL_NMODES] = {"Ionian", "Dorian", "Phrygian", "Lydian",
                                              "Mixolydian", "Aeolian", "Pent maj", "Pent min"};
 static const uint16_t MODE_POOL[GL_NMODES] = {
@@ -132,6 +133,9 @@ typedef struct {
 	 * seconds since the note began (gong, shimmer, tails) and a pitch bend in semitones */
 	uint32_t pc2, pm2, ic2, im2;
 	float idx2, iinc2, menv2, t, bend;
+	/* the analog voices (strings, glow, seq, super): more saw phases, and a filter's states */
+	uint32_t pc3, pc4, ic3, ic4;
+	float f1, f2, fk, fq;
 } nvoice;
 enum { ST_IDLE, ST_ATT, ST_DEC, ST_REL };
 
@@ -144,9 +148,9 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
 /* Voices that spread their notes across two sides of the channel (pad, bells);
  * the rest are mono (their channel pan places them), which saves a buffer and half the mixing. SPREAD: how far each side sits
  * from the channel's pan. */
-static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1};
+static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1};
 static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
-                                       0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f};
+                                       0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f, 0.35f, 0.0f, 0.0f, 0.4f};
 
 typedef struct {
 	uint8_t voice, want, fading;
@@ -326,8 +330,8 @@ static int place(int pc, float from, int lo, int hi)
 
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
 /* plucked or struck (bright into the reverb), rather than held */
-static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0};
-static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36};
+static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0};
+static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, 69, 55, 57};
 
 /* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
  * Per voice, how far the macro moves:   tone  char  trem  oct   len   act */
@@ -348,6 +352,10 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{50, 90, 30, 30, 30, 20},   /* shimmer: buzz */
 	{50, 90,  0, 40, 40, 30},   /* tails: tail shape */
 	{50, 60,  0,  0, 40, 50},   /* pulse: swing, brightness, hits */
+	{80, 80, 30,  0, 40, 20},   /* strings: the filter swelling open and shut, the ensemble thickening */
+	{60, 95, 50, 30, 40, 30},   /* glow: sine melting into triangle and back, a breathing tremolo */
+	{95, 70,  0, 40, 70, 40},   /* seq: cutoff and decay swept wide (acid), the pattern turning */
+	{85, 95, 20,  0, 30, 20},   /* super: the saws' spread breathing, the filter sweeping */
 };
 static float mac_depth[GL_NCH], mac_period[GL_NCH] = {8.0f, 8.0f, 8.0f, 8.0f};
 static float mac_ph[GL_NCH][2], mac_from[GL_NCH][2], mac_to[GL_NCH][2], mac_u[GL_NCH][2];
@@ -481,13 +489,16 @@ static int nslots(int voice)
 	default: return 3;
 	}
 }
-static int weight(int voice) { return voice == GV_SWELL || voice == GV_EP ? 3 : 2; }
+static int weight(int voice)
+{
+	return voice == GV_SUPER ? 4 : voice == GV_SWELL || voice == GV_EP ? 3 : voice == GV_GLOW ? 1 : 2;
+}
 static inline int sounding(const nvoice *v) { return v->stage != ST_IDLE || v->amp > 0.0001f; }
 static int stealable(int voice)
 {
 	return voice == GV_BELLS || voice == GV_PIANO || voice == GV_MARIMBA || voice == GV_ARP ||
 	       voice == GV_FLUTE || voice == GV_EP || voice == GV_GONG || voice == GV_PIZZ ||
-	       voice == GV_SHIMMER || voice == GV_TAILS;
+	       voice == GV_SHIMMER || voice == GV_TAILS || voice == GV_GLOW || voice == GV_SEQ;
 }
 static int budget_used(void)
 {
@@ -953,9 +964,10 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	case GV_KALIMBA:
 	case GV_EP:
 	case GV_SHIMMER:
+	case GV_GLOW:
 	case GV_TAILS: {
 		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
-		                                     0, 0.14f, 0, 0, 0.07f, 0.08f};
+		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0};
 		float p = act * act * PMAX[c->voice];
 		if (rnd() >= p)
 			break;
@@ -1025,6 +1037,38 @@ static void chan_step(chan *c, int ch, uint32_t step)
 				v->hold = expmap(P.ch[ch][CP_LENGTH], 0.8f, 7.0f);
 		}
 		c->glow = vel;
+		break;
+	}
+	case GV_SEQ: {
+		/* an analog arp: a saw through a resonant filter that snaps open on each note. Its
+		 * patterns (CHARACTER): octave bounce, broken thirds, a gallop, a wandering walk */
+		int div = act < 0.25f ? 8 : act < 0.5f ? 4 : act < 0.65f ? 3 : act < 0.8f ? 2 : 1;
+		if (step % (uint32_t)div)
+			break;
+		int notes[8], n = 0;
+		for (int o = 0; o < 2; o++)
+			for (int k = 0; k < chord_n; k++)
+				notes[n++] = place(chord_pc[k], (float)(base + 12 * o + 2 * k), base + 12 * o - 1, base + 12 * o + 11);
+		int pat = stepped(P.ch[ch][CP_CHAR], 4), q = c->arp_i++, note;
+		if (pat == 0)
+			note = notes[(q >> 1) % chord_n] + ((q & 1) ? 12 : 0);
+		else if (pat == 1)
+			note = notes[((q >> 1) + (q & 1) * 2) % n];
+		else if (pat == 2) {
+			if ((q & 3) == 1)
+				break;                           /* the gallop's rest: x . x x */
+			note = notes[(q >> 2) % n];
+		} else {
+			int w = (int)c->arp_dir + (rnd() < 0.5f ? -1 : 1);
+			w = w < 0 ? 1 : w >= n ? n - 2 : w;
+			c->arp_dir = (uint8_t)w;
+			note = notes[w];
+		}
+		nvoice *v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, ((step & 15) == 0 ? 0.85f : 0.6f) + 0.15f * rnd(), 1.0f, 0);
+		c->glow = 0.7f;
 		break;
 	}
 	case GV_ARP: {
@@ -1106,13 +1150,18 @@ static void chan_control(chan *c, int ch, float dt)
 		c->glow *= 0.95f;
 		break;
 	case GV_PAD:
+	case GV_STRINGS:
+	case GV_SUPER:
 	case GV_SWELL: {
 		/* the swell is a pad that breathes like brass: a slow rise, a hold, a long fall, its
 		 * brightness following its loudness, vibrato arriving late */
-		const int sw = c->voice == GV_SWELL;
+		const int an = c->voice == GV_STRINGS || c->voice == GV_SUPER;   /* the analog ones: swell-shaped */
+		const int sw = c->voice == GV_SWELL || an;
 		const float chr = P.ch[ch][CP_CHAR];
 		int nv = 2 + stepped(P.ch[ch][CP_ACTIVITY], 2);   /* 2 or 3 voices breathing */
 		float cycle = sw ? 6.0f + 24.0f * len : 4.0f + 26.0f * len;
+		if (an)
+			c->lfo1 += sub_inc(0.37f, speed);           /* the strings' chorus, ~0.4 Hz */
 		float ratio = sw ? 1.0f : (chr < 0.5f ? 1.0f : 2.0f);
 		float detune = sw ? 0.0f : 0.12f * chr;
 		float spread = fexp2((4.0f + 14.0f * chr) * (1.0f / 1200.0f));   /* swell's second carrier */
@@ -1164,6 +1213,31 @@ static void chan_control(chan *c, int ch, float dt)
 				vib = 1.0f + vd * sin_u(lfo_vib + (uint32_t)i * 0x40000000u);
 			} else
 				idx = tone * 1.3f * (0.5f + 0.5f * e);
+			if (an) {
+				/* strings: two saws a little apart, a slow chorus between them (Solina); super:
+				 * five saws spread wider. CHARACTER is the spread; the filter opens with TONE and
+				 * the swell */
+				float hz0 = mtof(v->note) * speed * pbend * vib;
+				int sup = c->voice == GV_SUPER;
+				float cents = sup ? 6.0f + 40.0f * chr : 3.0f + 14.0f * chr;
+				float ch1 = 1.0f + 0.25f * sin_u(c->lfo1 + (uint32_t)i * 0x55555555u);   /* the chorus */
+				float d1 = fexp2(cents * ch1 * (1.0f / 1200.0f)), d2 = fexp2(cents * 2.1f * (1.0f / 1200.0f));
+				v->ic = hz_inc(hz0 * d1);
+				v->ic2 = hz_inc(hz0 / d1);
+				if (sup) {
+					v->im = hz_inc(hz0);
+					v->ic3 = hz_inc(hz0 * d2);
+					v->ic4 = hz_inc(hz0 / d2);
+				}
+				float fc = 250.0f + (sup ? 6500.0f : 4500.0f) * tone * tone * (0.35f + 0.65f * e);
+				v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.9f);
+				v->idx = v->iinc = 0.0f;
+				float a = e * v->vel * (sup ? 0.58f : 0.95f);   /* level with the pad */
+				v->ainc = (a - v->amp) * (1.0f / VSUB);
+				if (a <= 0.0f && v->amp < 0.0002f)
+					v->amp = v->ainc = 0.0f;
+				continue;
+			}
 			ramp(v, e * v->vel * (sw ? 0.7f : 1.0f), clampf(idx, 0.0f, 3.0f) * IDX_SCALE);
 			float hz = mtof(v->note + detune * (float)(i - 1)) * speed * pbend * vib;
 			v->ic = hz_inc(hz);
@@ -1184,6 +1258,36 @@ static void chan_control(chan *c, int ch, float dt)
 			nv_pitch(v, v->note);
 		}
 		break;
+	case GV_GLOW:
+	case GV_SEQ: {
+		/* glow: a soft sine-and-triangle tone (CHARACTER: how much triangle), through a gentle
+		 * low-pass (TONE), a slow swell in, LENGTH long; seq: a snappy saw, its resonant filter
+		 * opening on each note and closing over LENGTH, TONE the cutoff */
+		const int sq = c->voice == GV_SEQ;
+		float dec = sq ? expmap(len, 0.12f, 1.6f) : expmap(len, 0.8f, 8.0f);
+		float mdec = sq ? expmap(len, 0.04f, 0.7f) : 1.0f;
+		for (int i = 0; i < 3; i++) {
+			nvoice *v = &c->v[i];
+			if (v->stage == ST_IDLE && v->amp == 0.0f) {
+				v->ainc = v->iinc = 0.0f;
+				continue;
+			}
+			nv_perc(v, sq ? 0.002f : 0.03f, dec / speed, mdec / speed, 1.0f, dt);
+			float vib = sq ? 1.0f : 1.0f + 0.0025f * sin_u(lfo_vib + (uint32_t)i * 0x30000000u);
+			v->ic = hz_inc(mtof(v->note) * speed * pbend * vib);
+			v->idx = v->iinc = 0.0f;
+			if (sq) {
+				float fc = 120.0f + 2600.0f * tone * tone + 3200.0f * v->menv * (0.4f + 0.6f * tone);
+				v->fk = clampf(2.0f * sin_u((uint32_t)(clampf(fc / VSR, 0.0f, 0.16f) * 2147483648.0f)), 0.01f, 0.9f);
+				v->fq = 0.22f + 0.5f * (1.0f - P.ch[ch][CP_CHAR] * 0.5f) * 0.6f;   /* resonance */
+			} else {
+				float fc = 900.0f + 5000.0f * tone * tone;
+				v->fk = clampf(fc * (6.2832f / VSR), 0.05f, 0.9f);
+				v->fq = P.ch[ch][CP_CHAR];
+			}
+		}
+		break;
+	}
 	case GV_PIANO:
 	case GV_MARIMBA:
 	case GV_ARP: {
@@ -1494,6 +1598,84 @@ static void pulse_noise(chan *c, float *OL, float *OR, const float *h, const flo
 	c->sn_a = na; c->sn_m = nm; c->sn_l = nl;
 }
 
+/* ---- the analog voices ---- */
+/* a saw with its step smoothed (PolyBLEP), so it does not alias at 24 kHz */
+static inline float blep_saw(uint32_t ph, uint32_t inc)
+{
+	float t = (float)ph * (1.0f / 4294967296.0f), dt = (float)inc * (1.0f / 4294967296.0f);
+	float s = 2.0f * t - 1.0f;
+	if (t < dt) {
+		float x = t / dt;
+		s -= x + x - x * x - 1.0f;
+	} else if (t > 1.0f - dt) {
+		float x = (t - 1.0f) / dt;
+		s -= x * x + x + x + 1.0f;
+	}
+	return s;
+}
+/* strings (2 saws) and super (5), through two low-pass poles */
+static void nv_render_saws(nvoice *v, float *out, int five)
+{
+	uint32_t a = v->pc, b = v->pc2, c3 = v->pm, d = v->pc3, e = v->pc4;
+	const uint32_t ia = v->ic, ib = v->ic2, ic = v->im, id = v->ic3, ie = v->ic4;
+	float amp = v->amp, ai = v->ainc, f1 = v->f1, f2 = v->f2;
+	const float k = v->fk;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = blep_saw(a, ia) + blep_saw(b, ib);
+		a += ia;
+		b += ib;
+		if (five) {
+			x += blep_saw(c3, ic) + 0.8f * (blep_saw(d, id) + blep_saw(e, ie));
+			c3 += ic;
+			d += id;
+			e += ie;
+		}
+		f1 += k * (x - f1);
+		f2 += k * (f1 - f2);
+		out[i] += f2 * amp;
+		amp += ai;
+	}
+	v->pc = a; v->pc2 = b; v->pm = c3; v->pc3 = d; v->pc4 = e;
+	v->amp = amp; v->f1 = f1; v->f2 = f2;
+}
+/* glow: a sine and a triangle (fq: how much triangle), through a gentle pole */
+static void nv_render_glow(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc;
+	const uint32_t ic = v->ic;
+	float amp = v->amp, ai = v->ainc, f1 = v->f1;
+	const float k = v->fk, m = v->fq;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float t = (float)pc * (1.0f / 4294967296.0f);
+		float tri = 1.0f - 4.0f * (t > 0.5f ? t - 0.5f : 0.5f - t);
+		float x = sin_u(pc) * (1.0f - m) + tri * m;
+		pc += ic;
+		f1 += k * (x - f1);
+		out[i] += f1 * amp;
+		amp += ai;
+	}
+	v->pc = pc; v->amp = amp; v->f1 = f1;
+}
+/* seq: a saw through a resonant state-variable low-pass */
+static void nv_render_seq(nvoice *v, float *out)
+{
+	uint32_t pc = v->pc;
+	const uint32_t ic = v->ic;
+	float amp = v->amp, ai = v->ainc, lo = v->f1, bp = v->f2;
+	const float f = v->fk, q = v->fq;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		float x = blep_saw(pc, ic);
+		pc += ic;
+		lo += f * bp;
+		float hi = x - lo - q * bp;
+		bp += f * hi;
+		bp = clampf(bp, -4.0f, 4.0f);
+		out[i] += lo * amp * 1.3f;
+		amp += ai;
+	}
+	v->pc = pc; v->amp = amp; v->f1 = lo; v->f2 = bp;
+}
+
 /* render the channel into its two sides, A and B; returns whether anything sounded */
 static int chan_render(chan *c, float *A, float *B)
 {
@@ -1541,6 +1723,25 @@ static int chan_render(chan *c, float *A, float *B)
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
 				nv_render_dual(&c->v[i], c->v[i].side ? B : A);
+				any = 1;
+			}
+		break;
+	case GV_STRINGS:
+	case GV_SUPER:
+		for (int i = 0; i < 3; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				nv_render_saws(&c->v[i], (i & 1) ? B : A, c->voice == GV_SUPER);
+				any = 1;
+			}
+		break;
+	case GV_GLOW:
+	case GV_SEQ:
+		for (int i = 0; i < 3; i++)
+			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+				if (c->voice == GV_GLOW)
+					nv_render_glow(&c->v[i], A);
+				else
+					nv_render_seq(&c->v[i], A);
 				any = 1;
 			}
 		break;

@@ -33,6 +33,10 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Shimmer | buzzy feedback FM that swoops up into each note, fast vibrato and tremolo, echoed an octave up a dotted eighth later | buzz (modulator feedback) |
 | Tails | FM modulation tails: each note a random ratio, its index falling, blooming or rising over seconds; some an octave up | tail: falls, blooms, rises |
 | Pulse | a light pulse: soft kick, shaker (its noise made at the full 48 kHz from its own generator, its body at 3-12 kHz) and wood click on euclidean rings of 16, 12 and 7 sixteenths; or a 4/4 grid with a snare on 2 and 4. Activity is the hits (on the grid: kick on 1 and 3, boom-bap, then four on the floor; hats in eighths, sixteenths, then with open hats), tone the brightness, length the decays, register the kick's pitch | lower half: the rings, swung up to half a step; upper half: the 4/4 grid, swung likewise |
+| Strings | synth strings: two PolyBLEP saws a little apart, a slow chorus between them, swelling on the chord through two poles (Tone) | ensemble: spread and chorus |
+| Glow | a sine with a triangle mixed in, through a gentle pole, easing in | sine to triangle |
+| Seq | an analog arp: a saw through a resonant state-variable low-pass that snaps open on each note and closes over Length | pattern: octave bounce, broken thirds, gallop, walk |
+| Super | a supersaw: five saws spread on each chord note, through two poles | spread |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -63,7 +67,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 |---|---|---|
 | Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
-| | •• + T1-T4 | the next voice on that channel (all fifteen, any channel, duplicates allowed) |
+| | •• + T1-T4 | the next voice on that channel (all twenty, any channel, duplicates allowed; 17-20 show as a double flash) |
 | Channel page | F1 F2 F3 F4 | character, tone, length, register (5 octave steps) |
 | | FFWD tap | one step more of this channel's macro (4 steps) |
 | | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |
