@@ -42,7 +42,9 @@ character, which is each voice's own.
 random glide that pushes the voice's own controls around (tone, character, length, activity) and
 adds tremolo and octave leaps, each weighted to suit the voice (EP gets suitcase tremolo, Pizz and Arp
 leap octaves, Bells change their metal, Shimmer's buzz wanders). Four steps; at full it is twice as
-wide as at half, with two-octave leaps. It sits outside the piece: saving or randomizing leaves it.
+wide as at half, with two-octave leaps. Saving a piece (•• + RWD held) keeps its four macros and
+their glides with it, until power-off like the piece; loading a stock piece sets its own (most: off).
+Randomizing leaves them.
 
 Boots on piece 1, *Garden*. Sixteen pieces. The first eight follow the stock pieces of
 [AMB-1](https://github.com/charlesvestal/fm1-amb) (Charles Vestal, MPL-2.0), in Glag's voices: its
@@ -258,11 +260,11 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 | Gong x 4 | 56 % | 62 % | 78-86 % |
 | Pizz x 4 | 51 % | 70 % | 72-98 % |
 | Tails x 4 | 47 % | 70 % | 66-97 % |
-| Pulse x 4 | 58 % | 86 % | 81-121 % |
+| Pulse x 4 | 57 % | 79 % | 80-111 % |
 | Arp, Swell, EP, Gong | 54 % | 69 % | 76-96 % |
 | Bells x 4 + distortion at 4 | 62 %% | 77 %% | 87-108 %% |
 
-Numbers from 0.6.2 (the filters around the tape and reverbs, and the Pulse's noise at 48 kHz, cost about 3 points; the table had last been measured before 0.6.0). Worst blocks past about 70 % on the model lean on the governor below. Four Pulses all at maximum is the one case it can't help, since the Pulse has no notes to give way: on the device that could crackle.
+Numbers from 0.6.2 (the filters around the tape and reverbs, and the Pulse's noise at 48 kHz, cost about 3 points; the table had last been measured before 0.6.0). Worst blocks past about 70 % on the model lean on the governor below. The Pulse has no notes to give way, so it has its own rule: only the first Pulse in a piece makes its hats at 48 kHz; a second, third or fourth makes them at 24 kHz, at half the cost (with distortion before the effects, all of them do).
 
 A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools.
 

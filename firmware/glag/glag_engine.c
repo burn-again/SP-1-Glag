@@ -1375,17 +1375,29 @@ static void chan_control(chan *c, int ch, float dt)
  * there only takes 7 dB off): a hat's body in the 3-12 kHz, falling off above 14 rather than
  * stopping at 12. The snare's rattle is darker, ~0.5 to 4.5 kHz. */
 static void pulse_noise(chan *c, float *OL, float *OR, const float *h, const float *n,
-                        float *E, float *V, float es, float vs)
+                        float *E, float *V, float es, float vs, int half)
 {
+	/* half: at 24 kHz instead (a second Pulse and on: half the cost, no top above 12 kHz),
+	 * every coefficient converted so the decays and filters keep their times */
 	float sa = c->ps_a, hl = c->ps_x, hp1 = c->ps_h, sy = c->ps_y, sz = c->ps_z;
 	float na = c->sn_a, nm = c->sn_m, nl = c->sn_l;
-	const float sk = c->ps_k, nk = c->sn_k, t = eff_tone((int)(c - CH));
-	const float kh = 0.25f + 0.2f * t, lk = 0.85f + 0.1f * t;
+	const float t = eff_tone((int)(c - CH));
+	float sk = c->ps_k, nk = c->sn_k, kh = 0.25f + 0.2f * t, lk = 0.85f + 0.1f * t, kn = 0.45f, kl = 0.06f;
+	uint32_t ns = GL_SUB;
+	if (half) {
+		sk *= sk;
+		nk *= nk;
+		kh = 1.0f - (1.0f - kh) * (1.0f - kh);
+		lk = 1.0f - (1.0f - lk) * (1.0f - lk);
+		kn = 1.0f - (1.0f - kn) * (1.0f - kn);
+		kl = 1.0f - (1.0f - kl) * (1.0f - kl);
+		ns = GL_SUB / 2;
+	}
 	const float hL = h[0], hR = h[1], nL = n[0], nR = n[1];
 	const int snare = na > 1e-4f;
 	uint32_t r = c->pn ? c->pn : 0x9E3779B9u;
 	float acc = 0.0f;
-	for (uint32_t i = 0; i < GL_SUB; i++) {
+	for (uint32_t i = 0; i < ns; i++) {
 		r ^= r << 13;
 		r ^= r >> 17;
 		r ^= r << 5;
@@ -1399,16 +1411,20 @@ static void pulse_noise(chan *c, float *OL, float *OR, const float *h, const flo
 		sa *= sk;
 		if (snare) {
 			float nm1 = nm;
-			nm += 0.45f * (w - nm);
+			nm += kn * (w - nm);
 			float nb = 0.5f * (nm + nm1);
-			nl += 0.06f * (nb - nl);
+			nl += kl * (nb - nl);
 			sn = (nb - nl) * na * 1.6f;
 			na *= nk;
 		}
 		OL[i] += sh * hL + sn * nL;
 		OR[i] += sh * hR + sn * nR;
 		acc += 1.7f * sh + 1.1f * sn;
-		if (i & 1) {
+		if (half) {
+			E[i] += 2.0f * acc * es;
+			V[i] += 2.0f * acc * vs;
+			acc = 0.0f;
+		} else if (i & 1) {
 			E[i >> 1] += acc * es;
 			V[i >> 1] += acc * vs;
 			acc = 0.0f;
@@ -2019,6 +2035,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		/* the sends run at 24 kHz: at full rate (a measuring build), pairs are averaged */
 #define SI(i) ((i) >> (1 - VOICE_HALF))
 		const float sk = VOICE_HALF ? 1.0f : 0.5f;
+		int pulses = 0;
 		for (int c = 0; c < GL_NCH; c++) {
 			float g = lvl_ch[c] * 0.5f * macro_trem(c);
 			if (g <= 0.0f)
@@ -2035,17 +2052,13 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				float h[2] = {((1.0f - p0) + 0.7f * (1.0f - p1)) * g, (p0 + 0.7f * p1) * g};
 				float nn[2] = {0.55f * ((1.0f - p0) + (1.0f - p1)) * g, 0.55f * (p0 + p1) * g};
 				float es = P.ch[c][CP_ECHO] * g, vs = P.ch[c][CP_VERB] * g;
-				if (VOICE_HALF && dist.amt && dist.post == 0) {
-					float tl[GL_SUB], tr[GL_SUB];
-					for (uint32_t i = 0; i < GL_SUB; i++)
-						tl[i] = tr[i] = 0.0f;
-					pulse_noise(&CH[c], tl, tr, h, nn, E, V, es, vs);
-					for (uint32_t i = 0; i < GL_SUB; i += 2) {
-						HL[i >> 1] += 0.5f * (tl[i] + tl[i + 1]);
-						HR[i >> 1] += 0.5f * (tr[i] + tr[i + 1]);
-					}
-				} else {
-					pulse_noise(&CH[c], pu_l, pu_r, h, nn, E, V, es, vs);
+				/* the rule for more than one: the first Pulse's noise at 48 kHz, the rest at
+				 * 24 kHz (half the cost each; four at once would overrun otherwise). With
+				 * distortion before the effects, all at 24 kHz, in with the others */
+				if (VOICE_HALF && (pulses++ > 0 || (dist.amt && dist.post == 0)))
+					pulse_noise(&CH[c], HL, HR, h, nn, E, V, es, vs, 1);
+				else {
+					pulse_noise(&CH[c], pu_l, pu_r, h, nn, E, V, es, vs, 0);
 					pu_on = 1;
 				}
 			}

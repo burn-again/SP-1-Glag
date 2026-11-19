@@ -22,6 +22,8 @@ static gl_patch cur, undo_patch;
 static int undo_valid, undo_piece;
 static gl_patch saved[GL_NPIECES];
 static uint8_t saved_valid[GL_NPIECES];
+static uint8_t saved_mac[GL_NPIECES][4];     /* a saved piece's channel macros, with it */
+static float saved_mper[GL_NPIECES][4];
 static int piece;
 static int dirty = 1;
 
@@ -145,9 +147,14 @@ static void load_piece(int i)
 	undo_piece = piece;
 	undo_valid = 1;
 	piece = (i % GL_NPIECES + GL_NPIECES) % GL_NPIECES;
-	if (saved_valid[piece])
+	if (saved_valid[piece]) {
 		cur = saved[piece];
-	else {
+		for (int c = 0; c < 4; c++) {
+			mac_step[c] = saved_mac[piece][c];
+			mac_period[c] = saved_mper[piece][c] > 0.0f ? saved_mper[piece][c] : MAC_PERIOD;
+			macro_post(c);
+		}
+	} else {
 		/* a stock piece sets its channel macros too (most: off) */
 		uint8_t st[4];
 		float per;
@@ -181,6 +188,10 @@ void glui_set_saved(int i, const gl_patch *p)
 	saved_valid[i] = p != 0;
 	if (p)
 		saved[i] = *p;
+	for (int c = 0; c < 4; c++) {
+		saved_mac[i][c] = 0;
+		saved_mper[i][c] = MAC_PERIOD;
+	}
 }
 const gl_patch *glui_saved(int i) { return (unsigned)i < GL_NPIECES && saved_valid[i] ? &saved[i] : 0; }
 const gl_patch *glui_patch(void) { return &cur; }
@@ -439,6 +450,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		rwd_saved = 1;
 		saved[piece] = cur;
 		saved_valid[piece] = 1;
+		for (int c = 0; c < 4; c++) {           /* the macros go with it */
+			saved_mac[piece][c] = mac_step[c];
+			saved_mper[piece][c] = mac_period[c];
+		}
 		out->save_slot = (uint8_t)(piece + 1);
 		say(SH_FLASH, now, 900);
 	}

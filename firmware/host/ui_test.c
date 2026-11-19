@@ -219,7 +219,10 @@ int main(void)
 	tap(GB_PLAY); run(50);
 	CHECK(gl_playing, "PLAY grows again");
 
-	/* •• + RWD held 2 s: save */
+	/* •• + RWD held 2 s: save (with a macro on, to see it kept) */
+	tap(GB_T3); run(50);
+	tap(GB_FFWD); run(100); tap(GB_FFWD); run(100);
+	down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(400);   /* back HOME */
 	int saved_slot = 0;
 	down(GB_FN); down(GB_RWD);
 	for (int t = 0; t < 2300; t += 5) {
@@ -234,12 +237,15 @@ int main(void)
 
 	/* a saved piece comes back when it is chosen again */
 	gl_patch mine = *glui_patch();
+	int mac_saved = out.macro[2];
 	down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
+	CHECK(out.macro[2] == 0, "a stock piece sets its own macros: off (%d)", out.macro[2]);
 	for (int k = 0; k < GL_NPIECES - 1; k++) {
 		down(GB_FN); tap(GB_PLAY); run(50); tap(GB_PLAY); up(GB_FN); run(500);
 	}
 	CHECK(out.piece == 0, "%d steps wrap to piece 1 (%d)", GL_NPIECES, out.piece);
 	CHECK(memcmp(glui_patch(), &mine, sizeof mine) == 0, "piece 1 comes back as saved");
+	CHECK(mac_saved > 0 && out.macro[2] == mac_saved, "its macros come back with it (%d, saved %d)", out.macro[2], mac_saved);
 
 	/* •• + VOL: the distortion */
 	CHECK(out.dist_amt == 0 && out.dist_type == 0 && out.dist_post == 0, "distortion starts off, Chebyshev, before the effects");
