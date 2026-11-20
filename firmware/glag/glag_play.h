@@ -526,6 +526,7 @@ void gl_midi_note(int ch, int note, int vel)
 	mq_w = w + 1u;
 }
 static int midi_live(int ch) { return midi_t[ch] > 0.0f; }
+static const int8_t KIT_LANE[12] = {0, 3, 1, 4, 5, 2, 2, 8, 2, 7, 6, 2};
 static void midi_drum(chan *c, int ch, int note, float vel)
 {
 	/* by the note's name, in any octave (General MIDI's drum notes land the same way): C kick,
@@ -537,8 +538,8 @@ static void midi_drum(chan *c, int ch, int note, float vel)
 	if (c->voice == GV_KIT) {
 		/* the kit: C kick, C# clank, D / E snare (E the Nord hit), D# tissue, F# / G# hat,
 		 * G roll, A ghost, A# open hat, the rest the hat */
-		static const int8_t LANE[12] = {0, 3, 1, 4, 5, 2, 2, 8, 2, 7, 6, 2};
-		kit_fire(c, ch, LANE[note % 12], vel);
+		kit_fire(c, ch, KIT_LANE[note % 12], vel >= 0.99f ? 1.0f : vel * 0.95f);
+		kit_hold(c, KIT_LANE[note % 12], 1);
 		return;
 	}
 	pulse_fire(c, ch, mask);
@@ -564,6 +565,8 @@ static void midi_tick(float dt)
 		} else {
 			if (midi_n[ch])
 				midi_n[ch]--;
+			if (c->voice == GV_KIT)
+				kit_hold(c, KIT_LANE[note % 12], 0);
 			for (int i = 0; i < NV; i++) {        /* its voice lets go */
 				nvoice *v = &c->v[i];
 				if (v->mnote != note + 1)

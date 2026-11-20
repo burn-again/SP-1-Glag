@@ -137,11 +137,16 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	const float reg = (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2), oct = fexp2(reg * 0.5f);
 	notes_fired++;
 	c->glow = vel;
+	/* short by default; an accent (velocity 1: the phrase's downbeat, the odd tissue stroke, a
+	 * hard MIDI hit) rings long */
+	const int big = vel >= 0.99f;
+	const float dm = big ? 1.5f : 0.6f;
+	const float root = (float)chord_pc[0];              /* the clank and the Nord play the chord's root */
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
 		float f0 = clampf(72.0f * oct, 40.0f, 140.0f) * (1.0f + 0.02f * kn());
 		float damp = 0.8f - 0.6f * l, firm = 0.2f + 0.6f * t, slack = 0.1f + 0.7f * x;
-		float tau1 = 0.7f - damp * 0.6f;
+		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f);
 		for (int m = 0; m < 5; m++) {
 			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / VSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
@@ -162,39 +167,44 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	case 1:     /* R-8 snare: pitch, decay, nuance, feel; crunch rising with CHARACTER */
 	case 7: {   /* (7: a ghost, quieter and shorter) */
 		float feel = 2.0f + 4.0f * x;
-		float semis = reg * 3.0f + kn() * feel * 0.06f, dec = clampf((0.15f + 0.8f * l) * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
+		float semis = reg * 3.0f + kn() * feel * 0.06f, dec = clampf((0.1f + 0.6f * l) * dm * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
 		float nu = clampf(4.0f + 11.0f * t + kn() * feel * 0.4f, 0.0f, 15.0f);
 		kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
 		break;
 	}
 	case 2:     /* metal hat: decay (LENGTH; long when open), shift at the hit and at the end, tone */
 	case 6: {   /* (6: open) */
-		float dec = expmap(l, 0.03f, 0.6f) * (lane == 6 ? 4.0f : 1.0f);
-		dec = dec > 1.6f ? 1.6f : dec;
-		k->h_a = vel;
+		/* (CHARACTER reaches only half the shift it had: past that it turned sour) */
+		const float xs = x * 0.5f, open = lane == 6 ? 1.0f : 0.0f;
+		float dec = expmap(l, 0.025f, 0.3f) * dm * (lane == 6 ? 3.0f : 1.0f);
+		dec = dec > 1.2f ? 1.2f : dec;
+		/* the longer it rings, the darker and quieter: a long hat sits back, muted */
+		float dark = clampf((dec - 0.05f) * 5.0f, 0.0f, 1.0f);
+		k->h_a = vel * (1.0f - 0.45f * dark);
 		k->h_k = kexp(dec);
-		k->h_s0 = 60.0f + 240.0f * x;
-		k->h_s1 = -60.0f * x + 20.0f * kn();
+		k->h_s0 = 60.0f + 240.0f * xs;
+		k->h_s1 = -60.0f * xs + 20.0f * kn();
 		k->h_t = 0.0f;
 		k->h_len = dec;
-		k->h_f = ktan((4000.0f + 6000.0f * t) / VSR);
-		k->h_grit = 0.2f + 0.5f * x;
+		k->h_f = ktan((4000.0f + 6000.0f * t) * (1.0f - 0.45f * dark) / VSR);
+		k->h_grit = (0.2f + 0.5f * xs) * (1.0f - 0.6f * open);
+		k->h_lpk = 1.0f - 0.7f * dark;                   /* a low-pass after the shift */
 		break;
 	}
 	case 3: {   /* DX100 clank: ratio (CHARACTER), carrier (REGISTER), index (TONE), decay (LENGTH) */
-		float fc = 330.0f * oct * (1.0f + 0.003f * kn());
+		float fc = 440.0f * fexp2((36.0f + root - 69.0f) / 12.0f) * oct * (1.0f + 0.002f * kn());   /* C2-B2 */
 		k->d_ic = hz_inc(fc);
 		k->d_im = hz_inc(fc * K_RAT[stepped(x, 4)]);
-		k->d_index = (2.0f + 8.0f * t) * IDX_SCALE;
-		k->d_ik = kexp((0.1f + 0.8f * l) * 0.35f);
+		k->d_index = (1.5f + 5.0f * t) * IDX_SCALE;
+		k->d_ik = kexp((0.05f + 0.3f * l) * dm * 0.35f);
 		k->d_a = vel;
-		k->d_k = kexp(0.1f + 0.8f * l);
-		k->d_fb = (0.1f + 0.4f * x) * 3.1416f;
+		k->d_k = kexp((0.06f + 0.35f * l) * dm);
+		k->d_fb = (0.05f + 0.25f * x) * 3.1416f;
 		k->d_grit = x > 0.5f;
 		break;
 	}
 	case 4: {   /* tissue: stroke length (LENGTH), crackle density (CHARACTER), brightness (TONE), rumble */
-		k->t_len = 0.1f + 0.7f * l;
+		k->t_len = big ? 0.25f + 0.6f * l : 0.04f + 0.12f * l;   /* (held over MIDI: until let go) */
 		k->t_t = 0.0f;
 		k->t_a = vel;
 		k->t_prob = (300.0f + 1200.0f * x) / VSR;
@@ -206,14 +216,14 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		break;
 	}
 	case 5: {   /* Nord sync hit: pitch (REGISTER), sync sweep and FM (CHARACTER), cutoff (TONE), decay (LENGTH) */
-		k->n_f1 = 110.0f * oct;
-		k->n_sweep = (12.0f + 36.0f * x) * (1.0f + kn() * (0.2f + 0.4f * x) * 0.35f);
-		k->n_fm = (0.15f + 0.5f * x) * (1.0f + kn() * 0.15f);
+		k->n_f1 = 440.0f * fexp2((48.0f + root - 69.0f) / 12.0f) * oct;   /* C3-B3, the root */
+		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f);
+		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
 		k->n_md = fexp2(-1.4427f / (0.04f * 1000.0f));   /* (once a millisecond) */
 		k->n_menv = 1.0f;
-		k->n_cut = 800.0f * fexp2(4.0f * t);
+		k->n_cut = 350.0f * fexp2(3.0f * t);
 		k->n_a = vel;
-		k->n_ak = kexp(0.15f + 0.9f * l);
+		k->n_ak = kexp((0.1f + 0.5f * l) * dm);
 		k->n_att = 0.0f;
 		k->n_p1 = k->n_p2 = 0.0f;
 		break;
@@ -236,6 +246,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	}
 }
 
+/* MIDI: a tissue stroke lasts as long as its key is held */
+static void kit_hold(chan *c, int lane, int on)
+{
+	if (lane == 4)
+		c->kt.t_len = on ? 4.0f : (c->kt.t_t < c->kt.t_len ? c->kt.t_t : c->kt.t_len);
+}
+
 /* ---- the lanes ---- */
 static void kit_step(chan *c, int ch, uint32_t step)
 {
@@ -243,27 +260,31 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	const int s16 = (int)(step % 16u);
 	/* the load governor stepping in (a block past 88 %): the core plays on, the colour waits */
 	const int lean = gov_cap < FM_CAP && !kit_solo;
-	float acc = s16 == 0 ? 1.0f : (s16 & 3) == 0 ? 0.8f : 0.6f;
+	float acc = s16 == 0 ? 0.95f : (s16 & 3) == 0 ? 0.8f : 0.6f;
+	const int phrase = (int)(step % 64u);                 /* four bars: the accents land here */
 	int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f), ck = 1 + (int)(h * 3.0f + 0.5f);
 	if (euclid_hit(kk, 16, s16))
-		kit_fire(c, ch, 0, acc * (0.85f + 0.15f * ku()));
+		kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
 	if (euclid_hit(sk, 16, (s16 + 12) % 16))
-		kit_fire(c, ch, 1, 0.85f + 0.15f * ku());
+		kit_fire(c, ch, 1, phrase == 60 ? 1.0f : 0.82f + 0.13f * ku());
 	else if (!lean && h > 0.35f && (s16 & 1) && ku() < 0.12f * h)
 		kit_fire(c, ch, 7, 0.8f);                        /* a ghost note */
 	int s12 = (int)(step % 12u);
-	if (euclid_hit(hk, 12, s12))
-		kit_fire(c, ch, (x > 0.55f || KSOLO(6)) && s12 == 6 ? 6 : 2, (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.15f * ku()));
+	if (euclid_hit(hk, 12, s12)) {
+		/* the open hat: past 0.55, once in a while, on the off-beat */
+		int op = s12 == 6 && (KSOLO(6) || (x > 0.55f && ku() < 0.25f));
+		kit_fire(c, ch, op ? 6 : 2, op ? 0.9f : (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.12f * ku()));
+	}
 	if (form_fill && s16 >= 12)
 		kit_fire(c, ch, 1, 0.7f + 0.2f * ku());          /* Playworld's fill */
 	if (lean)
 		return;
 	if (euclid_hit(ck, 7, (int)((step + 2u) % 7u)))
-		kit_fire(c, ch, 3, 0.55f + 0.25f * ku());
+		kit_fire(c, ch, 3, 0.6f + 0.3f * ku());
 	if ((x > 0.33f || KSOLO(4)) && euclid_hit(h > 0.5f ? 2 : 1, 10, (int)((step + 5u) % 10u)))
-		kit_fire(c, ch, 4, 0.7f + 0.3f * ku());
+		kit_fire(c, ch, 4, ku() < 0.15f ? 1.0f : 0.7f + 0.25f * ku());   /* now and then a long stroke */
 	if ((x > 0.4f || KSOLO(5)) && euclid_hit(h > 0.6f ? 2 : 1, 13, (int)((step + 9u) % 13u)))
-		kit_fire(c, ch, 5, 0.7f + 0.3f * ku());
+		kit_fire(c, ch, 5, 0.7f + 0.25f * ku());
 	if ((x > 0.6f || KSOLO(8)) && (step % (KSOLO(8) ? 16u : 64u)) == (KSOLO(8) ? 8u : 56u) && ku() < 0.5f + 0.5f * h)
 		kit_fire(c, ch, 8, 0.8f);                        /* a roll into the next phrase */
 }
@@ -327,7 +348,8 @@ static int kit_render(chan *c, float *A)
 			pc *= nrm, ps *= nrm;
 		uint32_t ph0 = k->h_ph[0], ph1 = k->h_ph[1], ph2 = k->h_ph[2], ph3 = k->h_ph[3], ph4 = k->h_ph[4], ph5 = k->h_ph[5];
 		float bp1 = k->h_bp, lo = k->h_lo, hh = k->h_hp, l2 = k->h_l2, l3 = k->h_l3, ha = k->h_a, ad = k->h_ad;
-		const float hk = k->h_k, grit = k->h_grit;
+		const float hk = k->h_k, grit = k->h_grit, hlk = k->h_lpk;
+		float hl = k->h_lp;
 		for (uint32_t i = 0; i < VSUB; i++) {
 			/* the squares: each one's top bit, counted */
 			ph0 += K_METAL[0]; ph1 += K_METAL[1]; ph2 += K_METAL[2];
@@ -355,14 +377,15 @@ static int kit_render(chan *c, float *A)
 			}
 			float re = ad, im = b;
 			ad = a;                                       /* (chain A one sample later) */
-			A[i] += (re * pc + im * ps) * 2.8f;          /* (shifted up for a positive f) */
+			hl += hlk * ((re * pc + im * ps) - hl);         /* (shifted up for a positive f) */
+			A[i] += hl * 2.8f;
 			float nc = pc * cr - ps * sr;                 /* the phasor turns */
 			ps = pc * sr + ps * cr;
 			pc = nc;
 		}
 		k->h_ph[0] = ph0; k->h_ph[1] = ph1; k->h_ph[2] = ph2; k->h_ph[3] = ph3; k->h_ph[4] = ph4; k->h_ph[5] = ph5;
 		k->h_bp = bp1; k->h_lo = lo; k->h_hp = hh; k->h_l2 = l2; k->h_l3 = l3; k->h_a = ha; k->h_ad = ad;
-		k->h_c = pc; k->h_s = ps;
+		k->h_c = pc; k->h_s = ps; k->h_lp = hl;
 	}
 	/* DX100 clank */
 	if (k->d_a > 1e-3f) {
@@ -416,7 +439,7 @@ static int kit_render(chan *c, float *A)
 		const float dt2 = 1.0f / ((float)os * VSR);
 		/* the sweep and the filter move once a block (1 ms) */
 		const float f2 = k->n_f1 * fexp2(k->n_sweep * k->n_menv * (1.0f / 12.0f));
-		const float fc = clampf(k->n_cut * fexp2(3.0f * k->n_menv), 60.0f, 0.21f * (float)os * VSR);
+		const float fc = clampf(k->n_cut * fexp2(2.0f * k->n_menv), 60.0f, 0.21f * (float)os * VSR);
 		const ksvf nf = ksvf_set(ktan(fc * dt2), 0.7f);
 		k->n_menv *= k->n_md;
 		const float fm4 = k->n_fm * (0.3f + 0.7f * k->n_menv) * 4.0f, f1 = k->n_f1 * dt2, i2 = f2 * dt2;
@@ -457,7 +480,8 @@ static int kit_render(chan *c, float *A)
 			if (k->r_t <= 0.0f) {
 				int h = k->r_i++;
 				float gain = 0.55f + 0.45f * (1.0f - (float)h / (float)k->r_n);
-				kit_snare_hit(&k->rs, k->r_semis + 1.0f * (float)h, 0.3f, 10.0f, 0.3f, k->r_vel * gain);
+				const float st = alt_m[GV_KIT] == 1 ? -1.0f : alt_m[GV_KIT] == 2 ? 0.0f : 1.0f;   /* up, down, level */
+				kit_snare_hit(&k->rs, k->r_semis + st * (float)h, 0.3f, 10.0f, 0.3f, k->r_vel * gain);
 				k->r_t += k->r_gap * (1.0f - k->r_accel * 0.8f * (float)h / (float)(k->r_n > 1 ? k->r_n - 1 : 1));
 			}
 		}

@@ -164,7 +164,7 @@ typedef struct {
 	float k_x[5], k_y[5], k_e[5], k_amp[5], k_dec[5], k_glide, k_gk, k_att, k_ai, k_nz, k_nzk, k_lp, k_lpk;
 	kit_snare sn;
 	uint32_t h_ph[6];
-	float h_a, h_k, h_s0, h_s1, h_t, h_len, h_f, h_grit, h_lo, h_bp, h_hp, h_l2, h_l3;
+	float h_a, h_k, h_s0, h_s1, h_t, h_len, h_f, h_grit, h_lpk, h_lp, h_lo, h_bp, h_hp, h_l2, h_l3;
 	float ha_v[2][2], hb_v[2][2], h_ad, h_c, h_s;
 	uint32_t d_ic, d_im, d_pc, d_pm;
 	float d_index, d_ik, d_a, d_k, d_fb, d_m1, d_m2;
@@ -4376,26 +4376,27 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{80, 50, 30, 50, 0, 10, 50, 90, 75}, {70, 60, 35, 50, 0, 15, 50, 70, 60},
 	  {75, 55, 25, 50, 20, 35, 55, 50, 50}, {55, 70, 40, 75, 25, 40, 45, 50, 66}},
 	 {80, 30, 35, 50, 4, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 0, 1, 1}, 8, {4, 3, 3, 3}, 8, 0, {0, 0, 0, 0}},
-	/* ---- the Kit (after the 1997 drum recipes): CHARACTER is its split, and the macro moves it ---- */
+	/* ---- the Kit (after the 1997 drum recipes): CHARACTER is its split, and the macro moves it;
+	 * dry, as those records' drums are (no echo, no reverb on its channel) ---- */
 	/* lofi: the core only (kick, R-8 snare, metal hat, clank), clean, with an EP and a pad */
 	{"Canvas Room", {GV_KIT, GV_EP, GV_BASS, GV_PAD},
-	 {{55, 45, 35, 50, 10, 20, 50, 15, 83}, {40, 45, 55, 50, 25, 45, 40, 40, 59},
-	  {35, 30, 80, 50, 5, 15, 50, 30, 59}, {40, 30, 70, 50, 10, 60, 60, 30, 42}},
+	 {{55, 45, 35, 50, 0, 0, 50, 15, 89}, {40, 45, 55, 50, 25, 45, 40, 40, 63},
+	  {35, 30, 80, 50, 5, 15, 50, 30, 63}, {40, 30, 70, 50, 10, 60, 60, 30, 45}},
 	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}},
 	/* the shifted hats and the clank in front, a sequence and strings behind */
 	{"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS},
-	 {{65, 60, 45, 50, 15, 25, 50, 55, 74}, {55, 45, 40, 50, 30, 35, 40, 45, 46},
-	  {45, 35, 60, 50, 0, 10, 50, 40, 57}, {30, 35, 75, 50, 15, 55, 60, 30, 33}},
+	 {{65, 60, 45, 50, 0, 0, 50, 55, 83}, {55, 45, 40, 50, 30, 35, 40, 45, 51},
+	  {45, 35, 60, 50, 0, 10, 50, 40, 64}, {30, 35, 75, 50, 15, 55, 60, 30, 37}},
 	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}},
 	/* the whole kit: crunch, the Nord hits, rolls into each phrase, open hats; Phrygian */
 	{"Crunch Roll", {GV_KIT, GV_GLOW, GV_DRONE, GV_SEQ},
-	 {{75, 55, 55, 50, 20, 30, 50, 85, 72}, {35, 35, 65, 50, 30, 55, 35, 40, 39},
-	  {30, 25, 90, 50, 0, 45, 50, 30, 29}, {50, 50, 35, 25, 35, 30, 65, 60, 37}},
+	 {{75, 55, 55, 50, 0, 0, 50, 85, 90}, {35, 35, 65, 50, 30, 55, 35, 40, 49},
+	  {30, 25, 90, 50, 0, 45, 50, 30, 36}, {50, 50, 35, 25, 35, 30, 65, 60, 46}},
 	 {80, 40, 50, 50, 4, 2, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {2, 1, 1, 1}, 8, {4, 2, 2, 3}, 8, 0, {0, 0, 0, 0}},
 	/* ambient: few hits, long ones (tissue strokes, long hats), bells and a shimmer in a hall */
 	{"Tissue Hall", {GV_KIT, GV_BELLS, GV_PAD, GV_SHIMMER},
-	 {{25, 40, 80, 50, 25, 50, 50, 60, 70}, {35, 45, 60, 50, 40, 60, 40, 30, 53},
-	  {50, 30, 80, 50, 15, 70, 60, 30, 53}, {25, 40, 70, 50, 20, 60, 55, 40, 35}},
+	 {{25, 40, 50, 50, 0, 0, 50, 60, 85}, {35, 45, 60, 50, 40, 60, 40, 30, 64},
+	  {50, 30, 80, 50, 15, 70, 60, 30, 64}, {25, 40, 70, 50, 20, 60, 55, 40, 42}},
 	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
@@ -4415,8 +4416,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {30, 20, 70, 50, 0, 20, 50, 30, 40}, {20, 25, 60, 50, 0, 50, 50, 0, 20}},
 	 {44, 30, 75, 50, 7, 0, 25, 40}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
 	{"Lab Kit", {GV_KIT, GV_PAD, GV_BASS, GV_EP},
-	 {{60, 50, 50, 50, 10, 25, 50, 50, 82}, {40, 30, 70, 50, 10, 60, 50, 30, 32},
-	  {40, 30, 70, 50, 0, 15, 50, 30, 49}, {30, 40, 60, 50, 20, 45, 60, 30, 32}},
+	 {{60, 50, 50, 50, 0, 0, 50, 50, 95}, {40, 30, 70, 50, 10, 60, 50, 30, 37},
+	  {40, 30, 70, 50, 0, 15, 50, 30, 57}, {30, 40, 60, 50, 20, 45, 60, 30, 37}},
 	 {70, 30, 50, 50, 0, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
 #endif
 };
