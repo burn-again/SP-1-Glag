@@ -6,3 +6,4 @@ host/cpu/*.elf
 !release/*.bin
 web/build/
 tune/build/
+__pycache__/
