@@ -102,7 +102,7 @@ static void kit_snare_hit(kit_snare *s, float semis, float dec, float nu, float 
 	s->drive = drive;
 }
 /* a block of the snare, added into A at gain g */
-static void kit_snare_block(kit_snare *s, float *A, float g)
+static void kit_snare_block(kit_snare *s, float *A, float g, const float *eg)
 {
 	if (s->b < 1e-3f && s->n < 1e-3f)
 		return;
@@ -127,9 +127,9 @@ static void kit_snare_block(kit_snare *s, float *A, float g)
 		if (dr > 0.0f) {                                /* the phono input: lows up, then crunch */
 			lo += KP(0.028f) * (y - lo);
 			float u = clampf((y + lo * lg) * dg, -1.5f, 1.5f);
-			A[i] += (u - 0.148148f * u * u * u) * og;   /* (a cubic: flat at 1.5) */
+			A[i] += (u - 0.148148f * u * u * u) * og * (eg ? eg[i] : 1.0f);   /* (a cubic: flat at 1.5) */
 		} else
-			A[i] += y * g;
+			A[i] += y * g * (eg ? eg[i] : 1.0f);
 	}
 	s->x1 = x1; s->y1 = y1; s->x2 = x2; s->y2 = y2; s->b = b; s->n = n; s->hp = hp; s->l1 = l1; s->l2 = l2; s->lo = lo;
 }
@@ -144,7 +144,7 @@ static int kit_deg(int d)
 static float kit_hz(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
 
 /* ---- the tuning: every number the Kit tuning page reaches (gl_kit_tune), at the firmware's
- * defaults (generated from the page's table: keep the two in step) ---- */
+ * defaults (generated from the page's table, tune/params.py: keep the two in step) ---- */
 enum {
 	KT_L_KICK,
 	KT_L_SNARE,
@@ -209,6 +209,48 @@ enum {
 	KT_COMB_FB,
 	KT_COMB_DAMP,
 	KT_LOW_HZ,
+	KT_K_MODES,
+	KT_K_SPREAD,
+	KT_E_KICK_A,
+	KT_E_KICK_D,
+	KT_E_KICK_S,
+	KT_E_KICK_G,
+	KT_E_KICK_R,
+	KT_E_SNARE_A,
+	KT_E_SNARE_D,
+	KT_E_SNARE_S,
+	KT_E_SNARE_G,
+	KT_E_SNARE_R,
+	KT_E_HAT_A,
+	KT_E_HAT_D,
+	KT_E_HAT_S,
+	KT_E_HAT_G,
+	KT_E_HAT_R,
+	KT_E_CLANK_A,
+	KT_E_CLANK_D,
+	KT_E_CLANK_S,
+	KT_E_CLANK_G,
+	KT_E_CLANK_R,
+	KT_E_TISSUE_A,
+	KT_E_TISSUE_D,
+	KT_E_TISSUE_S,
+	KT_E_TISSUE_G,
+	KT_E_TISSUE_R,
+	KT_E_NORD_A,
+	KT_E_NORD_D,
+	KT_E_NORD_S,
+	KT_E_NORD_G,
+	KT_E_NORD_R,
+	KT_E_ROLL_A,
+	KT_E_ROLL_D,
+	KT_E_ROLL_S,
+	KT_E_ROLL_G,
+	KT_E_ROLL_R,
+	KT_E_TOMS_A,
+	KT_E_TOMS_D,
+	KT_E_TOMS_S,
+	KT_E_TOMS_G,
+	KT_E_TOMS_R,
 	KT_COUNT
 };
 static float KT[KT_COUNT] = {
@@ -275,6 +317,48 @@ static float KT[KT_COUNT] = {
 	0.62f,   /* COMB_FB: Colour Comb-soggy: feedback */
 	0.35f,   /* COMB_DAMP: Colour Comb-soggy: brightness */
 	250.0f,   /* LOW_HZ: Colour Comb-soggy: low split */
+	0.35f,   /* K_MODES: Kick Skin modes */
+	1.0f,   /* K_SPREAD: Kick Mode spread */
+	0.0f,   /* E_KICK_A: Kick Env attack */
+	0.0f,   /* E_KICK_D: Kick Env decay */
+	1.0f,   /* E_KICK_S: Kick Env sustain */
+	2000.0f,   /* E_KICK_G: Kick Env gate */
+	20.0f,   /* E_KICK_R: Kick Env release */
+	0.0f,   /* E_SNARE_A: Snare Env attack */
+	0.0f,   /* E_SNARE_D: Snare Env decay */
+	1.0f,   /* E_SNARE_S: Snare Env sustain */
+	2000.0f,   /* E_SNARE_G: Snare Env gate */
+	20.0f,   /* E_SNARE_R: Snare Env release */
+	0.0f,   /* E_HAT_A: Hats Env attack */
+	0.0f,   /* E_HAT_D: Hats Env decay */
+	1.0f,   /* E_HAT_S: Hats Env sustain */
+	2000.0f,   /* E_HAT_G: Hats Env gate */
+	20.0f,   /* E_HAT_R: Hats Env release */
+	0.0f,   /* E_CLANK_A: Clank Env attack */
+	0.0f,   /* E_CLANK_D: Clank Env decay */
+	1.0f,   /* E_CLANK_S: Clank Env sustain */
+	2000.0f,   /* E_CLANK_G: Clank Env gate */
+	20.0f,   /* E_CLANK_R: Clank Env release */
+	0.0f,   /* E_TISSUE_A: Tissue Env attack */
+	0.0f,   /* E_TISSUE_D: Tissue Env decay */
+	1.0f,   /* E_TISSUE_S: Tissue Env sustain */
+	2000.0f,   /* E_TISSUE_G: Tissue Env gate */
+	20.0f,   /* E_TISSUE_R: Tissue Env release */
+	0.0f,   /* E_NORD_A: Nord Env attack */
+	0.0f,   /* E_NORD_D: Nord Env decay */
+	1.0f,   /* E_NORD_S: Nord Env sustain */
+	2000.0f,   /* E_NORD_G: Nord Env gate */
+	20.0f,   /* E_NORD_R: Nord Env release */
+	0.0f,   /* E_ROLL_A: Roll Env attack */
+	0.0f,   /* E_ROLL_D: Roll Env decay */
+	1.0f,   /* E_ROLL_S: Roll Env sustain */
+	2000.0f,   /* E_ROLL_G: Roll Env gate */
+	20.0f,   /* E_ROLL_R: Roll Env release */
+	0.0f,   /* E_TOMS_A: Toms Env attack */
+	0.0f,   /* E_TOMS_D: Toms Env decay */
+	1.0f,   /* E_TOMS_S: Toms Env sustain */
+	2000.0f,   /* E_TOMS_G: Toms Env gate */
+	20.0f,   /* E_TOMS_R: Toms Env release */
 };
 void gl_kit_tune(int id, float v) { if ((unsigned)id < KT_COUNT) KT[id] = v; }
 int gl_kit_tunes(void) { return KT_COUNT; }
@@ -332,6 +416,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		if (KT[KT_F_HATACC] >= 1.0f && k->n_h % (unsigned)KT[KT_F_HATACC] == 0u && vel < 0.95f)
 			vel = 0.95f;
 	}
+	{	/* this sound's envelope starts again */
+		static const int8_t ES[14] = {0, 1, 2, 3, 4, 5, 2, 1, 6, 1, 7, 7, 7, 7};
+		if ((unsigned)lane < 14u) {
+			k->e_st[ES[lane]] = 1;
+			k->e_t[ES[lane]] = 0.0f;
+		}
+	}
 	if (lane == 0 || lane == 1 || lane == 9) {
 		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.042f / (KT[KT_SOG_CLOSE] < 2.0f ? 2.0f : KT[KT_SOG_CLOSE]);   /* the soggy filter: shut in 10, 120 or 30 ms */
 		k->c_ceil = KT[KT_SOG_REACH] * (press ? 0.667f : lng ? 1.067f : 1.0f);             /* how far it opens */
@@ -347,10 +438,10 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		if (press)
 			f0 *= 1.15f;
 		for (int m = 0; m < 5; m++) {
-			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / KSR);
+			k->k_e[m] = f0 * (1.0f + (K_MEM[m] - 1.0f) * KT[KT_K_SPREAD]) * (6.2832f / KSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
 				k->k_x[m] = 0.0f, k->k_y[m] = 1.0f;
-			k->k_amp[m] = vel * KT[KT_L_KICK] * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
+			k->k_amp[m] = vel * KT[KT_L_KICK] * (m ? KT[KT_K_MODES] : 1.0f) * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
 			k->k_dec[m] = kexp(tau1 / fexp2(0.8f * flog2(K_MEM[m])));
 		}
 		k->k_glide = press ? -0.18f : slack * 0.25f * KT[KT_K_SLACK];   /* (pressed: from below, rising) */
@@ -938,11 +1029,45 @@ static void kit_color(chan *c, float *A)
 	k->c_tail = tail;
 }
 
+/* ---- each sound's envelope (attack, decay to sustain, a gate, release), the tuning page's: off
+ * (and costing nothing) while it is at its defaults. Returns whether it is in use. ---- */
+static int kit_env(kit_state *k, int s, float *eg)
+{
+	const float *e = &KT[KT_E_KICK_A + 5 * s];
+	const float A = e[0] * 0.001f, D = e[1] * 0.001f, S = e[2], G = e[3] * 0.001f, Rr = e[4] * 0.001f;
+	if (A <= 0.0f && S >= 0.999f && G >= 1.999f)
+		return 0;
+	float lvl = k->e_lvl[s], t = k->e_t[s];
+	uint8_t st = k->e_st[s];
+	const float dt = 1.0f / KSR;
+	const float ai = A > 0.0005f ? dt / A : 2.0f, di = D > 0.0005f ? (1.0f - S) * dt / D : 2.0f, ri = dt / (Rr > 0.0005f ? Rr : 0.0005f);
+	for (uint32_t i = 0; i < KSUB; i++) {
+		if (st >= 1 && st <= 3 && t >= G)
+			st = 4;                                       /* the gate shuts: release */
+		switch (st) {
+		case 1: lvl += ai; if (lvl >= 1.0f) { lvl = 1.0f; st = 2; } break;
+		case 2: lvl -= di; if (lvl <= S) { lvl = S; st = 3; } break;
+		case 3: lvl = S; break;
+		case 4: lvl -= ri; if (lvl <= 0.0f) { lvl = 0.0f; st = 5; } break;
+		default: break;
+		}
+		t += dt;
+		eg[i] = lvl;
+	}
+	k->e_lvl[s] = lvl; k->e_t[s] = t; k->e_st[s] = st;
+	return 1;
+}
+#define KE(s) (ea >> (s) & 1u ? eg[s][i] : 1.0f)
+
 /* ---- the sound, 12 kHz, mono ---- */
 static int kit_render12(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
 	int any = 0;
+	float eg[8][KSUB];
+	unsigned ea = 0;
+	for (int s = 0; s < 8; s++)
+		ea |= (unsigned)kit_env(k, s, eg[s]) << s;
 	/* the hits waiting off the grid */
 	for (int i = 0; i < 16; i++)
 		if (k->q_t[i] > 0.0f) {
@@ -966,7 +1091,7 @@ static int kit_render12(chan *c, float *A)
 			for (uint32_t i = 0; i < KSUB; i++) {
 				x += e * y;
 				y -= e * x;
-				A[i] += a * x;
+				A[i] += a * x * KE(0);
 				a *= dk;
 			}
 			k->k_x[m] = x; k->k_y[m] = y; k->k_amp[m] = a * (1.0f / 1.3f);
@@ -978,7 +1103,7 @@ static int kit_render12(chan *c, float *A)
 			for (uint32_t i = 0; i < KSUB; i++) {
 				lp += lk * (kn() * nz - lp);
 				nz *= nzk;
-				A[i] += lp * 0.6f;
+				A[i] += lp * 0.6f * KE(0);
 			}
 			k->k_lp = lp; k->k_nz = nz;
 		}
@@ -986,7 +1111,7 @@ static int kit_render12(chan *c, float *A)
 	/* R-8 snare (and its ghosts) */
 	if (k->sn.b > 1e-3f || k->sn.n > 1e-3f) {
 		any = 1;
-		kit_snare_block(&k->sn, A, 0.9f * KT[KT_L_SNARE]);
+		kit_snare_block(&k->sn, A, 0.9f * KT[KT_L_SNARE], ea >> 1 & 1u ? eg[1] : 0);
 	}
 	/* metal hat, frequency-shifted */
 	if (k->h_a > 1e-3f) {
@@ -1041,7 +1166,7 @@ static int kit_render12(chan *c, float *A)
 			float re = ad, im = b;
 			ad = a;                                       /* (chain A one sample later) */
 			hl += hlk * ((re * pc + im * ps) - hl);         /* (shifted up for a positive f) */
-			A[i] += hl * 2.8f;
+			A[i] += hl * 2.8f * KE(2);
 			float nc = pc * cr - ps * sr;                 /* the phasor turns */
 			ps = pc * sr + ps * cr;
 			pc = nc;
@@ -1064,7 +1189,7 @@ static int kit_render12(chan *c, float *A)
 			k->d_pm += k->d_im;
 			k->d_a *= k->d_k;
 			k->d_index *= k->d_ik;
-			A[i] += y * 0.7f;
+			A[i] += y * 0.7f * KE(3);
 		}
 	}
 	/* tissue paper over a mic */
@@ -1102,7 +1227,7 @@ static int kit_render12(chan *c, float *A)
 			th += KP(0.1f) * (bp - th);
 			r1 += KP(0.0235f) * (w * ep - r1);
 			r2 += KP(0.0235f) * (r1 - r2);
-			A[i] += (bp - th) * ga + r2 * gr;
+			A[i] += ((bp - th) * ga + r2 * gr) * KE(4);
 		}
 		k->t_c = tc; k->t_b = tb; k->t_lo = tl; k->t_hp = th; k->t_r1 = r1; k->t_r2 = r2;
 	} else
@@ -1141,7 +1266,7 @@ static int kit_render12(chan *c, float *A)
 			att = att < 1.0f ? att + 0.004f * KRAT : 1.0f;          /* (a 10 ms attack) */
 			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f) * KT[KT_L_NORD];
 			dc += KP(0.008f) * (y - dc);                      /* its offset (the FM runs it backwards) */
-			A[i] += y - dc;
+			A[i] += (y - dc) * KE(5);
 			na *= k->n_ak;
 		}
 		k->n_p1 = p1; k->n_p2 = p2; k->n_bp1 = s1; k->n_lo1 = s2;
@@ -1176,7 +1301,7 @@ static int kit_render12(chan *c, float *A)
 			}
 		}
 		float buf[KSUB] = {0};
-		kit_snare_block(&k->rs, buf, 1.0f);
+		kit_snare_block(&k->rs, buf, 1.0f, 0);
 		float acc = k->r_acc, held = k->r_held;
 		const float hold = k->r_hold, q = k->r_q, iq = 1.0f / k->r_q;
 		for (uint32_t i = 0; i < KSUB; i++) {
@@ -1185,7 +1310,7 @@ static int kit_render12(chan *c, float *A)
 				acc -= hold;
 				held = (float)(int32_t)(buf[i] * q) * iq;
 			}
-			A[i] += held * 0.6f * (k->r_tom ? KT[KT_L_TOMS] : KT[KT_L_ROLL]);
+			A[i] += held * 0.6f * (k->r_tom ? KT[KT_L_TOMS] * KE(7) : KT[KT_L_ROLL] * KE(6));
 		}
 		k->r_acc = acc; k->r_held = held;
 	}

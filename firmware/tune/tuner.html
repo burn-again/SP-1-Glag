@@ -41,7 +41,9 @@ main.wrap { padding-block:18px 64px; display:grid; gap:16px; }
 .group { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px 14px; display:grid; gap:9px; min-width:0; }
 .group h2 { font-family:var(--display); font-size:1.05rem; margin:0; display:flex; align-items:baseline; gap:8px; }
 .group h2 small { font-family:var(--text); font-size:12px; color:var(--muted); font-weight:400; }
-.group h2 button { margin-left:auto; min-height:26px; padding:2px 8px; font-size:12px; }
+.group h2 button { min-height:26px; padding:2px 8px; font-size:12px; }
+.group h2 button:first-of-type { margin-left:auto; }
+.group h3 { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:6px 0 0; font-weight:500; border-top:1px solid var(--line); padding-top:8px; }
 .p { display:grid; gap:1px; min-width:0; }
 .p .lab { display:flex; gap:8px; align-items:baseline; font-size:13px; }
 .p .lab .id { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
@@ -84,6 +86,7 @@ details.foot pre { font-family:var(--mono); font-size:12px; overflow-x:auto; mar
     <select id="piece" aria-label="Piece"></select>
     <button id="solo" class="on" aria-pressed="true">Kit alone</button>
     <select id="groove" aria-label="Groove"></select>
+    <select id="rate" aria-label="The Kit's rate"><option value="12" selected>Kit at 12 kHz (firmware)</option><option value="16">Kit at 16 kHz</option><option value="24">Kit at 24 kHz</option></select>
     <select id="dist" aria-label="Distortion">
       <option value="-1">No distortion</option><option value="0">Cheby (drums)</option><option value="1">Drive (drums)</option><option value="2">Fuzz (drums)</option><option value="3">XOR (drums)</option>
     </select>
@@ -93,7 +96,7 @@ details.foot pre { font-family:var(--mono); font-size:12px; overflow-x:auto; mar
   <div class="lanes" id="lanes"><span class="l">Sounds</span></div>
   <div class="code">
     <output id="code" aria-label="Your tuning code">GK1</output>
-    <div class="btns"><button id="copy">Copy code</button><button id="clean" aria-pressed="false" title="Hear the kit with no colour (soggy, Cheby, combs) without losing your settings">Clean</button><button id="resetall" title="Every slider back to the firmware's value">Reset sliders</button><button id="reseteverything" title="Sliders, the channel controls, groove, macro, distortion, sound solos and the pattern, back to the piece as written">Reset everything</button></div>
+    <div class="btns"><button id="copy">Copy code</button><button id="randall" title="Every slider to a random value (around the firmware's, not the extremes)">Randomize all</button><button id="clean" aria-pressed="false" title="Hear the kit with no colour (soggy, Cheby, combs) without losing your settings">Clean</button><button id="resetall" title="Every slider back to the firmware's value">Reset sliders</button><button id="reseteverything" title="Sliders, the channel controls, groove, macro, distortion, sound solos and the pattern, back to the piece as written">Reset everything</button></div>
   </div>
 </div></header>
 
@@ -124,7 +127,7 @@ details.foot pre { font-family:var(--mono); font-size:12px; overflow-x:auto; mar
 </main>
 
 <script>
-const WASM_B64 = "@@WASM@@";
+const WASM_B64 = @@WASM@@;   /* the engine at 12, 16 and 24 kHz (the Kit's rate) */
 const PARAMS = @@PARAMS@@;   /* [id, group, label, default, min, max, step, help] */
 const PIECES = @@PIECES@@;   /* [index, name] */
 const GROOVES = ["Euclidean", "Two-step", "Drill", "Jungle", "Downtempo", "House", "Thrash", "Reggaeton", "Cumbia", "Jazz", "IDM"];
@@ -137,10 +140,35 @@ const val = PARAMS.map(p => p[3]);
 const chan = {0: 0.5, 1: 0.5, 2: 0.5, 3: 0.5, 7: 0.5}; let macro = 0, lanes = 0, soloOn = true, pieceIdx = PIECES[0][0], groove = 0, dist = -1;
 
 /* ---- the engine ---- */
-async function boot() {
-  const bin = Uint8Array.from(atob(WASM_B64), c => c.charCodeAt(0));
+let rate = "12";
+async function engine(r) {
+  const bin = Uint8Array.from(atob(WASM_B64[r]), c => c.charCodeAt(0));
   const { instance } = await WebAssembly.instantiate(bin, {});
-  W = instance.exports;
+  return instance.exports;
+}
+/* everything the page holds, into a fresh engine */
+function applyAll() {
+  W.kt_init(1234);
+  PARAMS.forEach((p, i) => W.kt_set(i, val[i]));
+  if (clean) W.kt_set(COL_I, 0);
+  sendPattern();
+  W.kt_piece(pieceIdx);
+  W.kt_solo(soloOn ? 1 : 0);
+  W.kt_groove(groove);
+  for (const [cp] of CHAN) W.kt_ch(cp, chan[cp]);
+  W.kt_macro(macro);
+  W.kt_lanes(lanes);
+  applyDist();
+}
+$("rate").onchange = async e => {
+  rate = e.target.value;
+  const nw = await engine(rate);
+  const old = W; W = nw;
+  if (old) applyAll();
+  updateCode();
+};
+async function boot() {
+  W = await engine(rate);
   W.kt_init(1234);
   if (W.kt_tunes() !== PARAMS.length) console.warn("parameter count differs", W.kt_tunes(), PARAMS.length);
   PARAMS.forEach((p, i) => W.kt_set(i, val[i]));
@@ -236,10 +264,13 @@ PARAMS.forEach((p, i) => {
   const [id, g, label, def, min, max, step, help] = p;
   if (!groups[g]) {
     const card = document.createElement("section"); card.className = "group";
-    card.innerHTML = `<h2>${g}<button type="button">Reset</button></h2>`;
-    card.querySelector("button").onclick = () => PARAMS.forEach((q, j) => { if (q[1] === g) setVal(j, q[3]); });
+    card.innerHTML = `<h2>${g}<button type="button">Randomize</button><button type="button">Reset</button></h2>`;
+    const [rb, zb] = card.querySelectorAll("button");
+    rb.onclick = () => PARAMS.forEach((q, j) => { if (q[1] === g) setVal(j, randomOf(q)); });
+    zb.onclick = () => PARAMS.forEach((q, j) => { if (q[1] === g) setVal(j, q[3]); });
     $("groups").appendChild(card); groups[g] = card;
   }
+  if (label.startsWith("Env") && !groups[g].querySelector("h3")) { const h = document.createElement("h3"); h.textContent = "Envelope (on top of its own decay)"; groups[g].appendChild(h); }
   const d = document.createElement("div"); d.className = "p";
   d.innerHTML = `<div class="lab"><label for="p_${id}">${label}</label><span class="id">${id}</span><button type="button" title="Back to ${def}">reset</button><span class="v"></span></div>
     <input id="p_${id}" type="range" min="${min}" max="${max}" step="${step}" value="${def}"><div class="hint"></div>`;
@@ -265,6 +296,21 @@ function setVal(i, v, fromSlider) {
   showVal(i); updateCode();
 }
 $("resetall").onclick = () => PARAMS.forEach((p, i) => setVal(i, p[3]));
+/* a random value: around the firmware's, reaching toward the ends without living there (half the time
+ * left alone, so a randomized kit is still a kit); levels, the whole kit and the colour's choice of
+ * kind kept in a usable band */
+function randomOf(p) {
+  const [id, , , def, min, max, step] = p;
+  if (Math.random() < 0.45) return def;
+  if (id === "COL") return [0, 4, 6, 7, 1, 2, 3, 5][Math.floor(Math.random() * (Math.random() < 0.7 ? 4 : 8))];
+  if (id.startsWith("L_") || id === "OUT") return +(def * (0.6 + 0.8 * Math.random())).toFixed(2);
+  if (id.startsWith("E_") && id.endsWith("_G")) return Math.random() < 0.6 ? def : Math.round(30 + Math.random() * 600);
+  const u = (Math.random() + Math.random() + Math.random()) / 3 * 2 - 1;     /* -1..1, most near 0 */
+  let v = u < 0 ? def + u * (def - min) * 0.7 : def + u * (max - def) * 0.45;
+  v = Math.min(max, Math.max(min, v));
+  return step >= 1 ? Math.round(v) : +v.toFixed(step >= 0.1 ? 1 : 2);
+}
+$("randall").onclick = () => PARAMS.forEach((p, i) => setVal(i, randomOf(p)));
 $("reseteverything").onclick = () => {
   PARAMS.forEach((p, i) => setVal(i, p[3]));
   setClean(false);
@@ -367,7 +413,7 @@ function codeString() {
   const parts = ["GK1"];
   PARAMS.forEach((p, i) => { if (Math.abs(val[i] - p[3]) > 1e-9) parts.push(`${p[0]}=${+val[i].toFixed(decimals(p[6]))}`); });
   const pn = (PIECES.find(x => x[0] === pieceIdx) || [0, "?"])[1];
-  const ctxs = `@${pn.replace(/[;=@]/g, "")}|g${groove}|a${chan[0]?.toFixed(2)}|t${chan[1]?.toFixed(2)}|l${chan[2]?.toFixed(2)}|r${chan[3]?.toFixed(2)}|c${chan[7]?.toFixed(2)}|m${macro}${dist >= 0 ? "|d" + dist : ""}`;
+  const ctxs = `@${pn.replace(/[;=@]/g, "")}|g${groove}|a${chan[0]?.toFixed(2)}|t${chan[1]?.toFixed(2)}|l${chan[2]?.toFixed(2)}|r${chan[3]?.toFixed(2)}|c${chan[7]?.toFixed(2)}|m${macro}${dist >= 0 ? "|d" + dist : ""}|k${rate}`;
   parts.push(ctxs);
   return parts.join(";") + (patOn ? "  " + patString() : "");
 }

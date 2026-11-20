@@ -190,6 +190,8 @@ typedef struct {
 	float up_prev, up_lp, c_l2, c_l3;     /* the last 12 kHz sample (for the 24 kHz rise); two more LFOs */
 	uint8_t eo_k, eo_s, eo_h;      /* the euclidean rings turned by the macro */
 	uint8_t r_tom;                 /* the roll's snare is playing toms */
+	float e_lvl[8], e_t[8];        /* each sound's envelope (the tuning page's ADSR) */
+	uint8_t e_st[8];
 	kit_snare rs;
 } kit_state;
 

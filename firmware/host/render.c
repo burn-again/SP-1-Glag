@@ -43,6 +43,15 @@ int main(int argc, char **argv)
 		gl_kit_solo(atoi(getenv("KIT")));
 	if (getenv("KCOL"))      /* KCOL=0..7: the Kit's colour (none, comb, resonators, TZFM, soggy, metal, soggy + Chebyshev = the default, comb-soggy + low Chebyshev) */
 		gl_kit_color(atoi(getenv("KCOL")));
+	if (getenv("KT")) {      /* KT=index:value,... : the Kit's tuning numbers (tune/params.py order) */
+		char buf[512];
+		snprintf(buf, sizeof buf, "%s", getenv("KT"));
+		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
+			int i = 0; float v = 0;
+			if (sscanf(t, "%d:%f", &i, &v) == 2)
+				gl_kit_tune(i, v);
+		}
+	}
 	if (getenv("KROT"))      /* KROT=1: the Kit rotates on every phrase */
 		gl_kit_rotate(1);
 	if (getenv("CHAR"))

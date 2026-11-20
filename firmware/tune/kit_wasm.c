@@ -18,6 +18,28 @@ int memcmp(const void *a, const void *b, size_t n)
 	return 0;
 }
 
+/* powf, for the Kit's coefficients at 16 kHz (the firmware's compiler folds them; clang here may not):
+ * x^y = e^(y ln x), ln by halving to [1, 2) and the atanh series, e^ by halving and the Taylor series */
+float powf(float x, float y)
+{
+	if (x <= 0.0f)
+		return 0.0f;
+	double m = x, l = 0.0;
+	int e = 0;
+	while (m >= 2.0) { m *= 0.5; e++; }
+	while (m < 1.0) { m *= 2.0; e--; }
+	double z = (m - 1.0) / (m + 1.0), z2 = z * z, t = z;
+	for (int k = 1; k < 30; k += 2) { l += t / k; t *= z2; }
+	l = 2.0 * l + e * 0.69314718055994531;
+	double a = y * l;
+	int h = 0;
+	while (a > 0.5 || a < -0.5) { a *= 0.5; h++; }
+	double r = 1.0, term = 1.0;
+	for (int k = 1; k < 20; k++) { term *= a / k; r += term; }
+	while (h--) r *= r;
+	return (float)r;
+}
+
 static gl_patch patch;
 static uint8_t lvl_saved[GL_NCH];
 static int solo, piece;

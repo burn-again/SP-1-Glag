@@ -4,8 +4,11 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p build
-clang --target=wasm32 -O2 -nostdlib -ffreestanding -fno-builtin -I../web/include -I../glag -Wall -Wextra -DGL_DEMO_PIECES \
-	-Wl,--no-entry -Wl,--export-dynamic -Wl,--strip-all -o build/kit.wasm kit_wasm.c ../glag/glag_engine.c
+# the Kit at each rate it can run at (12, 16, 24 kHz: KIT_KSUB), so the page can switch between them
+for k in 12 16 24; do
+	clang --target=wasm32 -O2 -nostdlib -ffreestanding -fno-builtin -I../web/include -I../glag -Wall -Wextra -DGL_DEMO_PIECES -DKIT_KSUB=$k \
+		-Wl,--no-entry -Wl,--export-dynamic -Wl,--strip-all -o build/kit$k.wasm kit_wasm.c ../glag/glag_engine.c
+done
 python3 - <<'PY'
 import base64, json, re
 from params import P
@@ -17,7 +20,7 @@ kit = open('../glag/glag_kit.h').read()
 ids = re.findall(r'\tKT_(\w+),', kit[kit.index('enum {\n\tKT_'):kit.index('KT_COUNT')])
 assert ids == [p[0] for p in P], 'params.py and glag_kit.h differ'
 page = open('tuner.html').read()
-page = page.replace('@@WASM@@', base64.b64encode(open('build/kit.wasm', 'rb').read()).decode())
+page = page.replace('@@WASM@@', json.dumps({k: base64.b64encode(open('build/kit%s.wasm' % k, 'rb').read()).decode() for k in ('12', '16', '24')}))
 page = page.replace('@@PARAMS@@', json.dumps([list(p) for p in P]))
 page = page.replace('@@PIECES@@', json.dumps(pieces))
 open('build/glag-kit-tuner.html', 'w').write(page)
