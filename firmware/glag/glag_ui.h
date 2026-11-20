@@ -57,7 +57,7 @@
  *   HOME                 FFWD tap: freeze on/off (latched); FFWD held: freeze until released
  *                        RWD held: the record slows to 10 BPM over 10 s; release springs back
  *                        RWD tap while resting or frozen: the crank, on to the next step where
- *                        something plays (a bar at most), played now: a music box by hand
+ *                        something plays (a bar at most; not the drums), played now: a music box by hand
  *   HARMONY              the rocker alone does nothing (kept for later)
  *   HOME (only; elsewhere •• + the rocker is kept for later)
  *                        •• + FFWD: randomize the piece        •• + RWD: undo (randomize or piece)

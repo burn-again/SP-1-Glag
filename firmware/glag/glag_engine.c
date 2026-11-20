@@ -3485,7 +3485,8 @@ static inline float macro_trem(int c)
 
 #include "glag_play.h"
 
-/* one sixteenth of the clock: the bar's chord, every channel's step (when play), the pump */
+/* one sixteenth of the clock: the bar's chord, every channel's step (play: 1; 2, the crank's,
+ * leaves the drums out: they add little to a frozen space and a tap on a hat is only a click) */
 static void clock_step(int play)
 {
 	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
@@ -3494,7 +3495,7 @@ static void clock_step(int play)
 	}
 	if (play)
 		for (int c = 0; c < GL_NCH; c++)
-			if (!CH[c].fading) {
+			if (!CH[c].fading && !(play == 2 && CH[c].voice == GV_PULSE)) {
 				/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
 				uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
 				if (step_n % dv == 0u) {
@@ -3506,7 +3507,7 @@ static void clock_step(int play)
 						chan_step(&CH[c], c, step_n / dv);
 				}
 			}
-	if (play)
+	if (play == 1)
 		pump_step(step_n);                    /* Playworld's pump on its own clock */
 	if ((step_n & 15u) == 0u)
 		arp_bar();                            /* arp mode on or off: on the bar */
@@ -3648,7 +3649,7 @@ static void control(float dt)
 		crank_open = 0.5f;                    /* frozen: the space takes this note in, then holds again */
 		uint32_t before = notes_fired;
 		for (int k = 0; k < 16 && notes_fired == before; k++)
-			clock_step(1);
+			clock_step(2);                    /* (not the drums) */
 	}
 	for (int c = 0; c < GL_NCH; c++) {
 		chan_control(&CH[c], c, dt);

@@ -103,7 +103,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | Home | FFWD tap | freeze, latched; tap again to let go. Freeze holds the space, not the notes: no new notes, the ones sounding ring out, the reverb rings forever and the echo's tape loop goes round as it is (no new input, no loss) |
 | | FFWD held | freeze until you let go |
 | | RWD held | the record slows to 10 BPM over 10 s, pitch with it; let go and it springs back |
-| | RWD tap, resting or frozen | the crank: on to the next step where something plays (a bar ahead at most), played now: a music box turned by hand (the chords move on as the bars pass). Frozen, the echo and reverb open to that note for half a second, take it in, and hold again: the frozen wash grows a note a tap |
+| | RWD tap, resting or frozen | the crank: on to the next step where something plays (a bar ahead at most; the drums left out), played now: a music box turned by hand (the chords move on as the bars pass). Frozen, the echo and reverb open to that note for half a second, take it in, and hold again: the frozen wash grows a note a tap |
 | Home | •• + FFWD | randomize the piece (voices kept, filter left open) |
 | | •• + FFWD held 3 s | the piece's macro scene: every channel takes its macro step from it |
 | | •• + RWD | undo the last randomize or piece change (again = redo) |
