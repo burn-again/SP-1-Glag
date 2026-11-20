@@ -475,6 +475,7 @@ static void shuffle_list(uint32_t now)
 		demo_list[j] = t;
 	}
 }
+static uint8_t shuf_was[4];             /* Playworld's modes before shuffle: song, arp, pump, texture */
 static void shuffle_settings(void)
 {
 	/* song mode, always, with an arrangement of its own */
@@ -650,6 +651,22 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		for (int b = GB_T1; b <= GB_PLAY; b++)
 			stop |= PRESSED(b) != 0;
 		if (stop) {
+			if (demo_on == 2) {
+				/* shuffle switched Playworld's modes on and off at random: back as they were */
+				w_song = shuf_was[0]; gl_world(GW_SONG, w_song ? 1.0f : 0.0f);
+				w_arp = shuf_was[1]; gl_world(GW_ARP, w_arp ? 1.0f : 0.0f);
+				w_pump = shuf_was[2]; gl_world(GW_PUMP, w_pump ? 1.0f : 0.0f);
+				w_tex = shuf_was[3]; gl_world(GW_TEXTURE, (float)w_tex);
+				gl_world(GW_AUTOF, 0.0f);
+				if (w_song)
+					world_apply_all(0);
+				if (w_arp)
+					world_apply_all(1);
+				if (w_pump)
+					world_apply_all(2);
+				if (w_tex)
+					world_apply_all(3);
+			}
 			demo_on = 0;
 			gl_world(GW_KEY_HOLD, 0.0f);
 			if (PRESSED(GB_PLAY))
@@ -796,6 +813,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	    now - down_at[GB_PLAY] >= DEMO_HOLD_MS && !demo_on) {
 		go(play_prev_page, chan, in);                 /* (the Playworld step on the way is undone) */
 		demo_on = now - down_at[GB_PLAY] >= SHUF_HOLD_MS ? 2 : 1;
+		if (demo_on == 2) {                      /* what shuffle will change, to put back after */
+			shuf_was[0] = (uint8_t)w_song; shuf_was[1] = (uint8_t)w_arp;
+			shuf_was[2] = (uint8_t)w_pump; shuf_was[3] = (uint8_t)w_tex;
+		}
 		demo_idx = 0;
 		if (demo_on == 1) {                          /* the album: the AMB-1 pieces, each in its key */
 			demo_n = DEMO_COUNT;
@@ -921,6 +942,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				cur.space[GL_SP_FLAGS] = (uint8_t)((f & ~(3u << 5)) | (unsigned)(k << 5));
 				dirty = 1;
 				show_idx = k;
+				say(SH_INDEX, now, 1200);
+			} else if (on_channel() && cur.voice[chan] == GV_KIT) {   /* the Kit: its tuning */
+				uint8_t v = (uint8_t)((cur.space[GL_SP_KIT] + 1u) % (unsigned)gl_kit_ntunings());
+				cur.space[GL_SP_KIT] = v;
+				dirty = 1;
+				show_idx = v;
 				say(SH_INDEX, now, 1200);
 			} else if (on_channel()) {          /* this channel's time division: 1, 1/2, 1/3, 1/4 */
 				uint8_t x = cur.chx[chan], v = (uint8_t)((GL_CHX_DIV(x) + 1u) & 3u);

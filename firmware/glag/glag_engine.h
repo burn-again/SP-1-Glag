@@ -81,7 +81,7 @@ enum gl_reverb { GR_HALL, GR_CHAMBER, GR_SHIMMER, GR_BLOOM, GR_COUNT };
 enum gl_shimmer { GS_OCTAVE, GS_FIFTH, GS_SEVENTH, GS_COUNT };
 #define GL_NECHO 9                      /* a dotted quarter, a half, a dotted half, a bar, two bars, an eighth, a dotted eighth, a quarter, the string */
 #define GL_ECHO_STRING 8                /* the echo as a plucked string: one cycle of the chord's root */
-enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_NSP = 4 };
+enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_SP_KIT, GL_NSP = 5 };   /* GL_SP_KIT: the Kit's tuning (0 the firmware's) */
 #define GL_FLAG_REVERSE 1u              /* space[GL_SP_FLAGS]: reverse swells, ping-pong echo */
 #define GL_FLAG_PINGPONG 2u
 /* bits 2-4: key travel (0 off, 1 up a fifth, 2 lifts, 3 relative, 4 drops); bits 5-6: the macros'
@@ -162,6 +162,10 @@ int gl_kit_tunes(void);               /* how many there are */
  * Nord, roll, tom root, third, fifth, high), steps 0-31, v 0 off, 1 on, 2 accent */
 void gl_kit_pattern(int row, int step, int v);
 void gl_kit_pattern_mode(int on, int len, float swing);
+/* the Kit's tunings (sets of its numbers, glag_kit.h): a patch's space[GL_SP_KIT] picks one */
+int gl_kit_ntunings(void);
+const char *gl_kit_tuning_name(int t);
+void gl_kit_tuning_lock(int on);      /* the tuning page: patches leave the Kit's numbers alone */
 int gl_kit_pattern_pos(void);
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
@@ -204,7 +208,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 81                   /* an audition build: sixty-five more (five of them labs) */
+#define GL_NPIECES 86                   /* an audition build: seventy more (five of them labs) */
 #else
 #define GL_NPIECES 16
 #endif

@@ -22,16 +22,23 @@
  * 13) and drift against each other. */
 
 /* The Kit's own rate: KIT_KSUB samples a millisecond (12, 16 or 24: 12, 16 or 24 kHz; the default
- * 12, as its colour shuts above ~5.6 kHz anyway), raised to the channel's 24 kHz at the end
+ * 16, where the tunings were made), raised to the channel's 24 kHz at the end
  * (kit_render). KP(a) carries a one-pole's coefficient, written for 24 kHz, to the Kit's rate
  * (folded by the compiler). */
 #ifndef KIT_KSUB
-#define KIT_KSUB 12
+#define KIT_KSUB 16
 #endif
 #define KSUB ((uint32_t)KIT_KSUB)
 #define KSR (VSR * (float)KIT_KSUB / (float)VSUB)
 #define KRAT ((float)VSUB / (float)KIT_KSUB)
 #define KP(a) (1.0f - __builtin_powf(1.0f - (a), KRAT))
+/* the same for a coefficient only known at run time (a tuning's): no powf in the firmware, so by
+ * the engine's own exp2 and log2 */
+static inline float kpv(float a)
+{
+	float b = 1.0f - a;
+	return b <= 0.0f ? 1.0f : 1.0f - fexp2(KRAT * flog2(b));
+}
 static inline uint32_t kinc(float hz) { return (uint32_t)(hz * (4294967296.0f / KSR)); }
 static uint32_t kit_r = 0x6D2B79F5u;
 static inline float kn(void)
@@ -360,6 +367,36 @@ static float KT[KT_COUNT] = {
 	2000.0f,   /* E_TOMS_G: Toms Env gate */
 	20.0f,   /* E_TOMS_R: Toms Env release */
 };
+/* @@KIT_TUNINGS (written by tune/gen_tunings.py from tune/tunings.py: edit those) */
+#define KIT_NTUNE 6
+static const char *const KIT_TUNE_NAME[KIT_NTUNE] = {"Firmware", "Cumbia Bell", "Brush Boom", "Brush Comb", "Brush Comb Wet", "Drill Shimmer"};
+static const float KIT_TUNE[KIT_NTUNE][KT_COUNT] = {
+	{ /* Firmware */
+		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.6f, 1.1f, 1.5f, 1.0f, 6.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
+	{ /* Cumbia Bell */
+		2.81f, 0.22f, 0.68f, 1.11f, 0.78f, 1.26f, 1.0f, 0.72f, 0.73f, -9.1f, 1.0f, 2.08f, 1.27f, 1.0f, -16.0f, 1.0f, 1.0f, 1.0f, 1.0f, 10.0f, 4.15f, 2.43f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 0.72f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 2.0f, 3.0f, 1.0f, 1.0f, 0.3f, 5.0f, 0.57f, 5.73f, 2.0f, 426.0f, 3.4f, 134.0f, 0.15f, 5.74f, 0.49f, 1.87f, 0.08f, 0.64f, 16.86f, 0.06f, 1.0f, 189.0f, 0.37f, 1.02f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.99f, 2000.0f, 221.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 16.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 20.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f},
+	{ /* Brush Boom */
+		4.0f, 0.17f, 0.68f, 1.11f, 0.78f, 1.26f, 0.09f, 0.72f, 0.73f, -2.6f, 1.0f, 6.8f, 1.36f, 0.0f, -12.5f, 1.0f, 5.23f, 0.04f, 2.56f, 9.61f, 8.56f, 7.89f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 7.2f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 1.0f, 9.0f, 7.0f, 1.0f, 0.46f, 3.19f, 1.11f, 3.74f, 0.0f, 255.0f, 0.95f, 892.0f, 2.0f, 5.74f, 6.44f, 0.28f, 1.74f, 4.99f, 2.59f, 0.94f, 0.19f, 1560.0f, 0.22f, 1.07f, 58.0f, 1697.0f, 0.79f, 191.0f, 1031.0f, 336.0f, 1000.0f, 0.31f, 365.0f, 1471.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 1475.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 1816.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 1372.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 1479.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f},
+	{ /* Brush Comb */
+		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 3000.0f, 1.85f, 1000.0f, 0.69f, 3.55f, 0.38f, 0.07f, 0.24f, 6.0f, 6.72f, 0.31f, 0.85f, 672.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+	{ /* Brush Comb Wet */
+		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 443.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 20.0f, 0.85f, 0.19f, 745.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+	{ /* Drill Shimmer */
+		1.28f, 0.32f, 1.08f, 0.76f, 0.62f, 0.56f, 0.36f, 1.77f, 0.32f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.9f, 1.0f, 0.57f, 1.27f, 0.39f, 2.69f, 1.2f, 0.66f, 1.89f, 1.1f, 0.9f, 0.25f, 4.67f, 0.65f, -1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 2.0f, 1191.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 0.28f, 0.21f, 1.0f, 745.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 426.0f, 17.0f, 219.0f, 0.48f, 1138.0f, 1228.0f, 127.0f, 1444.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 1580.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+};
+/* @@END_KIT_TUNINGS */
+static int kit_tune_cur, kit_tune_lock;          /* (KT starts at tuning 0's values) */
+static void kit_tuning(int t)
+{
+	if (t < 0 || t >= KIT_NTUNE)
+		t = 0;
+	for (int i = 0; i < KT_COUNT; i++)
+		KT[i] = KIT_TUNE[t][i];
+	kit_tune_cur = t;
+}
+int gl_kit_ntunings(void) { return KIT_NTUNE; }
+const char *gl_kit_tuning_name(int t) { return KIT_TUNE_NAME[(unsigned)t < KIT_NTUNE ? t : 0]; }
+void gl_kit_tuning_lock(int on) { kit_tune_lock = on; }
 void gl_kit_tune(int id, float v) { if ((unsigned)id < KT_COUNT) KT[id] = v; }
 int gl_kit_tunes(void) { return KT_COUNT; }
 
@@ -988,7 +1025,7 @@ static void kit_color(chan *c, float *A)
 		tgt *= 1.0f + 0.03f * lw * sin_u((uint32_t)(k->c_lfo * 4294967296.0f));
 		if (k->c_d1 < 2.0f)
 			k->c_d1 = tgt;
-		const float fb = -clampf(KT[KT_COMB_FB] + 0.2f * lng, 0.0f, 0.97f), damp = KP(KT[KT_COMB_DAMP]), dull = KP(0.25f), lowk = KP(clampf(KT[KT_LOW_HZ] * (6.2832f / 24000.0f), 0.005f, 0.5f));
+		const float fb = -clampf(KT[KT_COMB_FB] + 0.2f * lng, 0.0f, 0.97f), damp = kpv(KT[KT_COMB_DAMP]), dull = KP(0.25f), lowk = kpv(clampf(KT[KT_LOW_HZ] * (6.2832f / 24000.0f), 0.005f, 0.5f));
 		float d = k->c_d1, l1 = k->c_lp1, l2 = k->c_lp2, lo = k->c_s1, dc = k->c_dc;
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {

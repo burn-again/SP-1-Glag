@@ -50,7 +50,9 @@ static int acc_n;
 
 static void post(void) { gl_post_patch(&patch); }
 
-EXPORT void kt_init(uint32_t seed) { gl_init(seed); }
+EXPORT void kt_init(uint32_t seed) { gl_init(seed); gl_kit_tuning_lock(1); }   /* (the page owns the Kit's numbers) */
+/* which tuning a piece carries (0 the firmware's) */
+EXPORT int kt_piece_tune(int i) { gl_patch p; gl_piece(i, &p); return p.space[GL_SP_KIT]; }
 EXPORT int kt_tunes(void) { return gl_kit_tunes(); }
 EXPORT void kt_set(int id, float v) { gl_kit_tune(id, v); }
 /* a piece (its macros as written), the Kit on channel 1 */

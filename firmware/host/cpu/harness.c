@@ -41,6 +41,9 @@ int main(void)
 	for (int c = 0; c < 4; c++)
 		if (cfg_mute & (1u << c))
 			p.ch[c][CP_LEVEL] = 0.0f;
+#ifdef KTUNE
+	p.space[GL_SP_KIT] = KTUNE;      /* one of the Kit's tunings */
+#endif
 	gl_post_patch(&p);
 	if (cfg_dist != 0xFFFF)
 		gl_dist(cfg_dist & 15, (cfg_dist >> 4) & 15, (cfg_dist >> 8) & 1);

@@ -3603,6 +3603,8 @@ static void control(float dt)
 		P = post_buf[s & 1u];
 		Pb = P;
 		post_seen = s;
+		if (!kit_tune_lock && P.space[GL_SP_KIT] != kit_tune_cur)
+			kit_tuning(P.space[GL_SP_KIT]);       /* the Kit's tuning, as the patch has it */
 		harmony_update();
 		derive();
 	}
@@ -4017,6 +4019,7 @@ typedef struct {
 	uint8_t scene_s;
 	uint8_t flags;             /* space[GL_SP_FLAGS]: reverse, ping-pong, key travel, macro shape */
 	uint8_t chx[GL_NCH];       /* per channel: time division and interval */
+	uint8_t ktune;             /* the Kit's tuning (glag_kit.h; 0 the firmware's) */
 } recipe;
 
 static const recipe PIECES[GL_NPIECES] = {
@@ -4027,75 +4030,75 @@ static const recipe PIECES[GL_NPIECES] = {
 	{"Garden", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 40, 28, 50, 27, 65, 50, 20, 60}, {40, 50, 55, 50, 45, 65, 50, 25, 65},
 	  {35, 30, 85, 50, 9, 26, 50, 35, 45}, {35, 50, 40, 50, 14, 26, 50, 0, 40}},
-	 {52, 45, 68, 50, 2, 1, 57, 52}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {2, 2, 1, 1}, 12, 0, {0, 0, 0, 0}},
+	 {52, 45, 68, 50, 2, 1, 57, 52}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {2, 2, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
 	/* Departures: slowed bells an octave down over a quiet pad, as 1/1 */
 	{"Departures", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 20, 25, 50, 18, 70, 50, 20, 35}, {35, 14, 55, 25, 30, 70, 50, 2, 75},
 	  {35, 30, 85, 50, 6, 28, 50, 25, 0}, {0, 40, 40, 50, 9, 28, 50, 0, 0}},
-	 {40, 30, 77, 50, 1, 0, 44, 45}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {2, 3, 0, 0}, 16, 0, {0, 0, 0, 0}},
+	 {40, 30, 77, 50, 1, 0, 44, 45}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {2, 3, 0, 0}, 16, 0, {0, 0, 0, 0}, 0},
 	/* Voices: only the sung pad on unequal loops and a low bass, as 2/1 */
 	{"Voices", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 67, 32, 50, 12, 80, 50, 70, 85}, {30, 34, 55, 50, 20, 80, 50, 15, 0},
 	  {35, 30, 85, 25, 4, 32, 50, 30, 25}, {0, 40, 40, 50, 6, 32, 50, 0, 0}},
-	 {36, 20, 85, 50, 5, 5, 36, 52}, {GR_SHIMMER, GS_FIFTH, 4}, {0, 0, 0, 0}, 0, {3, 0, 1, 0}, 16, 0, {0, 0, 0, 0}},
+	 {36, 20, 85, 50, 5, 5, 36, 52}, {GR_SHIMMER, GS_FIFTH, 4}, {0, 0, 0, 0}, 0, {3, 0, 1, 0}, 16, 0, {0, 0, 0, 0}, 0},
 	/* Afternoon: a bright pad, busier bells, a light pulse */
 	{"Afternoon", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 60, 23, 50, 30, 60, 50, 20, 50}, {55, 58, 55, 50, 50, 60, 50, 30, 65},
 	  {35, 30, 85, 50, 10, 24, 50, 40, 35}, {30, 65, 40, 50, 15, 24, 50, 8, 25}},
-	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {1, 3, 1, 2}, 8, 0, {0, 0, 0, 0}},
+	 {64, 50, 60, 50, 7, 3, 61, 60}, {GR_HALL, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {1, 3, 1, 2}, 8, 0, {0, 0, 0, 0}, 0},
 	/* Night Bus: the pulse forward, metallic bells, short echoes */
 	{"Night Bus", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 35, 18, 50, 33, 55, 50, 20, 45}, {45, 70, 55, 50, 55, 55, 50, 100, 55},
 	  {35, 30, 85, 50, 11, 22, 50, 45, 55}, {55, 70, 40, 50, 16, 22, 50, 15, 60}},
-	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {1, 2, 1, 3}, 6, 0, {0, 0, 0, 0}},
+	 {76, 55, 51, 50, 9, 5, 65, 70}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {1, 2, 1, 3}, 6, 0, {0, 0, 0, 0}, 0},
 	/* Shoreline: dark, round bells lost in long echoes, as 2/2 */
 	{"Shoreline", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 30, 37, 50, 51, 55, 50, 20, 40}, {30, 10, 55, 50, 85, 55, 50, 0, 60},
 	  {35, 30, 85, 50, 17, 22, 50, 20, 30}, {0, 30, 40, 50, 26, 22, 50, 0, 0}},
-	 {44, 85, 94, 50, 4, 6, 44, 72}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {2, 3, 1, 0}, 12, 0, {0, 0, 0, 0}},
+	 {44, 85, 94, 50, 4, 6, 44, 72}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {2, 3, 1, 0}, 12, 0, {0, 0, 0, 0}, 0},
 	/* Glass: clangy bells an octave up, dense */
 	{"Glass", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 55, 21, 50, 27, 65, 50, 20, 35}, {60, 82, 55, 75, 45, 65, 50, 45, 80},
 	  {35, 30, 85, 75, 9, 26, 50, 30, 30}, {25, 85, 40, 50, 14, 26, 50, 5, 20}},
-	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {1, 4, 1, 2}, 6, 0, {0, 0, 0, 0}},
+	 {56, 45, 68, 50, 3, 7, 57, 62}, {GR_SHIMMER, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {1, 4, 1, 2}, 6, 0, {0, 0, 0, 0}, 0},
 	/* Tides: the most changeable */
 	{"Tides", {GV_PAD, GV_BELLS, GV_BASS, GV_PULSE},
 	 {{75, 60, 28, 50, 30, 65, 50, 70, 55}, {45, 54, 55, 50, 50, 65, 50, 28, 60},
 	  {35, 30, 85, 50, 10, 26, 50, 55, 40}, {40, 50, 40, 50, 15, 26, 50, 5, 35}},
-	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 4, 4, 4}, 10, 0, {0, 0, 0, 0}},
+	 {50, 50, 77, 50, 10, 4, 70, 95}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 4, 4, 4}, 10, 0, {0, 0, 0, 0}, 0},
 	/* ---- Glag's own ---- */
 	{"Gate Seven", {GV_PAD, GV_PIANO, GV_DRONE, GV_BELLS},
 	 {{40, 30, 75, 50, 20, 80, 50, 10, 60}, {35, 35, 60, 50, 55, 70, 45, 0, 65},
 	  {40, 35, 30, 50, 0, 60, 50, 0, 45}, {25, 30, 70, 75, 50, 75, 50, 25, 50}},
-	 {40, 50, 75, 50, 0, 0, 25, 40}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {40, 50, 75, 50, 0, 0, 25, 40}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Long Wait", {GV_DRONE, GV_FLUTE, GV_PAD, GV_KALIMBA},
 	 {{30, 45, 50, 50, 10, 70, 50, 0, 60}, {25, 35, 80, 50, 60, 80, 40, 40, 55},
 	  {30, 25, 90, 75, 10, 80, 50, 60, 45}, {30, 40, 40, 50, 60, 60, 65, 50, 45}},
-	 {30, 55, 85, 50, 9, 5, 15, 55}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {30, 55, 85, 50, 9, 5, 15, 55}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Night Flight", {GV_PAD, GV_KALIMBA, GV_FLUTE, GV_DRONE},
 	 {{45, 20, 85, 25, 20, 85, 50, 0, 60}, {40, 30, 60, 50, 65, 70, 35, 30, 50},
 	  {20, 30, 90, 50, 60, 85, 65, 60, 50}, {25, 20, 40, 25, 0, 50, 50, 0, 40}},
-	 {32, 60, 80, 50, 4, 7, 20, 45}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {32, 60, 80, 50, 4, 7, 20, 45}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Lounge", {GV_PIANO, GV_MARIMBA, GV_PAD, GV_FLUTE},
 	 {{45, 30, 70, 50, 40, 60, 40, 0, 60}, {25, 25, 45, 75, 50, 70, 65, 70, 40},
 	  {35, 40, 70, 25, 20, 70, 50, 30, 55}, {25, 50, 60, 75, 55, 75, 50, 50, 45}},
-	 {42, 45, 70, 50, 5, 0, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {42, 45, 70, 50, 5, 0, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Rain City", {GV_SWELL, GV_EP, GV_GONG, GV_SHIMMER},
 	 {{45, 55, 75, 25, 25, 85, 50, 60, 65}, {35, 25, 55, 50, 50, 65, 40, 40, 60},
 	  {30, 45, 70, 50, 10, 70, 50, 25, 55}, {25, 50, 60, 50, 70, 80, 60, 50, 45}},
-	 {37, 60, 85, 50, 4, 5, 30, 55}, {GR_SHIMMER, GS_FIFTH, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {37, 60, 85, 50, 4, 5, 30, 55}, {GR_SHIMMER, GS_FIFTH, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Deep Water", {GV_SHIMMER, GV_TAILS, GV_GONG, GV_PAD},
 	 {{35, 45, 70, 50, 75, 85, 40, 30, 55}, {35, 55, 70, 50, 50, 75, 60, 50, 55},
 	  {25, 40, 80, 50, 15, 80, 50, 75, 50}, {40, 25, 85, 25, 15, 85, 50, 20, 50}},
-	 {28, 65, 90, 50, 2, 1, 25, 60}, {GR_SHIMMER, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {28, 65, 90, 50, 2, 1, 25, 60}, {GR_SHIMMER, GS_OCTAVE, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Lobby 84", {GV_EP, GV_PIZZ, GV_BASS, GV_SWELL},
 	 {{45, 75, 55, 50, 40, 55, 45, 70, 75}, {45, 45, 30, 50, 45, 45, 60, 50, 70},
 	  {40, 40, 50, 50, 5, 20, 50, 30, 65}, {40, 45, 60, 50, 20, 70, 50, 40, 60}},
-	 {60, 40, 55, 50, 5, 0, 35, 45}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {60, 40, 55, 50, 5, 0, 35, 45}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Long Haul", {GV_PIZZ, GV_TAILS, GV_SWELL, GV_GONG},
 	 {{55, 40, 25, 75, 60, 55, 40, 100, 70}, {30, 50, 75, 50, 40, 75, 60, 50, 68},
 	  {40, 40, 80, 25, 20, 80, 50, 70, 62}, {25, 45, 75, 50, 10, 70, 50, 0, 65}},
-	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 #ifdef GL_DEMO_PIECES
 	/* ---- audition only: six in styles (not in the firmware yet) ---- */
 	/* Berlin school: three Arp loops against each other in sixteenths, on the chord's root,
@@ -4104,66 +4107,66 @@ static const recipe PIECES[GL_NPIECES] = {
 	{"Sequencer Dawn", {GV_ARP, GV_ARP, GV_ARP, GV_PAD},
 	 {{92, 30, 25, 0, 30, 35, 45, 67, 74}, {90, 45, 30, 50, 45, 50, 30, 83, 46},
 	  {70, 55, 40, 75, 60, 60, 70, 100, 38}, {30, 30, 85, 50, 10, 75, 50, 70, 50}},
-	 {98, 45, 70, 50, 4, 5, 20, 70}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {98, 45, 70, 50, 4, 5, 20, 70}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* krautrock: a straight beat (kick on 1 and 3, snare on 2 and 4, soft dark eighth hats),
 	 * an eighth-note pedal bass (the Arp's pedal pattern, low), an organ drone, a jangle in
 	 * eighths up high, one chord */
 	{"Motorik", {GV_PULSE, GV_ARP, GV_DRONE, GV_PIZZ},
 	 {{30, 30, 20, 50, 0, 15, 50, 52, 66}, {72, 25, 30, 0, 0, 10, 50, 50, 82},
 	  {40, 45, 50, 50, 10, 45, 45, 0, 50}, {60, 50, 30, 75, 40, 45, 70, 0, 48}},
-	 {98, 25, 35, 50, 2, 4, 5, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {98, 25, 35, 50, 2, 4, 5, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* Tangerine Dream's slow space: dark, climbing */
 	{"Dark Orbit", {GV_PAD, GV_TAILS, GV_SHIMMER, GV_GONG},
 	 {{50, 30, 80, 25, 20, 80, 50, 40, 60}, {35, 50, 75, 50, 50, 75, 60, 50, 50},
 	  {30, 45, 60, 25, 60, 80, 40, 40, 40}, {30, 40, 80, 50, 15, 70, 50, 50, 55}},
-	 {36, 55, 85, 50, 2, 2, 25, 75}, {GR_SHIMMER, GS_FIFTH, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {36, 55, 85, 50, 2, 2, 25, 75}, {GR_SHIMMER, GS_FIFTH, 4}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* city pop: a root-and-octave bass in eighths (Pizz, low), four on the floor with the
 	 * snare on 2 and 4 and sixteenth hats, string-and-brass swells on major sevenths, Rhodes
 	 * fills up high; the chords moving every bar or two */
 	{"Night Drive", {GV_PIZZ, GV_PULSE, GV_SWELL, GV_EP},
 	 {{62, 45, 35, 0, 0, 10, 50, 50, 78}, {80, 45, 25, 50, 0, 15, 50, 58, 56},
 	  {50, 60, 55, 50, 15, 50, 40, 50, 56}, {60, 60, 45, 75, 30, 45, 65, 50, 62}},
-	 {84, 25, 45, 50, 5, 0, 75, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {84, 25, 45, 50, 5, 0, 75, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* lofi: dark Rhodes, a soft round bass, boom-bap drums swung hard, kalimba, the DJ
 	 * filter half closed */
 	{"Study Lamp", {GV_EP, GV_BASS, GV_PULSE, GV_KALIMBA},
 	 {{45, 22, 70, 50, 35, 45, 45, 20, 72}, {70, 15, 55, 50, 0, 10, 50, 20, 70},
 	  {60, 35, 45, 50, 10, 20, 50, 85, 62}, {30, 30, 50, 50, 45, 50, 65, 35, 40}},
-	 {56, 35, 40, 36, 10, 1, 100, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {56, 35, 40, 36, 10, 1, 100, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* experimental: glass bells in sixteenths, wandering intervals, octave leaps, all moving */
 	{"Static Garden", {GV_BELLS, GV_DRONE, GV_TAILS, GV_PIZZ},
 	 {{30, 70, 50, 75, 60, 65, 40, 100, 50}, {40, 60, 50, 25, 10, 60, 50, 100, 45},
 	  {45, 60, 55, 50, 55, 65, 60, 100, 50}, {40, 50, 30, 75, 55, 55, 65, 100, 40}},
-	 {52, 60, 75, 50, 1, 7, 80, 95}, {GR_BLOOM, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {52, 60, 75, 50, 1, 7, 80, 95}, {GR_BLOOM, GS_OCTAVE, 2}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	/* ---- audition only: built around the channel macros at full ---- */
 	/* four plucks whose metal, octave and density never sit still: glass in a kaleidoscope */
 	{"Kaleidoscope", {GV_BELLS, GV_MARIMBA, GV_KALIMBA, GV_PIZZ},
 	 {{60, 50, 45, 75, 35, 55, 30, 50, 66}, {60, 50, 40, 50, 30, 50, 70, 50, 72},
 	  {55, 50, 50, 50, 40, 55, 45, 50, 66}, {55, 50, 30, 75, 40, 50, 60, 30, 55}},
-	 {52, 40, 65, 50, 7, 3, 40, 60}, {GR_HALL, GS_OCTAVE, 1}, {4, 4, 4, 4}, 6, {4, 4, 4, 4}, 6, 0, {0, 0, 0, 0}},
+	 {52, 40, 65, 50, 7, 3, 40, 60}, {GR_HALL, GS_OCTAVE, 1}, {4, 4, 4, 4}, 6, {4, 4, 4, 4}, 6, 0, {0, 0, 0, 0}, 0},
 	/* held sounds turning slowly through brightness, detune and breath, like weather */
 	{"Weather", {GV_PAD, GV_SWELL, GV_DRONE, GV_GONG},
 	 {{40, 45, 85, 50, 15, 80, 40, 50, 58}, {35, 50, 70, 50, 20, 70, 60, 50, 50},
 	  {40, 45, 60, 25, 10, 60, 50, 40, 45}, {30, 45, 80, 25, 15, 70, 50, 50, 45}},
-	 {22, 35, 85, 50, 2, 1, 30, 60}, {GR_BLOOM, GS_OCTAVE, 3}, {4, 4, 4, 4}, 10, {4, 4, 4, 4}, 10, 0, {0, 0, 0, 0}},
+	 {22, 35, 85, 50, 2, 1, 30, 60}, {GR_BLOOM, GS_OCTAVE, 3}, {4, 4, 4, 4}, 10, {4, 4, 4, 4}, 10, 0, {0, 0, 0, 0}, 0},
 	/* fast glides: the Rhodes' tremolo, the flute's vibrato and the piano's tine all wobbling,
 	 * a warped tape */
 	{"Wobble Room", {GV_EP, GV_PIANO, GV_FLUTE, GV_TAILS},
 	 {{70, 40, 50, 50, 35, 45, 40, 50, 78}, {55, 40, 55, 50, 30, 50, 60, 50, 68},
 	  {45, 45, 50, 50, 35, 55, 55, 50, 55}, {45, 50, 60, 25, 45, 60, 50, 50, 55}},
-	 {44, 50, 55, 40, 10, 5, 50, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {4, 4, 4, 4}, 4, {4, 4, 4, 4}, 4, 0, {0, 0, 0, 0}},
+	 {44, 50, 55, 40, 10, 5, 50, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {4, 4, 4, 4}, 4, {4, 4, 4, 4}, 4, 0, {0, 0, 0, 0}, 0},
 	/* Sequencer Dawn's loops left to wander: the macros push the Arps between their loops and
 	 * patterns, the bass between root and fifth, the pulse's hits and swing */
 	{"Drift Sequencer", {GV_ARP, GV_ARP, GV_BASS, GV_PULSE},
 	 {{85, 35, 25, 0, 30, 35, 45, 67, 70}, {75, 50, 30, 75, 50, 55, 65, 83, 45},
 	  {20, 30, 85, 50, 0, 20, 50, 40, 60}, {45, 40, 30, 50, 10, 20, 50, 60, 50}},
-	 {94, 40, 60, 50, 9, 5, 25, 60}, {GR_HALL, GS_OCTAVE, 0}, {4, 4, 2, 3}, 12, {4, 4, 2, 3}, 12, 0, {0, 0, 0, 0}},
+	 {94, 40, 60, 50, 9, 5, 25, 60}, {GR_HALL, GS_OCTAVE, 0}, {4, 4, 2, 3}, 12, {4, 4, 2, 3}, 12, 0, {0, 0, 0, 0}, 0},
 	/* quick glides on everything: euclidean hits thinning and crowding, buzzing swoops,
 	 * bells leaping octaves over a breathing pad */
 	{"Glitch Choir", {GV_PULSE, GV_SHIMMER, GV_BELLS, GV_PAD},
 	 {{55, 50, 35, 50, 20, 25, 50, 30, 66}, {50, 50, 45, 50, 40, 60, 35, 50, 52},
 	  {55, 50, 40, 75, 40, 50, 65, 75, 55}, {35, 40, 80, 50, 10, 70, 50, 50, 55}},
-	 {70, 45, 60, 50, 4, 7, 50, 70}, {GR_SHIMMER, GS_FIFTH, 1}, {0, 0, 0, 0}, 3, {4, 4, 4, 4}, 3, 0, {0, 0, 0, 0}},
+	 {70, 45, 60, 50, 4, 7, 50, 70}, {GR_SHIMMER, GS_FIFTH, 1}, {0, 0, 0, 0}, 3, {4, 4, 4, 4}, 3, 0, {0, 0, 0, 0}, 0},
 	/* ---- audition only: nods to five records, with the new modes ---- */
 	/* Autechre, Amber (1994): loop-built and simple, warm and melancholy. A detuned pad, a
 	 * seven-step Arp loop as the lead, soft swung euclidean drums, a low bass; tape echo
@@ -4172,21 +4175,21 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{35, 40, 80, 50, 15, 75, 45, 70, 53}, {70, 30, 40, 50, 45, 50, 65, 83, 48},
 	  {35, 30, 30, 50, 15, 25, 50, 30, 46}, {20, 25, 85, 50, 0, 20, 50, 40, 50}},
 	 {72, 40, 60, 50, 5, 1, 30, 55}, {GR_HALL, GS_OCTAVE, 0}, {2, 3, 1, 0}, 12, {3, 4, 2, 1}, 10,
-	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}, 0},
 	/* Aphex Twin, Selected Ambient Works II, "Blue Calx": beatless, its melodic highlight. A dark
 	 * pad, slow bells on the beat, a drone a fifth, tails; Bloom with reverse swells */
 	{"Blue Calx", {GV_PAD, GV_BELLS, GV_DRONE, GV_TAILS},
 	 {{35, 35, 85, 50, 15, 80, 50, 60, 67}, {45, 40, 60, 75, 45, 70, 40, 20, 61},
 	  {40, 35, 60, 25, 10, 60, 50, 0, 55}, {30, 40, 70, 50, 50, 70, 60, 50, 49}},
 	 {28, 45, 80, 50, 1, 5, 20, 65}, {GR_BLOOM, GS_OCTAVE, 1}, {1, 2, 0, 2}, 16, {3, 3, 2, 4}, 16,
-	 GL_FLAG_REVERSE, {0, 0, 0, 0}},
+	 GL_FLAG_REVERSE, {0, 0, 0, 0}, 0},
 	/* SAW II again, "standing in a power station on acid": a drone in octaves, gongs, a deep
 	 * pad, buzzing swoops, at 30 BPM in Phrygian; reverse swells and macros on a long rise */
 	{"Power Station", {GV_DRONE, GV_GONG, GV_PAD, GV_SHIMMER},
 	 {{50, 55, 60, 25, 10, 60, 50, 67, 60}, {30, 40, 85, 25, 20, 75, 40, 70, 55},
 	  {40, 25, 90, 25, 10, 80, 55, 80, 55}, {25, 45, 50, 50, 40, 70, 60, 60, 39}},
 	 {10, 45, 90, 50, 2, 2, 15, 75}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 2, 2, 2}, 24, {4, 4, 4, 4}, 24,
-	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
+	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}, 0},
 	/* Michael Nyman, Drowning by Numbers, "Trysting Fields": all of it from Mozart's slow movement
 	 * (K.364, C minor). Staccato strings in eighths (Pizz), an up-down Arp a third above them
 	 * (Nyman's parallel thirds), sustained strings and saxes (Swell), a bass leaning on the fifth;
@@ -4195,7 +4198,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{62, 55, 25, 50, 10, 30, 35, 0, 79}, {70, 45, 35, 50, 15, 35, 65, 17, 56},
 	  {45, 55, 60, 50, 15, 50, 50, 55, 62}, {30, 30, 70, 50, 0, 20, 50, 70, 65}},
 	 {56, 25, 45, 50, 0, 5, 65, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {0, 0, 0, 0}, 8, {1, 1, 2, 1}, 8,
-	 0, {0, 1u << 2, 0, 0}},
+	 0, {0, 1u << 2, 0, 0}, 0},
 	/* Steve Reich, Music for 18 Musicians: a steady pulse in mallets and pianos, voices and
 	 * clarinets swelling for a breath; chords moving by re-voicing and to their relative minor.
 	 * Two Arp loops of 7 and 5 against each other in sixteenths, the second a third above (they
@@ -4204,75 +4207,75 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{88, 45, 25, 50, 10, 30, 35, 83, 67}, {88, 50, 25, 75, 10, 30, 65, 100, 55},
 	  {70, 40, 25, 25, 5, 25, 50, 0, 67}, {50, 45, 70, 50, 10, 45, 50, 40, 64}},
 	 {100, 15, 40, 50, 9, 0, 35, 30}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 0, 1}, 8, {2, 2, 1, 3}, 8,
-	 (3u << 2) | (1u << 5), {0, 1u << 2, 0, 0}},
+	 (3u << 2) | (1u << 5), {0, 1u << 2, 0, 0}, 0},
 	/* ---- audition only: the four new voices, in several octaves ---- */
 	/* Juno strings in the middle, a Glow lead an octave up, a round bass, soft swung rings */
 	{"Juno Hours", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
 	 {{35, 45, 50, 50, 15, 60, 50, 30, 66}, {45, 45, 55, 75, 40, 55, 60, 30, 60},
 	  {20, 25, 80, 50, 0, 20, 50, 40, 60}, {30, 30, 30, 50, 10, 20, 50, 28, 51}},
-	 {64, 35, 55, 50, 4, 1, 45, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 3, 0, 0}, 10, {3, 4, 1, 1}, 10, 0, {0, 0, 0, 0}},
+	 {64, 35, 55, 50, 4, 1, 45, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 3, 0, 0}, 10, {3, 4, 1, 1}, 10, 0, {0, 0, 0, 0}, 0},
 	/* two Glows two octaves apart, the high one a fifth above, a pad and a kalimba between */
 	{"Glow Garden", {GV_GLOW, GV_GLOW, GV_PAD, GV_KALIMBA},
 	 {{40, 40, 70, 25, 30, 55, 35, 20, 77}, {40, 55, 60, 100, 45, 65, 65, 60, 56},
 	  {30, 35, 85, 50, 10, 75, 50, 60, 63}, {35, 50, 50, 75, 40, 55, 45, 50, 60}},
 	 {40, 45, 70, 50, 9, 3, 30, 60}, {GR_BLOOM, GS_OCTAVE, 2}, {2, 3, 0, 1}, 12, {3, 4, 2, 2}, 12,
-	 GL_FLAG_PINGPONG, {0, 2u << 2, 0, 0}},
+	 GL_FLAG_PINGPONG, {0, 2u << 2, 0, 0}, 0},
 	/* the Seq galloping low across three octaves, Juno strings high, a bass, a 4/4 pulse */
 	{"Neon Ladder", {GV_SEQ, GV_STRINGS, GV_BASS, GV_PULSE},
 	 {{75, 50, 40, 25, 35, 40, 45, 67, 57}, {30, 50, 55, 75, 20, 60, 55, 60, 47},
 	  {25, 30, 80, 50, 0, 20, 50, 50, 51}, {55, 40, 25, 50, 10, 20, 50, 60, 47}},
-	 {90, 40, 50, 50, 0, 5, 40, 55}, {GR_HALL, GS_OCTAVE, 5}, {3, 1, 0, 1}, 8, {4, 2, 1, 2}, 8, 0, {0, 0, 0, 0}},
+	 {90, 40, 50, 50, 0, 5, 40, 55}, {GR_HALL, GS_OCTAVE, 5}, {3, 1, 0, 1}, 8, {4, 2, 1, 2}, 8, 0, {0, 0, 0, 0}, 0},
 	/* the supersaw low and slow, a Glow above it, a drone, gongs: heavy, for a big moment */
 	{"Supernova", {GV_SUPER, GV_GLOW, GV_DRONE, GV_GONG},
 	 {{35, 45, 70, 25, 15, 70, 50, 50, 69}, {35, 50, 60, 75, 45, 65, 60, 40, 64},
 	  {40, 40, 60, 25, 10, 60, 50, 0, 55}, {30, 40, 80, 25, 20, 75, 45, 60, 61}},
 	 {30, 45, 80, 50, 2, 5, 25, 70}, {GR_BLOOM, GS_OCTAVE, 3}, {3, 2, 0, 1}, 16, {4, 3, 2, 2}, 16,
-	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
+	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}, 0},
 	/* strings two octaves apart (the high ones a third above), a Glow in the middle, bells */
 	{"Strings at Night", {GV_STRINGS, GV_STRINGS, GV_GLOW, GV_BELLS},
 	 {{30, 35, 60, 25, 10, 55, 40, 20, 73}, {30, 55, 50, 75, 20, 65, 60, 60, 54},
 	  {40, 45, 55, 50, 35, 55, 50, 40, 61}, {35, 45, 55, 75, 40, 60, 55, 20, 51}},
-	 {46, 40, 65, 50, 5, 0, 35, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 2, 1}, 12, {3, 3, 3, 2}, 12, 0, {0, 1u << 2, 0, 0}},
+	 {46, 40, 65, 50, 5, 0, 35, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 2, 1}, 12, {3, 3, 3, 2}, 12, 0, {0, 1u << 2, 0, 0}, 0},
 	/* ---- audition only: the new voices, after the artists we keep coming back to ---- */
 	/* Eno (Thursday Afternoon, Music for Airports): a slow sparse Glow up high, rare Juno chords
 	 * ringing out, a pad, kalimba; Bloom and two-bar echoes */
 	{"Thursday", {GV_GLOW, GV_STRINGS, GV_PAD, GV_KALIMBA},
 	 {{30, 35, 85, 75, 40, 70, 40, 15, 72}, {20, 35, 90, 50, 25, 70, 55, 25, 62},
 	  {30, 30, 85, 50, 10, 80, 50, 60, 57}, {30, 45, 60, 75, 45, 60, 60, 50, 54}},
-	 {24, 50, 80, 50, 2, 3, 20, 60}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 0, 1}, 16, {3, 2, 1, 2}, 16, 0, {0, 0, 0, 0}},
+	 {24, 50, 80, 50, 2, 3, 20, 60}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 0, 1}, 16, {3, 2, 1, 2}, 16, 0, {0, 0, 0, 0}, 0},
 	/* Tangerine Dream (Rubycon, Phaedra): the Seq bouncing octaves low in sixteenths, a slow
 	 * supersaw underneath, Juno chords on the half bar, a drone; its macro on a long rise */
 	{"Rubycon", {GV_SEQ, GV_SUPER, GV_STRINGS, GV_DRONE},
 	 {{88, 45, 35, 25, 35, 40, 40, 0, 63}, {30, 35, 75, 25, 15, 70, 50, 45, 46},
 	  {45, 40, 50, 50, 25, 55, 60, 40, 46}, {40, 40, 60, 25, 10, 60, 50, 0, 42}},
 	 {84, 40, 70, 50, 4, 2, 30, 65}, {GR_HALL, GS_OCTAVE, 0}, {3, 1, 1, 0}, 12, {4, 2, 2, 1}, 12,
-	 2u << 5, {0, 0, 0, 0}},
+	 2u << 5, {0, 0, 0, 0}, 0},
 	/* Autechre (Amber, Tri Repetae): a melancholy Glow, the Seq walking in eighths, swung
 	 * euclidean rings, Juno chords on the beat; ping-pong */
 	{"Repetae", {GV_GLOW, GV_SEQ, GV_PULSE, GV_STRINGS},
 	 {{45, 45, 60, 50, 40, 50, 40, 40, 73}, {70, 40, 40, 50, 35, 40, 60, 100, 65},
 	  {40, 30, 30, 50, 15, 25, 50, 30, 65}, {65, 40, 35, 50, 20, 50, 55, 30, 58}},
 	 {76, 40, 55, 50, 5, 1, 35, 55}, {GR_CHAMBER, GS_OCTAVE, 0}, {2, 2, 1, 1}, 10, {3, 3, 2, 2}, 10,
-	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}, 0},
 	/* Aphex Twin (Avril 14th, SAW): a near-sine Glow an octave up, Juno chords on the bar
 	 * ringing long, a dark pad, tails; reverse swells */
 	{"Avril", {GV_GLOW, GV_STRINGS, GV_PAD, GV_TAILS},
 	 {{50, 40, 65, 75, 30, 55, 45, 0, 61}, {25, 35, 85, 50, 20, 60, 55, 20, 51},
 	  {30, 30, 85, 25, 10, 80, 50, 60, 47}, {30, 40, 70, 50, 45, 65, 60, 50, 41}},
 	 {36, 40, 70, 50, 0, 0, 30, 55}, {GR_HALL, GS_OCTAVE, 2}, {1, 2, 0, 2}, 14, {2, 3, 1, 3}, 14,
-	 GL_FLAG_REVERSE, {0, 0, 0, 0}},
+	 GL_FLAG_REVERSE, {0, 0, 0, 0}, 0},
 	/* Nyman and Reich: chugging Juno chords on every eighth, the Seq in broken thirds in
 	 * sixteenths, a Glow a third above interlocking, a bass on the fifth */
 	{"Chamber Pulse", {GV_STRINGS, GV_SEQ, GV_GLOW, GV_BASS},
 	 {{88, 45, 25, 50, 10, 35, 40, 40, 60}, {88, 45, 30, 50, 15, 30, 60, 33, 47},
 	  {60, 40, 45, 75, 20, 40, 55, 40, 45}, {35, 30, 70, 50, 0, 20, 50, 70, 58}},
-	 {98, 20, 40, 50, 7, 5, 60, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {0, 1, 1, 0}, 8, {1, 2, 2, 1}, 8, 0, {0, 0, 1u << 2, 0}},
+	 {98, 20, 40, 50, 7, 5, 60, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {0, 1, 1, 0}, 8, {1, 2, 2, 1}, 8, 0, {0, 0, 1u << 2, 0}, 0},
 	/* lofi, after Study Lamp: Juno chords on the beat, a Glow, a round bass, boom-bap drums
 	 * swung hard, the DJ filter half closed */
 	{"Juno Lamp", {GV_STRINGS, GV_GLOW, GV_BASS, GV_PULSE},
 	 {{62, 30, 40, 50, 30, 45, 45, 30, 60}, {35, 35, 55, 75, 40, 50, 60, 30, 46},
 	  {70, 15, 55, 50, 0, 10, 50, 20, 64}, {60, 35, 45, 50, 10, 20, 50, 85, 55}},
-	 {56, 35, 40, 36, 10, 1, 70, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 2, 0, 0}, 10, {2, 3, 1, 1}, 10, 0, {0, 0, 0, 0}},
+	 {56, 35, 40, 36, 10, 1, 70, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 2, 0, 0}, 10, {2, 3, 1, 1}, 10, 0, {0, 0, 0, 0}, 0},
 	/* ---- audition only: more uses for the new voices ---- */
 	/* dub techno: Juno chord stabs syncopated by their macro, thrown into ping-pong echoes, a
 	 * deep bass, a soft four-on-the-floor, a dark pad */
@@ -4280,95 +4283,95 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{65, 30, 15, 50, 65, 45, 50, 40, 59}, {30, 20, 70, 50, 0, 15, 50, 30, 57},
 	  {80, 30, 25, 50, 5, 20, 50, 56, 48}, {25, 25, 85, 25, 15, 70, 50, 60, 37}},
 	 {100, 60, 55, 50, 5, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {3, 0, 0, 1}, 8, {4, 1, 1, 2}, 8,
-	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}, 0},
 	/* synthwave: a supersaw bed, the Seq bouncing octaves in sixteenths, a Glow lead, four on
 	 * the floor with a snare on 2 and 4 */
 	{"Outrun", {GV_SUPER, GV_SEQ, GV_GLOW, GV_PULSE},
 	 {{35, 45, 70, 50, 15, 55, 50, 55, 63}, {90, 50, 35, 25, 25, 35, 45, 0, 77},
 	  {50, 50, 55, 75, 35, 50, 60, 70, 69}, {80, 45, 25, 50, 5, 15, 50, 56, 74}},
-	 {80, 35, 55, 50, 9, 5, 45, 45}, {GR_HALL, GS_OCTAVE, 0}, {1, 2, 2, 0}, 8, {2, 3, 3, 1}, 8, 0, {0, 0, 0, 0}},
+	 {80, 35, 55, 50, 9, 5, 45, 45}, {GR_HALL, GS_OCTAVE, 0}, {1, 2, 2, 0}, 8, {2, 3, 3, 1}, 8, 0, {0, 0, 0, 0}, 0},
 	/* Vangelis (Blade Runner): a low brassy supersaw, a Glow lead with vibrato above, high
 	 * bells, rare Juno chords; a long hall */
 	{"Tears in Rain", {GV_SUPER, GV_GLOW, GV_BELLS, GV_STRINGS},
 	 {{30, 50, 80, 25, 20, 75, 50, 60, 63}, {40, 50, 70, 75, 45, 70, 55, 90, 63},
 	  {30, 45, 70, 75, 40, 70, 40, 75, 48}, {15, 40, 85, 50, 25, 65, 60, 50, 52}},
-	 {40, 50, 88, 50, 2, 5, 25, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 0, 1}, 14, {3, 3, 1, 2}, 14, 0, {0, 0, 0, 0}},
+	 {40, 50, 88, 50, 2, 5, 25, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 0, 1}, 14, {3, 3, 1, 2}, 14, 0, {0, 0, 0, 0}, 0},
 	/* Boards of Canada: wide Juno chords (chorus II) on the bar, a Glow, soft swung rings, a
 	 * bass; with vinyl and its warble */
 	{"Hazy Kodak", {GV_STRINGS, GV_GLOW, GV_PULSE, GV_BASS},
 	 {{30, 30, 70, 50, 25, 55, 50, 100, 68}, {40, 40, 60, 50, 40, 55, 60, 70, 55},
 	  {45, 30, 35, 50, 10, 20, 50, 35, 53}, {25, 20, 80, 50, 0, 15, 50, 40, 65}},
-	 {62, 35, 55, 40, 4, 1, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 2, 1, 0}, 12, {3, 3, 2, 1}, 12, 0, {0, 0, 0, 0}},
+	 {62, 35, 55, 40, 4, 1, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 2, 1, 0}, 12, {3, 3, 2, 1}, 12, 0, {0, 0, 0, 0}, 0},
 	/* Jean-Michel Jarre (Oxygene): the Seq bouncing, Juno chords on the half bar, a supersaw
 	 * swelling, soft euclidean rings; key travel in lifts */
 	{"Oxygen", {GV_SEQ, GV_STRINGS, GV_SUPER, GV_PULSE},
 	 {{85, 45, 35, 50, 35, 45, 40, 0, 66}, {45, 45, 60, 50, 25, 60, 60, 60, 54},
 	  {30, 40, 75, 50, 20, 70, 50, 40, 48}, {40, 35, 30, 50, 15, 25, 50, 25, 54}},
 	 {92, 40, 65, 50, 0, 5, 40, 60}, {GR_HALL, GS_OCTAVE, 0}, {2, 1, 1, 0}, 10, {3, 2, 2, 1}, 10,
-	 GL_FLAG_PINGPONG | (2u << 2), {0, 0, 0, 0}},
+	 GL_FLAG_PINGPONG | (2u << 2), {0, 0, 0, 0}, 0},
 	/* ambient techno (after Gas): a soft four-on-the-floor kick, dark Juno chords off the beat,
 	 * a pad and a drone, all in a foggy Bloom */
 	{"Fog Machine", {GV_PULSE, GV_STRINGS, GV_PAD, GV_DRONE},
 	 {{80, 20, 30, 50, 10, 45, 50, 53, 55}, {60, 25, 25, 50, 40, 60, 55, 40, 61},
 	  {25, 25, 90, 50, 10, 85, 50, 60, 48}, {35, 30, 70, 25, 10, 70, 50, 0, 44}},
-	 {98, 40, 75, 42, 7, 5, 20, 55}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 4, 1, 0}, 8, {1, 4, 2, 1}, 8, 0, {0, 0, 0, 0}},
+	 {98, 40, 75, 42, 7, 5, 20, 55}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 4, 1, 0}, 8, {1, 4, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
 	/* minimal (after Glass and Reich): two Glows a third apart in eighths, the Seq in broken
 	 * thirds, Juno chords on the bar; one key, slowly turning */
 	{"Glass Tower", {GV_GLOW, GV_GLOW, GV_SEQ, GV_STRINGS},
 	 {{95, 45, 40, 75, 15, 40, 35, 60, 68}, {95, 45, 40, 75, 15, 40, 65, 60, 60},
 	  {90, 45, 30, 50, 15, 35, 50, 33, 71}, {25, 40, 70, 50, 15, 55, 50, 40, 63}},
-	 {92, 20, 45, 50, 2, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 1, 0}, 8, {2, 2, 2, 1}, 8, 0, {0, 1u << 2, 0, 0}},
+	 {92, 20, 45, 50, 2, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 1, 0}, 8, {2, 2, 2, 1}, 8, 0, {0, 1u << 2, 0, 0}, 0},
 	/* a slow space: a supersaw two octaves down to one, a Glow far above, Juno chords ringing
 	 * long, gongs; reverse swells, macros on a long rise */
 	{"Low Orbit", {GV_SUPER, GV_GLOW, GV_STRINGS, GV_GONG},
 	 {{30, 40, 80, 25, 15, 75, 50, 50, 74}, {30, 45, 75, 100, 45, 70, 60, 60, 60},
 	  {15, 35, 90, 25, 25, 70, 45, 30, 63}, {30, 40, 80, 25, 20, 75, 50, 60, 65}},
 	 {20, 45, 85, 50, 1, 2, 15, 75}, {GR_BLOOM, GS_OCTAVE, 4}, {3, 2, 1, 1}, 20, {4, 3, 2, 2}, 20,
-	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}},
+	 GL_FLAG_REVERSE | (2u << 5), {0, 0, 0, 0}, 0},
 	/* ---- the four newest voices, and the styles asked for ---- */
 	/* Vangelis's CS-80 (Blade Runner): a Ribbon line swooping in, the hand pressing it brighter
 	 * and into vibrato; low chords, a pad, glass bells; a long hall */
 	{"Off-World", {GV_RIBBON, GV_STRINGS, GV_PAD, GV_BELLS},
 	 {{45, 55, 70, 50, 35, 75, 50, 15, 72}, {25, 35, 70, 25, 15, 70, 50, 60, 61},
 	  {40, 30, 80, 50, 10, 70, 50, 40, 55}, {40, 45, 75, 75, 40, 80, 60, 30, 55}},
-	 {30, 45, 88, 50, 2, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 1}, {2, 0, 1, 1}, 12, {4, 2, 3, 2}, 12, 0, {0, 0, 0, 0}},
+	 {30, 45, 88, 50, 2, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 1}, {2, 0, 1, 1}, 12, {4, 2, 3, 2}, 12, 0, {0, 0, 0, 0}, 0},
 	/* the Ribbon as a reed, a harmonica's nasal pulse, over rolled harp chords and a drone */
 	{"Harmonica Rain", {GV_RIBBON, GV_GLOW, GV_HARP, GV_DRONE},
 	 {{50, 45, 55, 50, 40, 60, 45, 90, 100}, {60, 40, 60, 75, 45, 70, 65, 60, 95},
 	  {60, 45, 60, 50, 30, 70, 35, 50, 100}, {30, 30, 50, 50, 0, 60, 50, 0, 55}},
-	 {40, 40, 75, 50, 7, 4, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {1, 1, 1, 0}, 10, {3, 3, 4, 1}, 10, 0, {0, 0, 0, 0}},
+	 {40, 40, 75, 50, 7, 4, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 0}, {1, 1, 1, 0}, 10, {3, 3, 4, 1}, 10, 0, {0, 0, 0, 0}, 0},
 	/* French house: a slapped Funk line, off-beat chord stabs, four on the floor, a Seq high up,
 	 * ping-pong eighths (with the pump and the auto filter in the demo) */
 	{"Disco Filter", {GV_FUNK, GV_STRINGS, GV_PULSE, GV_SEQ},
 	 {{70, 40, 35, 50, 0, 10, 50, 55, 70}, {70, 55, 30, 50, 30, 40, 50, 70, 51},
 	  {80, 55, 30, 50, 0, 15, 50, 60, 56}, {85, 40, 25, 75, 35, 30, 55, 0, 37}},
 	 {100, 30, 40, 50, 9, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 2, 0, 1}, 8, {3, 4, 2, 3}, 8,
-	 GL_FLAG_PINGPONG, {0, 0, 0, 0}},
+	 GL_FLAG_PINGPONG, {0, 0, 0, 0}, 0},
 	/* lo-fi house: dusty wide chords, a fingered Funk bass, a swung beat, an EP, the top rolled
 	 * off (with vinyl in the demo) */
 	{"Lofi House", {GV_STRINGS, GV_FUNK, GV_PULSE, GV_EP},
 	 {{50, 30, 45, 50, 35, 50, 50, 90, 55}, {45, 25, 50, 50, 0, 10, 50, 10, 69},
 	  {78, 30, 35, 50, 0, 20, 50, 75, 55}, {35, 30, 60, 50, 40, 55, 60, 40, 40}},
-	 {98, 35, 50, 40, 5, 1, 15, 30}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 1, 0, 1}, 10, {4, 2, 2, 3}, 10, 0, {0, 0, 0, 0}},
+	 {98, 35, 50, 40, 5, 1, 15, 30}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 1, 0, 1}, 10, {4, 2, 2, 3}, 10, 0, {0, 0, 0, 0}, 0},
 	/* trap at half time: a low kick, sixteenth hats, the snare on the three; a long gliding 808,
 	 * dark glass bells, a pad */
 	{"Glass Trap", {GV_PULSE, GV_BASS, GV_BELLS, GV_PAD},
 	 {{70, 60, 40, 25, 0, 15, 50, 55, 77}, {60, 10, 70, 50, 0, 5, 50, 60, 64},
 	  {65, 35, 50, 50, 40, 55, 55, 45, 60}, {30, 25, 70, 50, 10, 60, 50, 30, 44}},
-	 {50, 35, 55, 50, 1, 2, 15, 30}, {GR_HALL, GS_OCTAVE, 7}, {0, 1, 1, 0}, 8, {2, 3, 3, 2}, 8, 0, {0, 0, 0, 0}},
+	 {50, 35, 55, 50, 1, 2, 15, 30}, {GR_HALL, GS_OCTAVE, 7}, {0, 1, 1, 0}, 8, {2, 3, 3, 2}, 8, 0, {0, 0, 0, 0}, 0},
 	/* Burzum's dungeon ambient (Tomhet): a plain flute line again and again, a choir-like pad,
 	 * the harpsichord's lute stop, a drone; dark, slow, in a cold hall (tape hiss in the demo) */
 	{"Tomhet", {GV_FLUTE, GV_PAD, GV_HARPSI, GV_DRONE},
 	 {{40, 35, 70, 50, 30, 75, 45, 20, 70}, {50, 25, 85, 50, 10, 70, 50, 50, 53},
 	  {25, 30, 40, 50, 30, 65, 60, 0, 79}, {20, 25, 60, 50, 0, 50, 50, 0, 34}},
-	 {25, 40, 85, 42, 9, 5, 10, 15}, {GR_HALL, GS_OCTAVE, 3}, {0, 1, 0, 0}, 20, {2, 3, 2, 1}, 20, 0, {0, 0, 0, 0}},
+	 {25, 40, 85, 42, 9, 5, 10, 15}, {GR_HALL, GS_OCTAVE, 3}, {0, 1, 0, 0}, 20, {2, 3, 2, 1}, 20, 0, {0, 0, 0, 0}, 0},
 	/* Autechre's All End: one smeared sound for a long time, feeding back on itself: a drone,
 	 * shimmer and tails through the string echo into the Bloom, every macro slowly rising */
 	{"All End", {GV_DRONE, GV_SHIMMER, GV_TAILS, GV_SWELL},
 	 {{20, 50, 80, 50, 40, 80, 50, 25, 35}, {70, 40, 80, 50, 50, 90, 40, 50, 48},
 	  {70, 35, 80, 50, 60, 85, 60, 60, 48}, {40, 35, 90, 25, 30, 80, 50, 50, 39}},
 	 {10, 70, 92, 50, 4, 3, 30, 60}, {GR_BLOOM, GS_FIFTH, GL_ECHO_STRING}, {3, 3, 3, 3}, 30, {4, 4, 4, 4}, 40,
-	 (2u << 5), {0, 0, 0, 0}},
+	 (2u << 5), {0, 0, 0, 0}, 0},
 	/* Nyman (The Draughtsman's Contract) outdone: the harpsichord in sixteenths on 8' and 4',
 	 * strings stabbing in eighths, the Ribbon as the band's brass, a ground bass; the macros
 	 * moving in blocks, bar by bar */
@@ -4376,125 +4379,152 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{90, 70, 35, 50, 15, 35, 40, 100, 60}, {85, 65, 25, 50, 10, 35, 60, 40, 55},
 	  {60, 65, 45, 50, 15, 40, 50, 35, 55}, {80, 45, 30, 50, 0, 10, 50, 50, 66}},
 	 {92, 30, 40, 50, 2, 5, 30, 40}, {GR_CHAMBER, GS_OCTAVE, 7}, {1, 1, 2, 0}, 6, {3, 4, 3, 2}, 6,
-	 (1u << 5), {0, 0, 0, 0}},
+	 (1u << 5), {0, 0, 0, 0}, 0},
 	/* more Nyman than Nyman: two harpsichords a third apart, one in sixteenths, one in
 	 * eighths; strings driving in eighths, a running bass */
 	{"Nyman Nyman", {GV_HARPSI, GV_HARPSI, GV_STRINGS, GV_BASS},
 	 {{90, 70, 30, 50, 10, 35, 30, 50, 55}, {70, 60, 40, 50, 10, 35, 70, 100, 62},
 	  {90, 60, 20, 50, 0, 30, 50, 30, 55}, {80, 50, 25, 50, 0, 10, 50, 70, 64}},
 	 {100, 25, 35, 50, 9, 5, 40, 50}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 2, 1}, 6, {4, 3, 4, 3}, 6,
-	 (1u << 5), {0, 4, 0, 0}},
+	 (1u << 5), {0, 4, 0, 0}, 0},
 	/* harp glissandi washing up and down a Lydian scale, a Glow above, a pad and a soft bass */
 	{"Harp Lagoon", {GV_HARP, GV_GLOW, GV_PAD, GV_BASS},
 	 {{55, 50, 70, 50, 30, 70, 45, 100, 74}, {60, 45, 60, 75, 45, 70, 65, 60, 60},
 	  {45, 30, 80, 50, 10, 70, 50, 40, 54}, {30, 20, 70, 50, 0, 20, 50, 30, 66}},
-	 {40, 40, 80, 50, 0, 3, 25, 45}, {GR_SHIMMER, GS_OCTAVE, 0}, {1, 1, 0, 0}, 10, {4, 3, 2, 1}, 10, 0, {0, 0, 0, 0}},
+	 {40, 40, 80, 50, 0, 3, 25, 45}, {GR_SHIMMER, GS_OCTAVE, 0}, {1, 1, 0, 0}, 10, {4, 3, 2, 1}, 10, 0, {0, 0, 0, 0}, 0},
 	/* funk: a slapped line with the envelope filter's quack, a swung beat, chord stabs, the
 	 * Ribbon as a lead synth up high */
 	{"Funk Machine", {GV_FUNK, GV_PULSE, GV_STRINGS, GV_RIBBON},
 	 {{80, 50, 30, 50, 0, 10, 50, 90, 75}, {70, 60, 35, 50, 0, 15, 50, 70, 60},
 	  {75, 55, 25, 50, 20, 35, 55, 50, 50}, {55, 70, 40, 75, 25, 40, 45, 50, 66}},
-	 {80, 30, 35, 50, 4, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 0, 1, 1}, 8, {4, 3, 3, 3}, 8, 0, {0, 0, 0, 0}},
+	 {80, 30, 35, 50, 4, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 0, 1, 1}, 8, {4, 3, 3, 3}, 8, 0, {0, 0, 0, 0}, 0},
 	/* ---- the Kit (after the 1997 drum recipes): CHARACTER is its split, and the macro moves it;
 	 * dry, as those records' drums are (no echo, no reverb on its channel) ---- */
 	/* lofi: the core only (kick, R-8 snare, metal hat, clank), clean, with an EP and a pad */
 	{"Canvas Room", {GV_KIT, GV_EP, GV_BASS, GV_PAD},
 	 {{55, 45, 35, 50, 0, 0, 50, 15, 92}, {40, 45, 55, 50, 25, 45, 40, 40, 65},
 	  {35, 30, 80, 50, 5, 15, 50, 30, 65}, {40, 30, 70, 50, 10, 60, 60, 30, 46}},
-	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}},
+	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
 	/* the shifted hats and the clank in front, a sequence and strings behind */
 	{"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS},
 	 {{65, 60, 45, 50, 0, 0, 50, 55, 86}, {55, 45, 40, 50, 30, 35, 40, 45, 53},
 	  {45, 35, 60, 50, 0, 10, 50, 40, 66}, {30, 35, 75, 50, 15, 55, 60, 30, 38}},
-	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}},
+	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}, 0},
 	/* the whole kit: crunch, the Nord hits, rolls into each phrase, open hats; Phrygian */
 	{"Crunch Roll", {GV_KIT, GV_GLOW, GV_DRONE, GV_SEQ},
 	 {{75, 55, 55, 50, 0, 0, 50, 85, 98}, {35, 35, 65, 50, 30, 55, 35, 40, 53},
 	  {30, 25, 90, 50, 0, 45, 50, 30, 39}, {50, 50, 35, 25, 35, 30, 65, 60, 50}},
-	 {80, 40, 50, 50, 4, 2, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {2, 1, 1, 1}, 8, {4, 2, 2, 3}, 8, 0, {0, 0, 0, 0}},
+	 {80, 40, 50, 50, 4, 2, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {2, 1, 1, 1}, 8, {4, 2, 2, 3}, 8, 0, {0, 0, 0, 0}, 0},
 	/* ambient: few hits, long ones (tissue strokes, long hats), bells and a shimmer in a hall */
 	{"Tissue Hall", {GV_KIT, GV_BELLS, GV_PAD, GV_SHIMMER},
 	 {{25, 40, 50, 50, 0, 0, 50, 60, 87}, {35, 45, 60, 50, 40, 60, 40, 30, 66},
 	  {50, 30, 80, 50, 15, 70, 60, 30, 66}, {25, 40, 70, 50, 20, 60, 55, 40, 43}},
-	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}},
+	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}, 0},
 	/* ---- the Kit's grooves (•• + FFWD on its channel), each at the tempo it has in mind ---- */
 	/* UK garage two-step: 65 here, 130 felt; a swung kick that skips the 3, hats shuffling,
 	 * the funk bass's sixteenths as garage eighths, EP chords */
 	{"Two Step", {GV_KIT, GV_FUNK, GV_EP, GV_PAD},
 	 {{55, 55, 35, 50, 0, 0, 50, 30, 99}, {55, 35, 40, 50, 0, 10, 50, 20, 68},
 	  {45, 50, 45, 50, 25, 35, 40, 45, 55}, {35, 40, 60, 50, 10, 50, 60, 35, 38}},
-	 {45, 30, 40, 50, 5, 1, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {4, 0, 0, 0}},
+	 {45, 30, 40, 50, 5, 1, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {4, 0, 0, 0}, 0},
 	/* drill: 70 here, 140 felt; sliding bass (the bass's glide all the way), hats in triplet
 	 * bursts, a snare on the 3, dark strings and low bells */
 	{"Drill Night", {GV_KIT, GV_BASS, GV_STRINGS, GV_BELLS},
 	 {{60, 60, 40, 50, 0, 0, 50, 45, 90}, {40, 25, 80, 50, 0, 5, 50, 85, 67},
 	  {30, 35, 70, 50, 10, 45, 55, 30, 39}, {30, 40, 55, 25, 25, 50, 40, 40, 34}},
-	 {50, 30, 45, 50, 1, 5, 10, 30}, {GR_CHAMBER, GS_OCTAVE, 4}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}},
+	 {50, 30, 45, 50, 1, 5, 10, 30}, {GR_CHAMBER, GS_OCTAVE, 4}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}, 0},
 	/* jungle: 85 here, 170 felt; a chopped break, a sub an octave down, pads */
 	{"Jungle Pressure", {GV_KIT, GV_BASS, GV_PAD, GV_GLOW},
 	 {{70, 60, 40, 50, 0, 0, 50, 40, 79}, {35, 25, 85, 25, 0, 10, 50, 30, 59},
 	  {40, 35, 75, 50, 15, 65, 50, 40, 34}, {35, 40, 60, 50, 30, 55, 35, 40, 29}},
-	 {65, 40, 50, 50, 9, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 1, 0}, 8, {4, 2, 2, 2}, 8, 0, {12, 0, 0, 0}},
+	 {65, 40, 50, 50, 9, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 1, 0}, 8, {4, 2, 2, 2}, 8, 0, {12, 0, 0, 0}, 0},
 	/* downtempo: 85 in sixteenths, swung; a lazy kick, the snare on 2 and 4, an EP and Glow */
 	{"Slow Smoke", {GV_KIT, GV_EP, GV_BASS, GV_GLOW},
 	 {{50, 40, 40, 50, 0, 0, 50, 25, 100}, {40, 40, 55, 50, 25, 40, 40, 40, 57},
 	  {35, 30, 80, 50, 0, 10, 50, 35, 64}, {30, 35, 70, 50, 30, 55, 60, 40, 38}},
-	 {65, 35, 45, 50, 2, 1, 15, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {16, 0, 0, 0}},
+	 {65, 35, 45, 50, 2, 1, 15, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {16, 0, 0, 0}, 0},
 	/* house at 120: four on the floor, claps on 2 and 4, open hats on the off-beats, string stabs */
 	{"Warehouse", {GV_KIT, GV_BASS, GV_STRINGS, GV_PAD},
 	 {{60, 55, 35, 50, 0, 0, 50, 25, 87}, {50, 35, 45, 50, 0, 10, 50, 40, 60},
 	  {55, 55, 30, 50, 20, 40, 45, 60, 43}, {35, 40, 70, 50, 10, 55, 60, 35, 33}},
-	 {100, 30, 40, 50, 7, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {20, 0, 0, 0}},
+	 {100, 30, 40, 50, 7, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {20, 0, 0, 0}, 0},
 	/* thrash at 95 (190 felt): the skank beat, double kicks into the turnaround, the kit's
 	 * crunch, saws for the guitars */
 	{"Thrash Hall", {GV_KIT, GV_SUPER, GV_BASS, GV_DRONE},
 	 {{75, 70, 30, 50, 0, 0, 50, 70, 76}, {55, 60, 40, 50, 0, 20, 45, 70, 43},
 	  {60, 40, 40, 25, 0, 5, 50, 30, 52}, {30, 40, 90, 50, 0, 30, 55, 30, 29}},
-	 {75, 25, 35, 50, 4, 2, 10, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {1, 1, 0, 0}, 8, {4, 3, 2, 2}, 8, 0, {24, 0, 0, 0}},
+	 {75, 25, 35, 50, 4, 2, 10, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {1, 1, 0, 0}, 8, {4, 3, 2, 2}, 8, 0, {24, 0, 0, 0}, 0},
 	/* reggaeton at 95: the dembow, a sub, plucks, a pad */
 	{"Dembow", {GV_KIT, GV_BASS, GV_PIZZ, GV_PAD},
 	 {{60, 55, 35, 50, 0, 0, 50, 20, 90}, {45, 30, 60, 25, 0, 5, 50, 30, 68},
 	  {50, 55, 35, 50, 20, 35, 40, 45, 45}, {35, 40, 70, 50, 10, 55, 60, 35, 34}},
-	 {75, 30, 40, 50, 2, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {28, 0, 0, 0}},
+	 {75, 30, 40, 50, 2, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {28, 0, 0, 0}, 0},
 	/* cumbia at 95: the kick on 1 and 3, a scraped tissue for the guiro, a walking bass,
 	 * the muted brass as an accordion, plucks */
 	{"Cumbia Lamp", {GV_KIT, GV_FUNK, GV_RIBBON, GV_PIZZ},
 	 {{55, 55, 30, 50, 0, 0, 50, 35, 100}, {45, 35, 40, 50, 0, 10, 50, 15, 75},
 	  {45, 55, 40, 50, 20, 35, 40, 40, 54}, {45, 50, 35, 50, 20, 30, 60, 40, 48}},
-	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 0, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}},
+	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 0, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}, 0},
 	/* jazz at 70 (140 felt): a ride swung in triplets, ghosted comping on the snare, feathered
 	 * kicks; an EP comping, a bass, a swell */
 	{"Brush Club", {GV_KIT, GV_EP, GV_BASS, GV_SWELL},
 	 {{50, 35, 40, 50, 0, 0, 50, 10, 100}, {45, 45, 50, 50, 20, 40, 40, 40, 68},
 	  {50, 30, 55, 50, 0, 10, 50, 50, 75}, {25, 35, 70, 50, 15, 50, 60, 35, 34}},
-	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}},
+	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}, 0},
 	/* IDM at 90: ratchets, skipped slots, the whole kit, and its macro at full (so now and then it
 	 * rotates: the kick's hits on the snare, the snare's on the hat...) */
 	{"Glitch Garden", {GV_KIT, GV_SEQ, GV_BELLS, GV_PAD},
-	 {{65, 60, 35, 50, 0, 0, 50, 75, 89}, {50, 50, 40, 50, 30, 35, 40, 50, 45},
-	  {35, 45, 55, 50, 40, 55, 60, 35, 39}, {35, 40, 70, 50, 10, 60, 50, 35, 34}},
-	 {70, 35, 45, 50, 1, 3, 20, 45}, {GR_HALL, GS_OCTAVE, 4}, {4, 1, 1, 0}, 8, {4, 3, 2, 2}, 8, 0, {40, 0, 0, 0}},
+	 {{65, 60, 35, 50, 0, 0, 50, 75, 92}, {50, 50, 40, 50, 30, 35, 40, 50, 46},
+	  {35, 45, 55, 50, 40, 55, 60, 35, 40}, {35, 40, 70, 50, 10, 60, 50, 35, 35}},
+	 {70, 35, 45, 50, 1, 3, 20, 45}, {GR_HALL, GS_OCTAVE, 4}, {4, 1, 1, 0}, 8, {4, 3, 2, 2}, 8, 0, {40, 0, 0, 0}, 0},
+	/* ---- the Kit, tuned by ear on the tuning page (tune/tunings.py): each piece the one it was
+	 * tuned on, with the Kit channel as it was set there ---- */
+	/* "Cumbia Bell": Cumbia Lamp at kit tuning 1 (heard at 24 kHz, with drive on the drums) */
+	{"Cumbia Bell", {GV_KIT, GV_FUNK, GV_RIBBON, GV_PIZZ},
+	 {{55, 55, 30, 50, 0, 0, 50, 35, 88}, {45, 35, 40, 50, 0, 10, 50, 15, 66},
+	  {45, 55, 40, 50, 20, 35, 40, 40, 48}, {45, 50, 35, 50, 20, 30, 60, 40, 42}},
+	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}, 1},
+	/* "Brush Boom": Brush Club at kit tuning 2 (heard at 16 kHz, with drive on the drums) */
+	{"Brush Boom", {GV_KIT, GV_EP, GV_BASS, GV_SWELL},
+	 {{84, 0, 0, 50, 0, 0, 50, 10, 44}, {45, 45, 50, 50, 20, 40, 40, 40, 30},
+	  {50, 30, 55, 50, 0, 10, 50, 50, 33}, {25, 35, 70, 50, 15, 50, 60, 35, 15}},
+	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {4, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}, 2},
+	/* "Brush Comb": Brush Club at kit tuning 3 (heard at 16 kHz, with fuzz on the drums) */
+	{"Brush Comb", {GV_KIT, GV_EP, GV_BASS, GV_SWELL},
+	 {{83, 100, 83, 25, 0, 0, 50, 100, 93}, {45, 45, 50, 50, 20, 40, 40, 40, 63},
+	  {50, 30, 55, 50, 0, 10, 50, 50, 70}, {25, 35, 70, 50, 15, 50, 60, 35, 32}},
+	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}, 3},
+	/* "Brush Comb Wet": Brush Club at kit tuning 4 (heard at 16 kHz, with fuzz on the drums) */
+	{"Brush Comb Wet", {GV_KIT, GV_EP, GV_BASS, GV_SWELL},
+	 {{83, 100, 83, 25, 0, 0, 50, 100, 91}, {45, 45, 50, 50, 20, 40, 40, 40, 62},
+	  {50, 30, 55, 50, 0, 10, 50, 50, 68}, {25, 35, 70, 50, 15, 50, 60, 35, 31}},
+	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}, 4},
+	/* "Drill Shimmer": Drill Night at kit tuning 5 (heard at 16 kHz) */
+	{"Drill Shimmer", {GV_KIT, GV_BASS, GV_STRINGS, GV_BELLS},
+	 {{60, 60, 40, 50, 0, 0, 50, 45, 99}, {40, 25, 80, 50, 0, 5, 50, 85, 74},
+	  {30, 35, 70, 50, 10, 45, 55, 30, 43}, {30, 40, 55, 25, 25, 50, 40, 40, 37}},
+	 {50, 30, 45, 50, 1, 5, 10, 30}, {GR_CHAMBER, GS_OCTAVE, 4}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}, 5},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
 	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},
 	  {45, 40, 40, 50, 0, 20, 50, 20, 40}, {30, 30, 60, 50, 30, 50, 60, 30, 35}},
-	 {64, 30, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 7}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {64, 30, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 7}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Lab Glow", {GV_GLOW, GV_GLOW, GV_PAD, GV_BASS},
 	 {{55, 50, 55, 75, 35, 65, 40, 60, 100}, {35, 50, 55, 100, 40, 65, 60, 60, 80},
 	  {40, 30, 80, 50, 10, 70, 50, 40, 24}, {40, 25, 70, 50, 0, 15, 50, 30, 32}},
-	 {50, 40, 70, 50, 5, 0, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 2, 0, 0}, 8, {3, 3, 0, 0}, 8, 0, {0, 0, 0, 0}},
+	 {50, 40, 70, 50, 5, 0, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 1}, {2, 2, 0, 0}, 8, {3, 3, 0, 0}, 8, 0, {0, 0, 0, 0}, 0},
 	{"Lab Ribbon", {GV_RIBBON, GV_PAD, GV_BASS, GV_PULSE},
 	 {{55, 45, 55, 50, 25, 55, 50, 25, 95}, {40, 30, 80, 50, 10, 70, 50, 40, 32},
 	  {50, 25, 60, 50, 0, 15, 50, 30, 42}, {40, 35, 35, 50, 0, 15, 50, 15, 30}},
-	 {56, 30, 65, 50, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 7}, {1, 0, 0, 0}, 8, {3, 0, 0, 0}, 8, 0, {0, 0, 0, 0}},
+	 {56, 30, 65, 50, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 7}, {1, 0, 0, 0}, 8, {3, 0, 0, 0}, 8, 0, {0, 0, 0, 0}, 0},
 	{"Lab Harp", {GV_HARP, GV_PAD, GV_BASS, GV_DRONE},
 	 {{60, 45, 65, 50, 25, 70, 45, 60, 90}, {35, 30, 80, 50, 10, 70, 55, 40, 32},
 	  {30, 20, 70, 50, 0, 20, 50, 30, 40}, {20, 25, 60, 50, 0, 50, 50, 0, 20}},
-	 {44, 30, 75, 50, 7, 0, 25, 40}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {44, 30, 75, 50, 7, 0, 25, 40}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 	{"Lab Kit", {GV_KIT, GV_PAD, GV_BASS, GV_EP},
-	 {{60, 50, 50, 50, 0, 0, 50, 50, 95}, {40, 30, 70, 50, 10, 60, 50, 30, 37},
-	  {40, 30, 70, 50, 0, 15, 50, 30, 57}, {30, 40, 60, 50, 20, 45, 60, 30, 37}},
-	 {70, 30, 50, 50, 0, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	 {{60, 50, 50, 50, 0, 0, 50, 50, 98}, {40, 30, 70, 50, 10, 60, 50, 30, 38},
+	  {40, 30, 70, 50, 0, 15, 50, 30, 59}, {30, 40, 60, 50, 20, 45, 60, 30, 38}},
+	 {70, 30, 50, 50, 0, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
 #endif
 };
 
@@ -4529,6 +4559,7 @@ void gl_piece(int i, gl_patch *out)
 	for (int k = 0; k < 3; k++)
 		out->space[k] = r->space[k];
 	out->space[3] = r->flags;
+	out->space[GL_SP_KIT] = r->ktune;
 	for (int c = 0; c < GL_NCH; c++)
 		out->chx[c] = r->chx[c];
 #ifdef GL_FORCE_REVERB                  /* for measuring each reverb's cost */
