@@ -23,6 +23,9 @@ int main(void)
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);
 #endif
+#ifdef KCOL
+	gl_kit_color(KCOL);
+#endif
 #ifdef COMP
 	gl_world(GW_COMP, 1.0f);
 #endif

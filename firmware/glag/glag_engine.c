@@ -179,6 +179,13 @@ typedef struct {
 	uint8_t q_l[8];
 	/* the rotation (the macro's wildest trick): kick -> snare -> hat -> kick, a turn each segment */
 	uint8_t rot_r, rot_left, rot_seg, rot_i;
+	/* the colour after it (glag_kit.h): a comb or two (in the channel's string buffer), chord
+	 * resonators, a through-zero FM sine, a soggy low-pass */
+	uint16_t c_w;
+	uint8_t c_sel;
+	float c_d1, c_d2, c_lfo, c_lp1, c_lp2, c_t, c_tail;
+	float c_r1[3], c_r2[3];
+	float c_ph, c_env, c_fast, c_s1, c_s2;
 	kit_snare rs;
 } kit_state;
 

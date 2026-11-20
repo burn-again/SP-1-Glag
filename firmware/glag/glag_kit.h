@@ -500,6 +500,135 @@ static void kit_step(chan *c, int ch, uint32_t step)
 		kit_fire(c, ch, 8, 0.8f);                        /* a roll into the next phrase */
 }
 
+/* ---- the colour: after the seven sounds, something to tie them to the track ----
+ *   1 comb      a comb on a chord tone (C3 octave), gliding between the chord's root, fifth
+ *               and third every few seconds, a slow wobble on it: drums that sing the chord
+ *   2 resonate  three resonators on the chord's tones (C5 octave), struck by every hit: shimmer
+ *   3 tzfm      a sine on the chord's root (C4) whose frequency the drums push through zero
+ *               (it runs backwards when they swing negative): a clang that follows each hit
+ *   4 soggy     a resonant low-pass that opens on each hit and closes in 30 ms, a little
+ *               saturation, and the pitch sagging as the hit dies (a short delay stretching)
+ *   5 metal     two combs a tritone apart on the root (C4), one inverted: a hollow, bell-like ring
+ * The combs live in the channel's string buffer (the Kit has no strings). */
+static inline float kabs(float x) { return x < 0.0f ? -x : x; }
+static uint8_t kit_col_m;
+void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 5 ? 5 : method); }
+#define KC_N 1536                                     /* each comb's line: 64 ms at 24 kHz */
+static inline float kc_read(const int16_t *b, uint16_t w, float d)
+{
+	float pos = (float)w - d;
+	pos += pos < 0.0f ? (float)KC_N : 0.0f;
+	int i0 = (int)pos, i1 = i0 + 1 >= KC_N ? 0 : i0 + 1;
+	float f = pos - (float)i0;
+	return ((float)b[i0] + f * (float)(b[i1] - b[i0])) * (1.0f / 4096.0f);
+}
+static inline int16_t kc_w(float x)
+{
+	x *= 4096.0f;
+	return (int16_t)(x > 32767.0f ? 32767 : x < -32767.0f ? -32767 : (int)x);
+}
+static void kit_color(chan *c, float *A)
+{
+	kit_state *k = &c->kt;
+	const int m = kit_col_m;
+	int16_t *b1 = c->ks, *b2 = c->ks + KC_N;
+	const float dt = (float)VSUB / VSR;
+	float tail = 0.0f;
+	if (m == 1) {
+		/* which chord tone: root, fifth, third, a new one every ~3 s */
+		k->c_t += dt;
+		if (k->c_t > 3.0f) {
+			k->c_t = 0.0f;
+			k->c_sel = (uint8_t)((k->c_sel + 1u) % 3u);
+		}
+		static const uint8_t SEL[3] = {0, 2, 1};
+		float f = kit_hz(48 + chord_pc[SEL[k->c_sel]]);
+		k->c_lfo += dt * 0.3f;
+		k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
+		float tgt = VSR / f * (1.0f + 0.006f * sin_u((uint32_t)(k->c_lfo * 4294967296.0f)));
+		if (k->c_d1 < 8.0f)
+			k->c_d1 = tgt;
+		float d = k->c_d1, lp = k->c_lp1;
+		uint16_t w = k->c_w;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			d += (tgt - d) * 0.0008f;                      /* (it glides to the next tone) */
+			float y = kc_read(b1, w, d);
+			lp += 0.45f * (y - lp);                        /* (darker each time round) */
+			float in = A[i] + 0.9f * lp;
+			b1[w] = kc_w(in);
+			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
+			A[i] = A[i] * 0.55f + lp * 0.75f;
+			tail = tail > kabs(lp) ? tail : kabs(lp);
+		}
+		k->c_d1 = d; k->c_lp1 = lp; k->c_w = w;
+	} else if (m == 2) {
+		ksvf f[3];
+		for (int j = 0; j < 3; j++)
+			f[j] = ksvf_set(ktan(kit_hz(72 + chord_pc[j]) / VSR), 0.006f);
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float x = A[i] * 0.006f * 6.0f, sum = 0.0f, lp;
+			for (int j = 0; j < 3; j++)
+				sum += ksvf_run(&f[j], &k->c_r1[j], &k->c_r2[j], x, &lp);
+			A[i] = A[i] * 0.75f + sum * 0.9f;
+			tail = tail > kabs(sum) ? tail : kabs(sum);
+		}
+	} else if (m == 3) {
+		const float inc0 = kit_hz(60 + chord_pc[0]) / VSR;
+		float ph = k->c_ph, e = k->c_env;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float x = A[i], ax = kabs(x);
+			e += (ax > e ? 0.3f : 0.0017f) * (ax - e);     /* (in at once, out over ~25 ms) */
+			ph += inc0 * (1.0f + 9.0f * x);                /* through zero when the drums swing low */
+			ph -= (float)(int)ph;
+			ph += ph < 0.0f ? 1.0f : 0.0f;
+			float y = sin_u((uint32_t)(ph * 4294967296.0f)) * e * 0.8f;
+			A[i] = x * 0.6f + y;
+			tail = tail > e ? tail : e;
+		}
+		k->c_ph = ph; k->c_env = e;
+	} else if (m == 4) {
+		float e = k->c_env, fa = k->c_fast, s1 = k->c_s1, s2 = k->c_s2, d = k->c_d1;
+		/* the low-pass's place, once a block: 250 Hz shut, up to ~5 kHz on the hit */
+		const ksvf lpf = ksvf_set(ktan(250.0f * fexp2(4.5f * clampf(fa * 3.0f, 0.0f, 1.0f)) / VSR), 0.6f);
+		uint16_t w = k->c_w;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float x = A[i], ax = kabs(x);
+			fa += (ax > fa ? 0.5f : 0.0014f) * (ax - fa);  /* (30 ms) */
+			e += (ax > e ? 0.2f : 0.00035f) * (ax - e);     /* (120 ms) */
+			float lp;
+			ksvf_run(&lpf, &s1, &s2, x, &lp);
+			float u = clampf(lp * 1.8f, -1.5f, 1.5f);
+			b1[w] = kc_w(u - 0.148148f * u * u * u);
+			/* the read point drifts back as the hit dies: its pitch sags */
+			float tgt = 48.0f + 140.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f);
+			d += (tgt - d) * 0.002f;
+			A[i] = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
+			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
+			tail = tail > e ? tail : e;
+		}
+		k->c_env = e; k->c_fast = fa; k->c_s1 = s1; k->c_s2 = s2; k->c_d1 = d; k->c_w = w;
+		tail += kabs(A[VSUB - 1]);
+	} else if (m == 5) {
+		const float f = kit_hz(60 + chord_pc[0]);
+		const float d1 = VSR / f, d2 = VSR / (f * 1.4142f);
+		float l1 = k->c_lp1, l2 = k->c_lp2;
+		uint16_t w = k->c_w;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float y1 = kc_read(b1, w, d1), y2 = kc_read(b2, w, d2);
+			l1 += 0.6f * (y1 - l1);
+			l2 += 0.6f * (y2 - l2);
+			b1[w] = kc_w(A[i] * 0.5f + 0.93f * l1);
+			b2[w] = kc_w(A[i] * 0.5f - 0.92f * l2);       /* (inverted: odd harmonics, hollow) */
+			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
+			float o = (l1 + l2) * 0.6f;
+			A[i] = A[i] * 0.6f + o;
+			tail = tail > kabs(o) ? tail : kabs(o);
+		}
+		k->c_lp1 = l1; k->c_lp2 = l2; k->c_w = w;
+	}
+	k->c_tail = tail;
+}
+
 /* ---- the sound, 24 kHz, mono into the channel ---- */
 static int kit_render(chan *c, float *A)
 {
@@ -750,6 +879,10 @@ static int kit_render(chan *c, float *A)
 			A[i] += held * 0.6f;
 		}
 		k->r_acc = acc; k->r_held = held;
+	}
+	if (kit_col_m && (any || k->c_tail > 1e-4f)) {
+		kit_color(c, A);
+		any = 1;
 	}
 	return any;
 }
