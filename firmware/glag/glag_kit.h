@@ -136,12 +136,25 @@ static uint32_t kit_solo;
 void gl_kit_solo(int lanes) { kit_solo = (uint32_t)lanes; }
 #define KSOLO(l) (kit_solo & (1u << (l)))
 
+static int kit_rot_always;
+void gl_kit_rotate(int always) { kit_rot_always = always; }
+/* the rotation: the kick's hits played by the snare, the snare's by the hat, the hat's by the
+ * kick (turned once, or twice) */
+static int kit_rot(int lane, int r)
+{
+	for (; r > 0; r--)
+		lane = lane == 0 ? 1 : lane == 1 || lane == 9 ? 2 : lane == 7 ? 2 : lane == 2 || lane == 6 ? 0 : lane;
+	return lane;
+}
+
 /* ---- a hit on a lane, its sound set from the channel's controls ---- */
 static void kit_fire(chan *c, int ch, int lane, float vel)
 {
+	kit_state *k = &c->kt;
+	if (k->rot_r)
+		lane = kit_rot(lane, k->rot_r);
 	if (kit_solo && !KSOLO(lane))
 		return;
-	kit_state *k = &c->kt;
 	const float t = eff_tone(ch), l = P.ch[ch][CP_LENGTH], x = P.ch[ch][CP_CHAR];
 	const float reg = (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2), oct = fexp2(reg * 0.5f);
 	notes_fired++;
@@ -253,17 +266,18 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			for (int i = 0; i < scale_n; i++)
 				if (scale_pc[i] == chord_pc[0])
 					at = i;
-			k->n_f1 = kit_hz(36 + root_pc + kit_deg(at + d)) * oct;
-			if (k->n_f1 > 140.0f * oct)
+			/* the C1 octave (33-62 Hz), now and then the C2 */
+			k->n_f1 = kit_hz((ku() < 0.3f ? 36 : 24) + root_pc + kit_deg(at + d)) * oct;
+			if (k->n_f1 > 125.0f * oct)
 				k->n_f1 *= 0.5f;
 		}
 		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f);
 		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
-		k->n_md = fexp2(-1.4427f / (0.04f * 1000.0f));   /* (once a millisecond) */
+		k->n_md = fexp2(-1.4427f / (0.16f * 1000.0f));   /* a slow sweep, 160 ms (once a millisecond) */
 		k->n_menv = 1.0f;
 		k->n_cut = 350.0f * fexp2(3.0f * t);
 		k->n_a = vel;
-		k->n_ak = kexp((0.25f + 0.9f * l) * dm);
+		k->n_ak = kexp((0.4f + 1.0f * l) * dm);
 		k->n_att = 0.0f;
 		k->n_p1 = k->n_p2 = 0.0f;
 		break;
@@ -292,6 +306,10 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		}
 		k->r_dir = (int8_t)(k->r_mode == 1 || k->r_mode == 3 ? 1 : ku() < 0.6f ? 1 : -1);
 		k->r_split = (uint8_t)(k->r_mode == 2 ? k->r_n / 2 : 255);
+		if (ku() < 0.25f || alt_m[GV_KIT] >= 5) {         /* now and then at half speed */
+			k->r_gap *= 2.0f;
+			k->r_n = (uint8_t)(k->r_n > 6 ? k->r_n * 2 / 3 : k->r_n);
+		}
 		if (k->r_mode == 1)
 			k->r_accel = 0.7f;
 		if (k->r_mode == 3) {
@@ -339,17 +357,31 @@ static void kit_trip(chan *c, int ch, int n, float step_s, float vel)
  * each, for the kick, the snare and the hats. x strong, X an accent (rings long), o a hit,
  * g a ghost (more of them with ACTIVITY), s a squashed snare, O an open hat, t hats in triplets.
  * Each has its tempo in mind: two-step at 65 (130 felt), drill at 70 (140), jungle at 85 (170),
- * downtempo at 85 in sixteenths (unit 2). Swing delays the off slots. ---- */
-typedef struct { const char *k, *s, *h; float swing; uint8_t unit; } kit_groove;
-static const kit_groove KG[4] = {
+ * downtempo at 85 in sixteenths (unit 2), house at 120, thrash at 95 (190), reggaeton's dembow and
+ * cumbia at 95, jazz at 70 (a ride swung in triplets, 140 felt), IDM at 90 (glitch: ratchets
+ * and skipped slots). Swing delays the off slots. ---- */
+typedef struct { const char *k, *s, *h; float swing; uint8_t unit, glitch; } kit_groove;
+static const kit_groove KG[GL_NGROOVE - 1] = {
 	{"x.........o.....x.....o...o.....", "....x.......x.......x.......x..g",
-	 "..o.g.o...o.g.o...o.g.o.g.o...O.", 0.35f, 1},                              /* two-step */
+	 "..o.g.o...o.g.o...o.g.o.g.o...O.", 0.35f, 1, 0},   /* two-step */
 	{"x......o..o.....x.....o...o..o..", "........x.............g.s.....g.",
-	 "o.o.o.t.o.o.o.o.o.o.t.o.o.o.t.o.", 0.0f, 1},                               /* drill */
+	 "o.o.o.t.o.o.o.o.o.o.t.o.o.o.t.o.", 0.00f, 1, 0},   /* drill */
 	{"x.x.......xx....x.x.......x.....", "....x..g.x..x..g....x..g.x....s.",
-	 "o.o.o.o.o.o.o.o.o.o.o.o.o.o.o.O.", 0.1f, 1},                               /* jungle */
+	 "o.o.o.o.o.o.o.o.o.o.o.o.o.o.o.O.", 0.10f, 1, 0},   /* jungle */
 	{"x...........o...........o.......", "........x...............x.....g.",
-	 "o...o...o...o...o...o...o...o.O.", 0.3f, 2},                               /* downtempo */
+	 "o...o...o...o...o...o...o...o.O.", 0.30f, 2, 0},   /* downtempo */
+	{"x.......x.......x.......x.......", "........x...............x.......",
+	 "g...O...g...O...g...O...g...O.g.", 0.12f, 2, 0},   /* house 120 */
+	{"x...x...x...x...x...x...x.x.xxxx", "..x...x...x...x...x...x...x.x.s.",
+	 "o.o.o.o.o.o.o.o.o.o.o.o.o.o.o.O.", 0.00f, 1, 0},   /* thrash 95 (190) */
+	{"x.......x.......x.......x.......", "......x.....x.........x.....x...",
+	 "o...o...o...o...o...o...o...o.g.", 0.05f, 2, 0},   /* reggaeton 95 */
+	{"x...............x...............", "....g...x.....g.....g...x.....g.",
+	 "o.g.g.o.o.g.g...o.g.g.o.o.g.g...", 0.08f, 2, 0},   /* cumbia 95 */
+	{"g...............o...............", "......g.....g.........g...g.s...",
+	 "o...o.o.o...o.o.o...o.o.o...o.o.", 0.67f, 2, 0},   /* jazz 70 (140) */
+	{"x..x.....x.x..x...x.....x..x....", "......x.....g..x.......xg...s...",
+	 "oooo..o.o..ooo.oo.o..oooo.o.ooo.", 0.00f, 1, 1},   /* idm 90 */
 };
 static void kit_slot(chan *c, int ch, char e, int lane, float vel, float t_s, float h, int lean)
 {
@@ -376,11 +408,37 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	const int lean = gov_cap < FM_CAP && !kit_solo;
 	const int phrase = (int)(step % 64u);                 /* four bars: the accents land here */
 	const float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]) * (float)(GL_CHX_DIV(P.chx[ch]) + 1u);
-	const int gv = (int)GL_CHX_IVL(P.chx[ch]);
-	if (gv >= 1 && gv <= 4) {
+	/* the rotation: at a phrase's start, at full macro (now and then), each segment a bar, half
+	 * a bar or a third, turning kick -> snare -> hat -> kick, until it comes round to the start */
+	kit_state *k = &c->kt;
+	if (k->rot_r) {
+		if (k->rot_left)
+			k->rot_left--;
+		if (!k->rot_left) {
+			k->rot_r = (uint8_t)((k->rot_r + 1u) % 3u);
+			k->rot_i++;
+			k->rot_left = k->rot_seg == 3 ? (uint8_t)(k->rot_i % 3u == 2u ? 6 : 5) : k->rot_seg == 2 ? 8 : 16;
+		}
+	} else if (phrase == 0 && (kit_rot_always || (mac_depth[ch] > 0.99f && ku() < 0.4f))) {
+		k->rot_r = 1;
+		k->rot_i = 0;
+		k->rot_seg = (uint8_t)(1 + (int)(ku() * 3.0f));
+		k->rot_left = k->rot_seg == 3 ? 5 : k->rot_seg == 2 ? 8 : 16;
+	}
+	const int gv = (int)GL_CHX_GRV(P.chx[ch]);
+	if (gv >= 1 && gv < GL_NGROOVE) {
 		/* a groove: this step's two slots */
 		const kit_groove *g = &KG[gv - 1];
+		if (g->glitch && !lean && ku() < 0.12f + 0.2f * h) {
+			/* IDM: a ratchet (hats or the snare, 3 to 6 in the space of a step or two) */
+			int n = 3 + (int)(ku() * 4.0f), ln = ku() < 0.6f ? 2 : 7;
+			float span = step_s * (ku() < 0.5f ? 1.0f : 2.0f);
+			for (int i = 0; i < n; i++)
+				kit_later(c, ch, ln, (ln == 2 ? 0.6f : 0.8f) * (1.0f - 0.08f * (float)i), span * (float)i / (float)n);
+		}
 		for (int j = 0; j < 2; j++) {
+			if (g->glitch && ku() < 0.12f)
+				continue;                                 /* IDM: a slot skipped */
 			int sl = s16 * 2 + j;
 			float t_s = 0.0f;
 			if (g->unit == 1) {
@@ -642,7 +700,7 @@ static int kit_render(chan *c, float *A)
 				ksvf_run(&nf, &s1, &s2, 0.55f * o2 + 0.45f * tri, &l1);
 				acc += l1;
 			}
-			att = att < 1.0f ? att + 0.05f : 1.0f;
+			att = att < 1.0f ? att + 0.004f : 1.0f;          /* (a 10 ms attack) */
 			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f);
 			dc += 0.008f * (y - dc);                      /* its offset (the FM runs it backwards) */
 			A[i] += y - dc;

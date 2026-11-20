@@ -177,6 +177,8 @@ typedef struct {
 	/* hits waiting a fraction of a step: off-grid slots, swing, triplets */
 	float q_t[8], q_v[8];
 	uint8_t q_l[8];
+	/* the rotation (the macro's wildest trick): kick -> snare -> hat -> kick, a turn each segment */
+	uint8_t rot_r, rot_left, rot_seg, rot_i;
 	kit_snare rs;
 } kit_state;
 
@@ -4425,6 +4427,40 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{50, 40, 40, 50, 0, 0, 50, 25, 98}, {40, 40, 55, 50, 25, 40, 40, 40, 55},
 	  {35, 30, 80, 50, 0, 10, 50, 35, 62}, {30, 35, 70, 50, 30, 55, 60, 40, 37}},
 	 {65, 35, 45, 50, 2, 1, 15, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {16, 0, 0, 0}},
+	/* house at 120: four on the floor, claps on 2 and 4, open hats on the off-beats, string stabs */
+	{"Warehouse", {GV_KIT, GV_BASS, GV_STRINGS, GV_PAD},
+	 {{60, 55, 35, 50, 0, 0, 50, 25, 80}, {50, 35, 45, 50, 0, 10, 50, 40, 55},
+	  {55, 55, 30, 50, 20, 40, 45, 60, 40}, {35, 40, 70, 50, 10, 55, 60, 35, 30}},
+	 {100, 30, 40, 50, 7, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {20, 0, 0, 0}},
+	/* thrash at 95 (190 felt): the skank beat, double kicks into the turnaround, the kit's
+	 * crunch, saws for the guitars */
+	{"Thrash Hall", {GV_KIT, GV_SUPER, GV_BASS, GV_DRONE},
+	 {{75, 70, 30, 50, 0, 0, 50, 70, 71}, {55, 60, 40, 50, 0, 20, 45, 70, 40},
+	  {60, 40, 40, 25, 0, 5, 50, 30, 49}, {30, 40, 90, 50, 0, 30, 55, 30, 27}},
+	 {75, 25, 35, 50, 4, 2, 10, 50}, {GR_CHAMBER, GS_OCTAVE, 1}, {1, 1, 0, 0}, 8, {4, 3, 2, 2}, 8, 0, {24, 0, 0, 0}},
+	/* reggaeton at 95: the dembow, a sub, plucks, a pad */
+	{"Dembow", {GV_KIT, GV_BASS, GV_PIZZ, GV_PAD},
+	 {{60, 55, 35, 50, 0, 0, 50, 20, 86}, {45, 30, 60, 25, 0, 5, 50, 30, 65},
+	  {50, 55, 35, 50, 20, 35, 40, 45, 43}, {35, 40, 70, 50, 10, 55, 60, 35, 32}},
+	 {75, 30, 40, 50, 2, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {28, 0, 0, 0}},
+	/* cumbia at 95: the kick on 1 and 3, a scraped tissue for the guiro, a walking bass,
+	 * the muted brass as an accordion, plucks */
+	{"Cumbia Lamp", {GV_KIT, GV_FUNK, GV_RIBBON, GV_PIZZ},
+	 {{55, 55, 30, 50, 0, 0, 50, 35, 100}, {45, 35, 40, 50, 0, 10, 50, 15, 69},
+	  {45, 55, 40, 50, 20, 35, 40, 40, 50}, {45, 50, 35, 50, 20, 30, 60, 40, 44}},
+	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 0, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}},
+	/* jazz at 70 (140 felt): a ride swung in triplets, ghosted comping on the snare, feathered
+	 * kicks; an EP comping, a bass, a swell */
+	{"Brush Club", {GV_KIT, GV_EP, GV_BASS, GV_SWELL},
+	 {{50, 35, 40, 50, 0, 0, 50, 10, 100}, {45, 45, 50, 50, 20, 40, 40, 40, 68},
+	  {50, 30, 55, 50, 0, 10, 50, 50, 75}, {25, 35, 70, 50, 15, 50, 60, 35, 34}},
+	 {50, 30, 40, 50, 10, 1, 20, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {36, 0, 0, 0}},
+	/* IDM at 90: ratchets, skipped slots, the whole kit, and its macro at full (so now and then it
+	 * rotates: the kick's hits on the snare, the snare's on the hat...) */
+	{"Glitch Garden", {GV_KIT, GV_SEQ, GV_BELLS, GV_PAD},
+	 {{65, 60, 35, 50, 0, 0, 50, 75, 84}, {50, 50, 40, 50, 30, 35, 40, 50, 42},
+	  {35, 45, 55, 50, 40, 55, 60, 35, 37}, {35, 40, 70, 50, 10, 60, 50, 35, 32}},
+	 {70, 35, 45, 50, 1, 3, 20, 45}, {GR_HALL, GS_OCTAVE, 4}, {4, 1, 1, 0}, 8, {4, 3, 2, 2}, 8, 0, {40, 0, 0, 0}},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
 	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},

@@ -837,9 +837,15 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				dirty = 1;
 				show_idx = k;
 				say(SH_INDEX, now, 1200);
+			} else if (on_channel() && cur.voice[chan] == GV_KIT) {   /* the Kit: its groove */
+				uint8_t x = cur.chx[chan], v = (uint8_t)((GL_CHX_GRV(x) + 1u) % GL_NGROOVE);
+				cur.chx[chan] = (uint8_t)((x & ~(15u << 2)) | (unsigned)(v << 2));
+				dirty = 1;
+				show_idx = v;
+				say(SH_INDEX, now, 1200);
 			} else if (on_channel()) {          /* this channel's interval: none, 3rd, 5th, 7th, 9th */
 				uint8_t x = cur.chx[chan], v = (uint8_t)((GL_CHX_IVL(x) + 1u) % GL_NIVL);
-				cur.chx[chan] = (uint8_t)((x & ~(7u << 2)) | (unsigned)(v << 2));
+				cur.chx[chan] = (uint8_t)((x & ~(15u << 2)) | (unsigned)(v << 2));
 				dirty = 1;
 				show_idx = v;
 				say(SH_INDEX, now, 1200);

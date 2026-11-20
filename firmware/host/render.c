@@ -41,6 +41,8 @@ int main(int argc, char **argv)
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
 	if (getenv("KIT"))       /* KIT=lanes mask: the kit's sounds on their own */
 		gl_kit_solo(atoi(getenv("KIT")));
+	if (getenv("KROT"))      /* KROT=1: the Kit rotates on every phrase */
+		gl_kit_rotate(1);
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	{	/* the piece's channel macros; MACRO=4444 (steps per channel) and MPER=seconds override */
@@ -91,7 +93,7 @@ int main(int argc, char **argv)
 		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
 			int c = 0, d = 0, v = 0;
 			if (sscanf(t, "%d:%d:%d", &c, &d, &v) == 3 && c >= 0 && c < GL_NCH)
-				p.chx[c] = (uint8_t)((d & 3) | ((v & 7) << 2));
+				p.chx[c] = (uint8_t)((d & 3) | ((v & 15) << 2));   /* (on a Kit: its groove, 0-10) */
 		}
 	}
 	gl_post_patch(&p);

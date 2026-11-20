@@ -95,6 +95,9 @@ enum { GL_SP_REVERB, GL_SP_SHIMMER, GL_SP_ECHO, GL_SP_FLAGS, GL_NSP = 4 };
 #define GL_CHX_DIV(x) ((x) & 3u)
 #define GL_CHX_IVL(x) (((x) >> 2) & 7u)
 #define GL_NIVL 5
+/* on a Kit channel the same bits, and bit 5, are its groove (0 euclidean, then GL_NGROOVE - 1 more) */
+#define GL_CHX_GRV(x) (((x) >> 2) & 15u)
+#define GL_NGROOVE 11
 extern const char *const GL_REVERB_NAME[GR_COUNT];
 extern const char *const GL_SHIMMER_NAME[GS_COUNT];
 extern const char *const GL_ECHO_NAME[GL_NECHO];
@@ -151,6 +154,7 @@ void gl_crank(void);
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
 void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */
+void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */
@@ -192,7 +196,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 75                   /* an audition build: fifty-nine more (five of them labs) */
+#define GL_NPIECES 81                   /* an audition build: sixty-five more (five of them labs) */
 #else
 #define GL_NPIECES 16
 #endif
