@@ -38,6 +38,8 @@ static struct {
 	uint8_t reverb, shimmer, pad3[2];   /* offset 100 */
 	uint8_t w_song, w_arp, w_pump, w_tex;   /* offset 104: Playworld */
 	int8_t w_focus, pad4[3];               /* offset 108 */
+	uint8_t demo, pad5[3];                 /* offset 112: demo mode */
+	uint32_t demo_ms;                      /* offset 116 */
 } st;
 
 EXPORT void wg_init(uint32_t seed) { gl_init(seed); glui_init(); }
@@ -67,6 +69,7 @@ EXPORT void wg_tick(uint32_t now_ms)
 	st.shimmer = out.shimmer;
 	st.w_song = out.world_song; st.w_arp = out.world_arp; st.w_pump = out.world_pump; st.w_tex = out.world_tex;
 	st.w_focus = out.world_focus;
+	st.demo = out.demo; st.demo_ms = out.demo_ms;
 	for (int i = 0; i < 4; i++) {
 		st.macro[i] = out.macro[i];
 		st.macro_period[i] = out.macro_period[i];

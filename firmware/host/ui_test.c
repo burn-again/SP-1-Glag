@@ -263,6 +263,28 @@ int main(void)
 		CHECK(out.page == PG_HOME && out.world_song == 0, "PLAY held in Playworld: back to Home (song off now)");
 	}
 
+	/* ---- demo mode: PLAY held 15 s, let go ---- */
+	{
+		int pg = out.page;
+		down(GB_PLAY); run(15200); up(GB_PLAY); run(100);
+		CHECK(out.demo == 1 && out.piece == 0, "PLAY held 15 s: the demo, from piece 1 (demo %d, piece %d)", out.demo, out.piece);
+		CHECK(out.page == pg, "the demo leaves you on the page you were on (%d)", out.page);
+		CHECK(out.volume < 0.05f, "it fades in from silence (%.3f)", out.volume);
+		run(5000);
+		CHECK(out.volume > 0.2f, "and is up after the fade (%.3f)", out.volume);
+		run(116000);
+		CHECK(out.piece == 1 && out.demo, "after two minutes: piece 2 (%d)", out.piece);
+		tap(GB_FFWD); run(4200);
+		CHECK(out.piece == 2, "FFWD: on to the next (%d)", out.piece);
+		tap(GB_RWD); run(4200);
+		CHECK(out.piece == 1, "RWD: back one (%d)", out.piece);
+		tap(GB_RWD); run(4200);
+		int was = gl_playing;
+		tap(GB_T1); run(1500);
+		CHECK(!out.demo && out.piece == 0 && gl_playing == was && out.page == pg, "any other press ends it, on that piece, and does nothing else");
+		CHECK(out.volume > 0.2f, "the volume back up (%.3f)", out.volume);
+	}
+
 	/* PLAY: rest and grow */
 	tap(GB_PLAY); run(50);
 	CHECK(!gl_playing, "PLAY rests");

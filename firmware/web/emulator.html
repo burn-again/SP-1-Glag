@@ -132,6 +132,7 @@ details summary { cursor: pointer; font-weight: 500; }
             <div><b>Macro</b>, on a channel or extended page: FFWD tap adds a step (four), RWD held slows its glide (8 s up to 64 s), RWD double tap turns it off.</div>
             <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion. •• + T1 to T4 picks the reverb: Hall, Chamber, Shimmer, Bloom; •• + T3 again steps Shimmer's interval (octave, fifth, seventh).</div>
             <div><b>Playworld</b>: hold PLAY 2 s (again, or •• twice, to leave). T1 song mode: on, its pages 2, 3, 4, then off (an outro). T3 the pump: on, page 2, off. T4 a texture: rain, vinyl, tape hiss, surf, off. A bright light: on; a dim pulsing one: the page. The faders follow the last T pressed; what is on stays on when you leave. (T2, arp mode, is planned.)</div>
+            <div><b>Demo</b>: hold PLAY 15 s and let go (the play row fills to 2 s for Playworld, then again, blinking, to 15 s, then flashes). The AMB-1 pieces in order, two minutes each, fading one into the next. FFWD skips on, RWD goes back; any other press ends it.</div>
             <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
             <div><b>Distortion</b>: •• + VOL− steps the amount (off, 1 to 4), •• + VOL+ the type (Chebyshev, overdrive, fuzz, fold, XOR). Held 3 s: VOL− turns it off and resets it, VOL+ moves it before the delay and reverb, after them, or onto the reverb alone. The track LEDs show the type, the play row the amount, filling from the •• end before the effects and from the PLAY end after, blinking on the reverb alone.</div>
             <div><b>Rocker</b>, on Home and Harmony: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. Anywhere: •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
@@ -276,7 +277,7 @@ class GlagCore {
     }
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
-    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 112).slice();
+    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 120).slice();
     const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), w.wg_patch_size()).slice();
     const msg = { t: "st", st: st.buffer, pt: pt.buffer };
     const slot = st[13];
@@ -410,6 +411,7 @@ function draw() {
   const pc = state.getUint8(10);
   document.getElementById("piece").textContent = `Piece ${pc + 1}: ${PIECES[pc]}` + (state.getUint8(12) ? "  ·  frozen" : "") + (state.getUint8(11) ? "" : "  ·  resting") +
     (state.getFloat32(20, true) < 0.99 ? `  ·  slowing ${Math.round(state.getFloat32(20, true) * 100)}%` : "") +
+    (state.getUint8(112) ? `  ·  demo ${pc % 8 + 1} of 8, ${Math.floor(state.getUint32(116, true) / 60000)}:${String(Math.floor(state.getUint32(116, true) / 1000) % 60).padStart(2, "0")} of 2:00` : "") +
     (state.getUint8(77) ? `  ·  ${DISTS[state.getUint8(76)]} ${state.getUint8(77)} ${["before the effects", "after the effects", "on the reverb only"][state.getUint8(78) % 3]}` : "");
   const m = rows();
   document.getElementById("pagename").textContent = m.title;

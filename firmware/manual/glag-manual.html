@@ -566,7 +566,7 @@ const PIECES = [
 const VOL = ["VOL− / VOL+", "", ["Output level, 3 dB steps.", "•• + VOL−: distortion amount. •• + VOL+: its type."]];
 const PROW = ["Play row (LEDs by PLAY)", "", ["Each channel's notes. A fader's value while it moves, a voice or piece number, a still glow when frozen, three flashes on a save."]];
 const FN = ["•• (shift)", "", ["Hold: the •• layer (the mixer, the shifted controls).", "Two taps: Home. Hold 3 s alone: power off."]];
-const PLAY = ["PLAY", "plan", ["Tap: grow / rest (no new notes; the tails ring on).", "•• + PLAY once: Harmony; twice: the next piece.", "Held 2 s: Playworld."]];
+const PLAY = ["PLAY", "plan", ["Tap: grow / rest (no new notes; the tails ring on).", "•• + PLAY once: Harmony; twice: the next piece.", "Held 2 s: Playworld.", "Held 15 s, then let go: the demo, the AMB-1 pieces in order, two minutes each, fading one into the next (FFWD the next, RWD the one before; any other press ends it)."]];
 const tCh = (n, own, ext) => own
   ? [`T${n} · This channel`, "free", [ext ? "•• + tap: back to its page." : "•• + tap: its extended page.", "!Tap: nothing (you are here).", "!Held: nothing."]]
   : [`T${n} · Channel ${n}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: channel ${n}'s extended page.`, "!Held: nothing."]];

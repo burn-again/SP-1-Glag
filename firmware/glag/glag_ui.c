@@ -73,6 +73,14 @@ static float w_sink;                            /* the faders' target when nothi
 static uint32_t w_anim_t0;
 static int w_anim_from, w_anim_to, w_anim_kind;  /* 0 none, 1 glide to a page, 2 fade out, 3 not yet */
 static uint8_t play_world_done;
+/* ---- demo mode: the album ---- */
+#define DEMO_HOLD_MS 15000u
+#define DEMO_PIECE_MS 120000u
+#define DEMO_FADE_MS 4000u
+#define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
+static int demo_on, demo_idx, play_prev_page;
+static uint32_t demo_t0;
+static float demo_gain = 1.0f;
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -451,6 +459,44 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	if (PRESSED(GB_FN))
 		used_with_fn = 0;
 
+	/* ---- demo mode: its own rocker; any other press ends it (and does nothing else) ---- */
+	if (demo_on) {
+		uint32_t t = now - demo_t0;
+		if (PRESSED(GB_FFWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS)
+			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);     /* to the next: fading out now */
+		if (PRESSED(GB_RWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS) {
+			demo_idx = (demo_idx + DEMO_COUNT - 2) % DEMO_COUNT;   /* the one before (the fade's switch adds one) */
+			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);
+		}
+		int stop = 0;
+		for (int b = GB_T1; b <= GB_PLAY; b++)
+			stop |= PRESSED(b) != 0;
+		if (stop) {
+			demo_on = 0;
+			if (PRESSED(GB_PLAY))
+				play_world_done = 1;                 /* this press is spent: no rest, no Playworld */
+		}
+		prev_btn |= (uint16_t)(btn & ((1u << GB_T1) | (1u << GB_T2) | (1u << GB_T3) | (1u << GB_T4) |
+		                              (1u << GB_PLAY) | (1u << GB_FFWD) | (1u << GB_RWD)));
+		if (demo_on) {
+			t = now - demo_t0;
+			if (t >= DEMO_PIECE_MS) {                 /* the switch, in the quiet */
+				demo_idx = (demo_idx + 1) % DEMO_COUNT;
+				load_piece(demo_idx);
+				uncatch_all(in);
+				demo_t0 = now;
+				t = 0;
+			}
+			float g = t < DEMO_FADE_MS ? (float)t / DEMO_FADE_MS :
+			          t > DEMO_PIECE_MS - DEMO_FADE_MS ? (float)(DEMO_PIECE_MS - t) / DEMO_FADE_MS : 1.0f;
+			demo_gain = g * g * (3.0f - 2.0f * g);
+		}
+	}
+	if (!demo_on && demo_gain < 1.0f) {               /* ended mid-fade: back up in a second */
+		demo_gain += 0.005f;
+		demo_gain = demo_gain > 1.0f ? 1.0f : demo_gain;
+	}
+
 	/* the faders' layer follows ••; changing it re-arms the soft takeover */
 	if (fn != layer_shift) {
 		layer_shift = fn;
@@ -528,6 +574,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		uint32_t held = now - down_at[GB_PLAY];
 		if (held >= WORLD_HOLD_MS) {
 			play_world_done = 1;
+			play_prev_page = page;
 			if (page == PG_WORLD)
 				go(PG_HOME, chan, in);
 			else {
@@ -543,6 +590,32 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	    !(prev_btn & (1u << GB_FN))) {
 		playing = !playing;
 		gl_play(playing);
+	}
+	if (DOWN(GB_PLAY) && !fn && play_world_done == 1 && !demo_on) {
+		/* still held past Playworld: on toward the demo, the play row filling again (blinking),
+		 * then all four flashing: let go to start it */
+		uint32_t held = now - down_at[GB_PLAY];
+		if (held >= DEMO_HOLD_MS) {
+			show_val = 1.0f;
+			say((now / 150u) & 1u ? SH_VALUE : SH_FIND, now, 100);
+		} else if (held >= WORLD_HOLD_MS + 500u) {
+			show_val = (float)(held - WORLD_HOLD_MS) / (float)(DEMO_HOLD_MS - WORLD_HOLD_MS);
+			say((now / 400u) & 1u ? SH_VALUE : SH_FIND, now, 100);
+		}
+	}
+	if (RELEASED(GB_PLAY) && play_world_done == 1 && !(prev_btn & (1u << GB_FN)) &&
+	    now - down_at[GB_PLAY] >= DEMO_HOLD_MS && !demo_on) {
+		go(play_prev_page, chan, in);                 /* (the Playworld step on the way is undone) */
+		demo_on = 1;
+		demo_idx = 0;
+		load_piece(0);
+		uncatch_all(in);
+		demo_t0 = now;
+		demo_gain = 0.0f;
+		if (!playing) {
+			playing = 1;
+			gl_play(1);
+		}
 	}
 	if (RELEASED(GB_PLAY))
 		play_world_done = 0;
@@ -844,6 +917,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		}
 		out->led_t[t] = v;
 	}
+	if (demo_on && show == SH_MUSIC)                  /* the demo: the piece's number on the track row */
+		index_pic(out->led_t, piece, now);
 	if (page == PG_WORLD && w_anim_kind && now - w_anim_t0 < 1000u) {
 		/* a second showing what the press did: a light gliding from the T to its page, a light
 		 * fading out, or (arp: not yet) three quick blinks */
@@ -939,6 +1014,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 
 	out->volume = (float)vol / VOL_STEPS;
 	out->volume *= out->volume;                     /* steps that sound even */
+	out->volume *= demo_gain;                       /* the demo's fades */
 	out->page = (uint8_t)page;
 	out->channel = (uint8_t)chan;
 	out->piece = (uint8_t)piece;
@@ -956,6 +1032,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->world_pump = (uint8_t)w_pump;
 	out->world_tex = (uint8_t)w_tex;
 	out->world_focus = (int8_t)w_focus;
+	out->demo = (uint8_t)demo_on;
+	out->demo_ms = demo_on ? now - demo_t0 : 0;
 	(void)world_any_on;
 	prev_btn = btn;
 }

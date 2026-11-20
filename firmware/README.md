@@ -77,6 +77,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | | T3 | the pump: on (page 1), page 2, off. Page 1: depth, release, bend, drums (down to none: the pump goes on without them; with no Pulse it pumps on the beat). Page 2: master compressor, rhythm (the kick, beats, eighths, half bars), how much the space ducks, how much bass and held voices are spared |
 | | T4 | texture: rain, vinyl, tape hiss, surf, off; F1 level, F2-F4 its own (rain: wander, drops, brightness; vinyl: crackle, warble, surface; tape: breath depth, pace, brightness; surf: pace, wash, brightness) |
 | | lights | bright: on; a dim pulse: the page the faders are on (they follow the last T pressed, with pickup); each press shown for a second. What is on stays on when you leave |
+| Demo (PLAY held 15 s, then let go; the play row fills to 2 s, then again, blinking, then flashes) | | the album: the AMB-1 pieces in order, two minutes each, fading one into the next, round and round (song mode only if already on); the track row shows the piece's number. FFWD: the next; RWD: the one before; any other press ends it, on the piece playing |
 | Channel page | F1 F2 F3 F4 | character, tone, length, register (5 octave steps) |
 | | FFWD tap | one step more of this channel's macro (4 steps) |
 | | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |

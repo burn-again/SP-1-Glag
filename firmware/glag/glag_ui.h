@@ -36,6 +36,11 @@
  *                              how much the space ducks, how much bass and held voices are spared
  *                        T4 texture: rain, vinyl, tape hiss, surf, off; F1 level, F2-F4 its own
  *                        Song changes land on the next bar and glide; leaving keeps all of it on.
+ *   DEMO                 PLAY held 15 s, then let go (from anywhere): the album. The AMB-1
+ *                        pieces in order, two minutes each, fading from one to the next, round
+ *                        and round (song mode only if it was already on). The track row shows
+ *                        the piece's number. FFWD: the next piece; RWD: the one before; any
+ *                        other press (T1-T4, PLAY) ends it, staying on the piece playing.
  *   anywhere             •• double tap: HOME
  *                        PLAY: grow / rest
  *                        •• + PLAY twice: next piece
@@ -97,6 +102,9 @@ typedef struct {
 	 * (0 off, 1 rain .. 4 surf), and which of the four the faders follow (-1: none) */
 	uint8_t world_song, world_arp, world_pump, world_tex;
 	int8_t world_focus;
+	/* demo mode (PLAY held 15 s, then let go): on, and how far into this piece (ms) */
+	uint8_t demo;
+	uint32_t demo_ms;
 } gl_ui_out;
 
 void glui_init(void);
