@@ -141,6 +141,9 @@ void gl_macro(int ch, float depth, float period_s);
  * chord, the dice, the clock and the slow LFOs from the start, every channel reset, the echo and
  * reverb emptied. For the album (between tracks, in silence): each piece plays as recorded. */
 void gl_fresh(uint32_t seed);
+/* The crank: while resting or frozen, play on to the next step where something sounds (a bar
+ * at most), now. */
+void gl_crank(void);
 /* MIDI in: a note on channel ch (0..3) of Glag, velocity 1..127 (0: note off). Any thread: it
  * is queued and played at the next millisecond. While a channel has notes held, and for 4 s
  * after its last, MIDI plays it and its own sequencer rests. On the Pulse's channel notes are

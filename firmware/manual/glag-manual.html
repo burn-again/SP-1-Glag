@@ -379,6 +379,7 @@ h3.group { margin-top: 18px; }
           <tr><td class="g"><span class="key">FFWD</span> tap <small>Home</small></td><td>Freeze, latched: the chord holds, no new notes, the reverb rings forever. Tap again to let go.</td><td><span class="ledrow"><i class="dim"></i><i class="dim"></i><i class="dim"></i><i class="dim"></i></span> a still glow</td></tr>
           <tr><td class="g"><span class="key">FFWD</span> held <small>Home</small></td><td>Freeze until you let go</td><td>A still glow</td></tr>
           <tr><td class="g"><span class="key">RWD</span> held <small>Home</small></td><td>The record slows to 10 BPM over 10 s, pitch and tempo together. Let go and it springs back.</td><td>The play lights dim as it slows</td></tr>
+          <tr><td class="g"><span class="key">RWD</span> tap <small>Home, resting or frozen</small></td><td>The crank: on to the next step where something plays (a bar ahead at most), played now. While resting it is a music box turned by hand, the chords moving on as the bars go by; while frozen it paints single notes into the frozen wash.</td><td>The play lights flash with each note</td></tr>
           <tr><td class="g"><span class="key">FFWD</span> tap <small>channel pages</small></td><td>One step more of that channel's macro (four steps)</td><td>The step as a bar</td></tr>
           <tr><td class="g"><span class="key">RWD</span> held <small>channel pages</small></td><td>The macro glides more slowly, from 8 s down to 64 s</td><td>A bar filling as it slows</td></tr>
           <tr><td class="g"><span class="key">RWD</span> twice <small>channel pages</small></td><td>The macro off</td><td>An empty bar</td></tr>
@@ -576,7 +577,7 @@ const PAGES = {
     f3: ["F3 · Reverb", "", ["How long the space rings. Which space: on Harmony."]], f4: ["F4 · DJ filter", "", ["Centre: off. Left: low-pass. Right: high-pass."]],
     vol: VOL,
     ffwd: ["FFWD · rocker up", "", ["Tap: freeze, latched; tap again to let go. Held: freeze until you let go.", "•• + tap: randomize (voices kept). •• + held 3 s: the piece's macro scene."]],
-    rwd: ["RWD · rocker down", "free", ["Held: the record slows to 10 BPM; let go and it springs back.", "•• + tap: undo (again: redo). •• + held 3 s: save the piece, its macros as its scene.", "!Tap: nothing."]],
+    rwd: ["RWD · rocker down", "free", ["Held: the record slows to 10 BPM; let go and it springs back.", "•• + tap: undo (again: redo). •• + held 3 s: save the piece, its macros as its scene.", "Tap while resting or frozen: the crank, on to the next step that plays, played now (a music box by hand)."]],
     tled: ["Track LEDs (over T1–T4)", "", ["All four breathing: you are on Home."]],
     play: PLAY, prow: PROW, fn: FN,
     t: (n) => [`T${n} · Channel ${n}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: channel ${n}'s next voice.`, "!Held: nothing."]] },

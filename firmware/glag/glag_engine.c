@@ -209,7 +209,8 @@ static gl_patch post_buf[2];
 static volatile uint32_t post_seq, post_seen = 0xFFFFFFFFu;
 
 static volatile uint8_t cmd_play = 1, cmd_freeze, cmd_slow;
-static volatile uint32_t cmd_next, cmd_panic, cmd_fresh, cmd_fresh_seed;
+static volatile uint32_t cmd_next, cmd_panic, cmd_fresh, cmd_fresh_seed, cmd_crank;
+static uint32_t seen_crank, notes_fired;     /* the crank; notes begun (for it to find the next) */
 static uint32_t seen_fresh;
 static uint32_t seen_next, seen_panic;
 
@@ -438,6 +439,7 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 {
 	v->note = ivl_note(chan_of(v), note);
 	v->mnote = 0;                  /* (MIDI tags its own notes after this) */
+	notes_fired++;
 	v->vel = vel;
 	v->ratio = ratio;
 	v->side = (uint8_t)(side & 1);
@@ -831,6 +833,7 @@ static void bells_beat(chan *c, int ch)
 			c->bp_vel[k] = 0.45f + 0.35f * rnd();
 			c->bp_ratio[k] = BELL_RATIO[zone][k];
 			c->bp_on |= (uint8_t)(1u << k);
+			notes_fired++;
 		}
 		if (++c->lpos[k] >= len) {
 			c->lpos[k] = 0;
@@ -854,6 +857,7 @@ static int euclid_hit(int k, int n, int i) { return k > 0 && ((i * k) % n) < k; 
  * 64 an open hat (a longer shaker) */
 static void pulse_fire(chan *c, int ch, int mask)
 {
+	notes_fired++;
 	float t = eff_tone(ch), l = P.ch[ch][CP_LENGTH];
 	float kp = fexp2((float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2) * 0.5f);
 	if (mask & 1) {
@@ -981,6 +985,7 @@ static void ks_pluck(chan *c, int k, float hz, float vel, float ea, float a, flo
 	c->ks_kd[k] = fexp2(-9.9658f * (float)GL_SUB / (GL_SR * T));
 	c->ks_a[k] = a;
 	c->ks_hold[k] = 0.0f;
+	notes_fired++;
 }
 /* the quietest of the channel's strings (an idle one first); -1 if none is free and the budget
  * is full */
@@ -1213,6 +1218,7 @@ static void strings_step(chan *c, int ch, uint32_t step, float act, int base)
 		float vel = 0.8f + 0.15f * rnd();
 		if (moved || rebow || v->stage == ST_IDLE || v->stage == ST_REL) {
 			v->hold = v->stage == ST_IDLE ? 0.0f : 0.035f;   /* a breath between bows */
+			notes_fired++;
 			v->stage = ST_ATT;
 			v->vel = vel;
 			v->t = 0.0f;
@@ -3253,6 +3259,8 @@ void gl_init(uint32_t seed)
 	space_settle();                        /* the tape at its length: no slide at the start */
 }
 
+void gl_crank(void) { cmd_crank++; }
+
 void gl_fresh(uint32_t seed)
 {
 	cmd_fresh_seed = seed;
@@ -3476,6 +3484,34 @@ static inline float macro_trem(int c)
 
 #include "glag_play.h"
 
+/* one sixteenth of the clock: the bar's chord, every channel's step (when play), the pump */
+static void clock_step(int play)
+{
+	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
+		chord_pending = 0;
+		chord_next();
+	}
+	if (play)
+		for (int c = 0; c < GL_NCH; c++)
+			if (!CH[c].fading) {
+				/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
+				uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
+				if (step_n % dv == 0u) {
+					if (midi_live(c))
+						;                                   /* MIDI plays it */
+					else if (arp_live(c))
+						arp_step(&CH[c], c, step_n / dv);   /* arp mode plays it */
+					else
+						chan_step(&CH[c], c, step_n / dv);
+				}
+			}
+	if (play)
+		pump_step(step_n);                    /* Playworld's pump on its own clock */
+	if ((step_n & 15u) == 0u)
+		arp_bar();                            /* arp mode on or off: on the bar */
+	step_n++;
+}
+
 static void control(float dt)
 {
 	uint32_t s = post_seq;
@@ -3602,29 +3638,15 @@ static void control(float dt)
 	gl_beat = (float)(step_n & 3) * 0.25f + step_acc * 0.25f;
 	while (step_acc >= 1.0f) {
 		step_acc -= 1.0f;
-		if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
-			chord_pending = 0;
-			chord_next();
-		}
-		if (playing && !frozen)
-			for (int c = 0; c < GL_NCH; c++)
-				if (!CH[c].fading) {
-					/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
-					uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
-					if (step_n % dv == 0u) {
-						if (midi_live(c))
-							;                                   /* MIDI plays it */
-						else if (arp_live(c))
-							arp_step(&CH[c], c, step_n / dv);   /* arp mode plays it */
-						else
-							chan_step(&CH[c], c, step_n / dv);
-					}
-				}
-		if (playing && !frozen)
-			pump_step(step_n);                    /* Playworld's pump on its own clock */
-		if ((step_n & 15u) == 0u)
-			arp_bar();                            /* arp mode on or off: on the bar */
-		step_n++;
+		clock_step(playing && !frozen);
+	}
+	/* the crank (RWD on Home while resting or frozen): on to the next step where something
+	 * plays, a bar at most, played now */
+	while (cmd_crank != seen_crank) {
+		seen_crank++;
+		uint32_t before = notes_fired;
+		for (int k = 0; k < 16 && notes_fired == before; k++)
+			clock_step(1);
 	}
 	for (int c = 0; c < GL_NCH; c++) {
 		chan_control(&CH[c], c, dt);

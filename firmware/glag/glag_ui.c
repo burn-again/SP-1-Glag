@@ -926,6 +926,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			rwd_shift = 0;
 			rwd_mac = 1;
 			rwd_from = mac_period[chan];
+		} else if (page == PG_HOME && (!playing || freeze_on)) {
+			rwd_shift = 0;
+			gl_crank();                          /* resting or frozen: a turn of the crank */
 		} else if (page == PG_HOME) {
 			rwd_shift = 0;
 			slow_on = 1;

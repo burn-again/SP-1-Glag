@@ -345,6 +345,19 @@ int main(void)
 	/* PLAY: rest and grow */
 	tap(GB_PLAY); run(50);
 	CHECK(!gl_playing, "PLAY rests");
+	/* resting: RWD turns the crank, one note-bearing step a tap, and does not slow anything */
+	run(6000);
+	{
+		int lit = 0;
+		for (int k = 0; k < 4 && !lit; k++) {
+			tap(GB_RWD);
+			for (int c = 0; c < 4; c++)
+				lit |= gl_glow[c] > 0.3f;
+			run(400);
+		}
+		CHECK(lit, "resting: RWD taps play the next notes (the crank)");
+		CHECK(gl_speed > 0.99f, "and nothing slows (%.2f)", gl_speed);
+	}
 	tap(GB_PLAY); run(50);
 	CHECK(gl_playing, "PLAY grows again");
 
