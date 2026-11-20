@@ -158,6 +158,11 @@ void gl_kit_color(int method);        /* audition only: the Kit's colour (0 none
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_kit_tune(int id, float v);    /* the Kit tuning page: one of its numbers (glag_kit.h, KT_*) */
 int gl_kit_tunes(void);               /* how many there are */
+/* the tuning page's step editor: rows (kick, snare, ghost, squash, hat, open hat, clank, tissue,
+ * Nord, roll, tom root, third, fifth, high), steps 0-31, v 0 off, 1 on, 2 accent */
+void gl_kit_pattern(int row, int step, int v);
+void gl_kit_pattern_mode(int on, int len, float swing);
+int gl_kit_pattern_pos(void);
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */

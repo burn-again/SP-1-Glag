@@ -333,7 +333,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			vel = 0.95f;
 	}
 	if (lane == 0 || lane == 1 || lane == 9) {
-		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.042f / (KT[KT_SOG_CLOSE] < 5.0f ? 5.0f : KT[KT_SOG_CLOSE]);   /* the soggy filter: shut in 10, 120 or 30 ms */
+		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.042f / (KT[KT_SOG_CLOSE] < 2.0f ? 2.0f : KT[KT_SOG_CLOSE]);   /* the soggy filter: shut in 10, 120 or 30 ms */
 		k->c_ceil = KT[KT_SOG_REACH] * (press ? 0.667f : lng ? 1.067f : 1.0f);             /* how far it opens */
 	}
 	const float dm = (big ? KT[KT_F_ACCX] : lng ? KT[KT_F_LONGX] : KT[KT_F_SHORT]) * dyn_d;
@@ -370,7 +370,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		/* tuned: its body on the chord's third or fifth, the one nearest F#3 (185 Hz) */
 		int tn = chord_pc[ku() < 0.5f ? 1 : 2];
 		float semis = (KT[KT_S_TUNED] >= 0.5f ? (float)(54 + ((tn - 54 + 66) % 12) - 6 - 54) : 0.0f) + KT[KT_S_PITCH] + reg * 12.0f * 0.25f + kn() * feel * 0.02f;
-		float dec = clampf((0.1f + 0.6f * l) * dm * KT[KT_S_DECAY] * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
+		float dec = clampf((0.1f + 0.6f * l) * dm * KT[KT_S_DECAY] * (1.0f + kn() * feel * 0.03f), 0.0f, 4.0f);
 		float nu = clampf(4.0f + 11.0f * t + kn() * feel * 0.4f, 0.0f, 15.0f);
 		if (lane == 9)
 			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, clampf(KT[KT_S_CRUNCH], 0.0f, 2.0f), vel);
@@ -389,7 +389,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		/* (CHARACTER reaches only half the shift it had: past that it turned sour) */
 		const float xs = x * 0.5f, open = lane == 6 ? 1.0f : 0.0f;
 		float dec = expmap(l, 0.025f, 0.3f) * dm * KT[KT_H_DECAY] * (lane == 6 ? 3.0f : 1.0f);
-		dec = dec > 1.2f ? 1.2f : dec;
+		dec = dec > 1.2f * KT[KT_H_DECAY] ? 1.2f * KT[KT_H_DECAY] : dec;   /* (the cap moves with the tuning) */
 		/* the longer it rings, the darker and quieter: a long hat sits back, muted */
 		float dark = clampf((dec - 0.05f) * 5.0f * KT[KT_H_DARK], 0.0f, 1.0f);
 		k->h_a = vel * (1.0f - 0.35f * dark) * KT[KT_L_HAT];
@@ -487,7 +487,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	}
 	case 8: {   /* EPS crunch roll: retriggers, acceleration, pitch step; rate and bits from CHARACTER */
 		float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
-		k->r_n = (uint8_t)clampf((4.0f + 8.0f * x) * KT[KT_R_HITS], 2.0f, 24.0f);
+		k->r_n = (uint8_t)clampf((4.0f + 8.0f * x) * KT[KT_R_HITS], 2.0f, 40.0f);
 		k->r_tom = 0;
 		k->r_i = 0;
 		k->r_gap = step_s * 0.5f / KT[KT_R_SPEED];
@@ -542,7 +542,7 @@ static void kit_later(chan *c, int ch, int lane, float vel, float t_s)
 		return;
 	}
 	kit_state *k = &c->kt;
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < 16; i++)
 		if (k->q_t[i] <= 0.0f) {
 			k->q_t[i] = t_s;
 			k->q_v[i] = vel;
@@ -603,6 +603,29 @@ static void kit_slot(chan *c, int ch, char e, int lane, float vel, float t_s, fl
 	}
 }
 
+/* ---- audition: a pattern typed in by hand (the tuning page's step editor) in place of the Kit's own
+ * lanes: per row, a bit for each of up to 32 sixteenths and a bit for its accent; the feel rules,
+ * the rotation and the colour still apply ---- */
+static const uint8_t KPAT_LANE[14] = {0, 1, 7, 9, 2, 6, 3, 4, 5, 8, 10, 11, 12, 13};
+static uint32_t kpat_on[14], kpat_acc[14];
+static uint8_t kpat_mode, kpat_len = 16, kpat_pos;
+static float kpat_swing;
+void gl_kit_pattern(int row, int step, int v)
+{
+	if ((unsigned)row >= 14u || (unsigned)step >= 32u)
+		return;
+	uint32_t b = 1u << step;
+	kpat_on[row] = v ? kpat_on[row] | b : kpat_on[row] & ~b;
+	kpat_acc[row] = v == 2 ? kpat_acc[row] | b : kpat_acc[row] & ~b;
+}
+void gl_kit_pattern_mode(int on, int len, float swing)
+{
+	kpat_mode = (uint8_t)(on != 0);
+	kpat_len = (uint8_t)(len < 1 ? 1 : len > 32 ? 32 : len);
+	kpat_swing = swing < 0.0f ? 0.0f : swing > 0.75f ? 0.75f : swing;
+}
+int gl_kit_pattern_pos(void) { return kpat_pos; }
+
 /* ---- the lanes ---- */
 static void kit_step(chan *c, int ch, uint32_t step)
 {
@@ -637,6 +660,15 @@ static void kit_step(chan *c, int ch, uint32_t step)
 		k->eo_h = (uint8_t)(ku() * 12.0f);
 	} else if (phrase == 0 && mac_depth[ch] <= 0.0f)
 		k->eo_k = k->eo_s = k->eo_h = 0;
+	if (kpat_mode) {
+		const int sp = (int)(step % kpat_len);
+		kpat_pos = (uint8_t)sp;
+		const float t_s = (sp & 1) ? kpat_swing * step_s : 0.0f;
+		for (int r = 0; r < 14; r++)
+			if (kpat_on[r] >> sp & 1u)
+				kit_later(c, ch, KPAT_LANE[r], kpat_acc[r] >> sp & 1u ? 0.97f : 0.72f + 0.06f * ku(), t_s);
+		return;
+	}
 	const int gv = (int)GL_CHX_GRV(P.chx[ch]);
 	if (gv >= 1 && gv < GL_NGROOVE) {
 		/* a groove: this step's two slots */
@@ -912,7 +944,7 @@ static int kit_render12(chan *c, float *A)
 	kit_state *k = &c->kt;
 	int any = 0;
 	/* the hits waiting off the grid */
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < 16; i++)
 		if (k->q_t[i] > 0.0f) {
 			k->q_t[i] -= (float)KSUB / KSR;
 			if (k->q_t[i] <= 0.0f) {

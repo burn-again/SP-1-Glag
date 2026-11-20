@@ -175,8 +175,8 @@ typedef struct {
 	int8_t r_dir;
 	float r_gap, r_accel, r_t, r_vel, r_hold, r_q, r_semis, r_acc, r_held;
 	/* hits waiting a fraction of a step: off-grid slots, swing, triplets */
-	float q_t[8], q_v[8];
-	uint8_t q_l[8];
+	float q_t[16], q_v[16];
+	uint8_t q_l[16];
 	/* the rotation (the macro's wildest trick): kick -> snare -> hat -> kick, a turn each segment */
 	uint8_t rot_r, rot_left, rot_seg, rot_i;
 	/* the colour after it (glag_kit.h): a comb or two (in the channel's string buffer), chord

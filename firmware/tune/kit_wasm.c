@@ -23,6 +23,8 @@ static uint8_t lvl_saved[GL_NCH];
 static int solo, piece;
 static int16_t pcm[2 * 1024];
 static float out[2 * 1024];
+static double acc_e;
+static int acc_n;
 
 static void post(void) { gl_post_patch(&patch); }
 
@@ -69,8 +71,16 @@ EXPORT float *kt_render(int n)
 	if (n > 1024)
 		n = 1024;
 	gl_render(pcm, (uint32_t)n, 0.9f);
-	for (int i = 0; i < 2 * n; i++)
+	for (int i = 0; i < 2 * n; i++) {
 		out[i] = (float)pcm[i] * (1.0f / 32768.0f);
+		acc_e += out[i] * out[i];
+	}
+	acc_n += 2 * n;
 	return out;
 }
 EXPORT float kt_peak(void) { return gl_peak; }
+EXPORT void kt_pat(int row, int step, int v) { gl_kit_pattern(row, step, v); }
+EXPORT void kt_pat_mode(int on, int len, float swing) { gl_kit_pattern_mode(on, len, swing); }
+EXPORT int kt_pat_pos(void) { return gl_kit_pattern_pos(); }
+/* the mean power since the last call (a test's level tap) */
+EXPORT float kt_power(void) { float p = acc_n ? (float)(acc_e / acc_n) : 0.0f; acc_e = 0; acc_n = 0; return p; }
