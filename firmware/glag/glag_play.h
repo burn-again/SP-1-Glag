@@ -402,17 +402,17 @@ static void arp_bar(void)
 	}
 }
 /* one note on a channel, now, in its own voice: what arp mode (and MIDI, later) plays with */
-static void voice_note(chan *c, int ch, int note, float vel, float gate)
+static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 {
-	nvoice *v;
+	nvoice *v = 0;
 	float tone = eff_tone(ch), chr = P.ch[ch][CP_CHAR];
 	switch (c->voice) {
 	case GV_PULSE:
-		return;
+		return 0;
 	case GV_KALIMBA: {
 		int k = c->ks_next;
 		if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
-			return;
+			return 0;
 		c->ks_next = (uint8_t)((k + 1) % 3);
 		ks_pluck(c, k, mtof(ivl_note(ch, (float)note)) * speed * pbend, vel, 0.15f + 0.8f * tone, 0.5f + 0.45f * chr, 0.5f, 0);
 		break;
@@ -437,6 +437,7 @@ static void voice_note(chan *c, int ch, int note, float vel, float gate)
 		break;
 	case GV_RIBBON:
 		ribbon_blow(c, ch, note, vel, gate);
+		v = &c->v[0];
 		break;
 	case GV_GLOW:
 		while (note > 79)
@@ -477,6 +478,7 @@ static void voice_note(chan *c, int ch, int note, float vel, float gate)
 	}
 	}
 	c->glow = vel;
+	return v;
 }
 static void arp_step(chan *c, int ch, uint32_t step)
 {
@@ -507,10 +509,78 @@ static void arp_step(chan *c, int ch, uint32_t step)
 	float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
 	voice_note(c, ch, notes[idx], (q % n == 0 ? 0.85f : 0.65f) + 0.1f * rnd(), (float)div * step_s * 0.6f);
 }
-/* the held voices in arp mode: struck, falling away, each in its own render's terms */
+/* ---- MIDI in ---- */
+static uint8_t mq[64][3];
+static volatile uint32_t mq_w, mq_r;
+static float midi_t[4];                          /* seconds MIDI keeps the channel */
+static uint8_t midi_n[4];                        /* notes held */
+void gl_midi_note(int ch, int note, int vel)
+{
+	uint32_t w = mq_w;
+	if ((unsigned)ch >= 4u || w - mq_r >= 64u)
+		return;
+	mq[w & 63u][0] = (uint8_t)ch;
+	mq[w & 63u][1] = (uint8_t)(note & 127);
+	mq[w & 63u][2] = (uint8_t)(vel & 127);
+	mq_w = w + 1u;
+}
+static int midi_live(int ch) { return midi_t[ch] > 0.0f; }
+static void midi_drum(chan *c, int ch, int note, float vel)
+{
+	/* by the note's name, in any octave (General MIDI's drum notes land the same way): C kick,
+	 * D / E snare, F# / G# hat, A# open hat, C# / D# click, the rest a soft shaker */
+	static const uint8_t MAP[12] = {1 | 8, 4, 32, 4, 32, 2, 2 | 16, 2, 2 | 16, 2, 2 | 64 | 16, 2};
+	int mask = MAP[note % 12];
+	if (vel < 0.5f)
+		mask &= ~(8 | 16);                           /* soft: no accent */
+	pulse_fire(c, ch, mask);
+}
+static void midi_tick(float dt)
+{
+	while (mq_r != mq_w) {
+		const uint8_t *e = mq[mq_r & 63u];
+		int ch = e[0], note = e[1];
+		float vel = (float)e[2] * (1.0f / 127.0f);
+		chan *c = &CH[ch];
+		if (e[2]) {
+			midi_t[ch] = 4.0f;
+			if (midi_n[ch] < 255)
+				midi_n[ch]++;
+			if (c->voice == GV_PULSE)
+				midi_drum(c, ch, note, vel);
+			else {
+				nvoice *v = voice_note(c, ch, note, 0.3f + 0.7f * vel, 30.0f);
+				if (v)
+					v->mnote = (uint8_t)(note + 1);
+			}
+		} else {
+			if (midi_n[ch])
+				midi_n[ch]--;
+			for (int i = 0; i < NV; i++) {        /* its voice lets go */
+				nvoice *v = &c->v[i];
+				if (v->mnote != note + 1)
+					continue;
+				v->mnote = 0;
+				if (arp_held(c->voice))
+					v->stage = ST_REL;
+				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE)
+					v->hold = 0.0f;
+			}
+		}
+		mq_r++;
+	}
+	for (int ch = 0; ch < 4; ch++) {
+		if (midi_n[ch])
+			midi_t[ch] = 4.0f;
+		else if (midi_t[ch] > 0.0f)
+			midi_t[ch] -= dt;                        /* 4 s after the last: its own music back */
+	}
+}
+
+/* the held voices in arp mode: struck, falling away, each in its own render's terms (under MIDI:
+ * held while the key is, an attack, a decay to a sustain, a release when it lets go) */
 static void arp_held_control(chan *c, int ch, float dt, float tone, float len)
 {
-	(void)ch;
 	int nv = c->voice == GV_DRONE ? 2 : c->voice == GV_PAD ? 4 : 3;
 	float dec = expmap(len, 0.15f, 1.2f);
 	for (int i = 0; i < nv; i++) {
@@ -519,7 +589,26 @@ static void arp_held_control(chan *c, int ch, float dt, float tone, float len)
 			v->ainc = v->iinc = 0.0f;
 			continue;
 		}
-		nv_perc(v, 0.004f, dec / speed, 0.15f / speed, 0.3f + 1.5f * tone, dt);
+		if (midi_live(ch) && !arp_live(ch)) {
+			if (v->stage == ST_ATT) {
+				v->env += dt / 0.012f;
+				if (v->env >= 1.0f) {
+					v->env = 1.0f;
+					v->stage = ST_DEC;
+				}
+			} else if (v->stage == ST_DEC)
+				v->env += (0.75f - v->env) * (1.0f - dcoef(0.5f, dt));
+			else {
+				v->env *= dcoef(0.3f + 2.5f * len, dt);
+				if (v->env < 0.0005f) {
+					v->env = 0.0f;
+					v->stage = ST_IDLE;
+				}
+			}
+			v->menv *= dcoef(0.5f, dt);
+			ramp(v, v->env * v->vel, clampf((0.3f + 1.5f * tone) * (0.3f + 0.7f * v->menv), 0.0f, 3.0f) * IDX_SCALE);
+		} else
+			nv_perc(v, 0.004f, dec / speed, 0.15f / speed, 0.3f + 1.5f * tone, dt);
 		float hz = mtof(v->note) * speed * pbend;
 		switch (c->voice) {
 		case GV_PAD:

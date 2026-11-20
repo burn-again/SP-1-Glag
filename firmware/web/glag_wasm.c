@@ -76,6 +76,22 @@ EXPORT void wg_tick(uint32_t now_ms)
 	}
 }
 EXPORT void *wg_state(void) { return &st; }
+/* MIDI in: one message (channels 1-4 are Glag's channels; clock is counted on the page) */
+EXPORT void wg_midi(int status, int d1, int d2)
+{
+	int kind = status & 0xF0, ch = status & 0x0F;
+	if (ch > 3)
+		return;
+	if (kind == 0x90)
+		gl_midi_note(ch, d1, d2);
+	else if (kind == 0x80)
+		gl_midi_note(ch, d1, 0);
+	else if (kind == 0xB0)
+		glui_midi_cc(ch, d1, d2);
+	else if (kind == 0xC0)
+		glui_midi_program(d1);
+}
+EXPORT void wg_tempo(float bpm) { glui_midi_tempo(bpm); }
 EXPORT void *wg_patch(void) { return (void *)glui_patch(); }
 EXPORT int wg_patch_size(void) { return (int)sizeof(gl_patch); }
 /* n frames (a multiple of 48, at most 480), as interleaved float */

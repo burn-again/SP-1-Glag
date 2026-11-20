@@ -137,6 +137,7 @@ typedef struct {
 	/* the analog voices (strings, glow, seq, super): more saw phases, and a filter's states */
 	uint32_t pc3, pc4, ic3, ic4;
 	float f1, f2, fk, fq;
+	uint8_t mnote;                 /* the MIDI note it is playing, + 1 (0: none) */
 } nvoice;
 enum { ST_IDLE, ST_ATT, ST_DEC, ST_REL };
 
@@ -385,6 +386,7 @@ static const uint8_t MW[GV_COUNT][6] = {
 /* arp mode (glag_play.h): whether a channel is being played by it, and the held voices' short
  * envelope while it is */
 static int arp_live(int ch);
+static int midi_live(int ch);
 static int arp_held(int voice);
 static void arp_held_control(chan *c, int ch, float dt, float tone, float len);
 /* audition only: another way to make a voice (0: as it is), to compare methods by ear */
@@ -435,6 +437,7 @@ static float ivl_note(int ch, float note);
 static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 {
 	v->note = ivl_note(chan_of(v), note);
+	v->mnote = 0;                  /* (MIDI tags its own notes after this) */
 	v->vel = vel;
 	v->ratio = ratio;
 	v->side = (uint8_t)(side & 1);
@@ -1882,7 +1885,7 @@ static void chan_control(chan *c, int ch, float dt)
 					c->glow = 1.0f;
 				}
 			}
-	if (arp_live(ch) && arp_held(c->voice)) {   /* arp mode: pads, strings... struck, short */
+	if ((arp_live(ch) || midi_live(ch)) && arp_held(c->voice)) {   /* arp / MIDI: pads, strings... as notes */
 		arp_held_control(c, ch, dt, tone, len);
 		c->glow *= dcoef(0.4f, dt);
 		return;
@@ -3524,6 +3527,7 @@ static void control(float dt)
 		dist_setup();
 	slowing = cmd_slow;
 	macro_tick(dt);
+	midi_tick(dt);
 	world_tick();
 	form_tick(dt);
 	key_tick(dt);
@@ -3608,7 +3612,9 @@ static void control(float dt)
 					/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
 					uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
 					if (step_n % dv == 0u) {
-						if (arp_live(c))
+						if (midi_live(c))
+							;                                   /* MIDI plays it */
+						else if (arp_live(c))
 							arp_step(&CH[c], c, step_n / dv);   /* arp mode plays it */
 						else
 							chan_step(&CH[c], c, step_n / dv);

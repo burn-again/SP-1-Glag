@@ -141,6 +141,12 @@ void gl_macro(int ch, float depth, float period_s);
  * chord, the dice, the clock and the slow LFOs from the start, every channel reset, the echo and
  * reverb emptied. For the album (between tracks, in silence): each piece plays as recorded. */
 void gl_fresh(uint32_t seed);
+/* MIDI in: a note on channel ch (0..3) of Glag, velocity 1..127 (0: note off). Any thread: it
+ * is queued and played at the next millisecond. While a channel has notes held, and for 4 s
+ * after its last, MIDI plays it and its own sequencer rests. On the Pulse's channel notes are
+ * drums by the note's name in any octave: C kick, D/E snare, F#/G# hat, A# open hat, C#/D# click
+ * (General MIDI's 36, 38, 42, 46 land right). */
+void gl_midi_note(int ch, int note, int vel);
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */

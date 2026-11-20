@@ -65,6 +65,14 @@ header p { margin: 6px 0 0; color: var(--muted); max-width: 66ch; }
 .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
 .note { font-size: 13px; color: var(--muted); margin: 0; max-width: 66ch; }
 .keys { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 13px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.midirow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.midirow .btn { min-height: 36px; min-width: 36px; }
+.mch.on { background: color-mix(in srgb, var(--led) 30%, var(--bg)); border-color: var(--led); }
+.piano { position: relative; height: 110px; display: flex; touch-action: none; user-select: none; -webkit-user-select: none; }
+.piano .w { flex: 1; border: 1px solid var(--line); border-radius: 0 0 8px 8px; background: var(--bg); margin-right: -1px; }
+.piano .b { position: absolute; top: 0; height: 62%; border-radius: 0 0 6px 6px; background: var(--fg); z-index: 1; }
+.piano .down { background: color-mix(in srgb, var(--led) 55%, var(--bg)) !important; }
 .keys kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
 details summary { cursor: pointer; font-weight: 500; }
 .map { font-size: 13px; display: grid; gap: 4px; margin-top: 8px; }
@@ -112,6 +120,15 @@ details summary { cursor: pointer; font-weight: 500; }
         <h2>SP-1 CPU, worst case</h2>
         <div class="cpu"><b id="cpu">–</b><span class="pill" id="cpupill">–</span></div>
         <p class="note">Estimated for these four voices at full activity and length, from the engine run on an emulated Cortex-M4 and scaled by how Plaits measured on real SP-1s. The hardware log will have the real number.</p>
+      </section>
+      <section class="panel" id="midipanel">
+        <h2>MIDI in</h2>
+        <p class="note">MIDI channels 1 to 4 play Glag's channels 1 to 4, each in its own voice; while a channel has notes, and for 4 s after, its own music rests. On the Pulse's channel notes are drums, by name in any octave: C kick, D snare, F♯ hat, A♯ open hat, C♯ click. CCs: 1 macro, 7 level, 10 pan, 16 register, 71 character, 72 length, 73 activity, 74 tone, 91 reverb send, 93 echo send. Program change: the piece. MIDI clock: the tempo.</p>
+        <div class="midirow"><button class="btn" id="midion" type="button">Connect MIDI</button><span id="midistat" class="note">Start the sound first; Chrome or Edge will ask to allow MIDI.</span></div>
+        <div class="midirow" role="group" aria-label="Channel for the keys below"><span class="note">Keys below play channel</span>
+          <button class="btn mch on" data-c="0" type="button">1</button><button class="btn mch" data-c="1" type="button">2</button><button class="btn mch" data-c="2" type="button">3</button><button class="btn mch" data-c="3" type="button">4</button>
+          <button class="btn" id="octdn" type="button" aria-label="Octave down">&minus;</button><span id="octlab" class="note">C3</span><button class="btn" id="octup" type="button" aria-label="Octave up">+</button></div>
+        <div class="piano" id="piano" aria-label="On-screen keys"></div>
       </section>
       <section class="panel">
         <h2>Keyboard</h2>
@@ -257,6 +274,7 @@ class GlagCore {
     this.frames = 0; this.f = [0, 0, 0, 0]; this.b = 0; this.p = 0; this.sent = 0; this.lastSave = 0;
   }
   input(f, b, p) { this.f = f; this.b = b; this.p |= p || 0; }
+  midi(m) { if (m.tempo) this.w.wg_tempo(m.tempo); else this.w.wg_midi(m.d[0], m.d[1] || 0, m.d[2] || 0); }
   /* fill L and R; returns a state message about 33 times a second, else null. The engine runs
    * at 48 kHz; when the browser runs at another rate (Safari, many 44.1 kHz devices) its
    * samples are read at that rate, interpolated, so pitch and tempo stay true */
@@ -305,7 +323,7 @@ class GlagNode extends AudioWorkletProcessor {
   constructor(o) {
     super();
     this.core = new GlagCore(o.processorOptions);
-    this.port.onmessage = (e) => { if (e.data.t === "in") this.core.input(e.data.f, e.data.b, e.data.p); };
+    this.port.onmessage = (e) => { if (e.data.t === "in") this.core.input(e.data.f, e.data.b, e.data.p); else if (e.data.t === "midi") this.core.midi(e.data); };
   }
   process(_, outs) {
     const out = outs[0];
@@ -357,12 +375,76 @@ startBtn.addEventListener("click", async () => {
       if (msg) onState(msg);
     };
     sp.connect(ctx.destination);
-    node = { port: { postMessage: (m) => { if (m.t === "in") core.input(m.f, m.b, m.p); } } };
+    node = { port: { postMessage: (m) => { if (m.t === "in") core.input(m.f, m.b, m.p); else if (m.t === "midi") core.midi(m); } } };
   }
   send();
   startBtn.textContent = "Stop sound";
   status.textContent = "Playing";
 });
+
+/* ---- MIDI in: Web MIDI, and keys on the screen ---- */
+const midiSend = (d) => { if (node) node.port.postMessage({ t: "midi", d }); };
+let clockTicks = [], lastTempo = 0;
+function onMidi(e) {
+  const d = e.data, st = d[0];
+  if (st === 0xF8) {                              /* clock: 24 a beat; the tempo from the last two beats */
+    clockTicks.push(e.timeStamp);
+    if (clockTicks.length > 49) clockTicks.shift();
+    if (clockTicks.length === 49) {
+      const bpm = 60000 / ((clockTicks[48] - clockTicks[0]) / 2);
+      if (Math.abs(bpm - lastTempo) > 0.5) { lastTempo = bpm; if (node) node.port.postMessage({ t: "midi", tempo: bpm }); }
+    }
+    return;
+  }
+  if (st >= 0xF0) return;
+  midiSend([d[0], d[1], d[2]]);
+  const KIND = { 8: "note off", 9: "note", 11: "CC", 12: "program" };
+  document.getElementById("midistat").textContent = `MIDI: ${KIND[st >> 4] || "message"} on channel ${(st & 15) + 1}`;
+}
+document.getElementById("midion").addEventListener("click", async () => {
+  const stat = document.getElementById("midistat");
+  if (!navigator.requestMIDIAccess) { stat.textContent = "This browser has no Web MIDI (use Chrome or Edge). The keys below still work."; return; }
+  try {
+    const acc = await navigator.requestMIDIAccess();
+    const hook = () => {
+      const ins = [...acc.inputs.values()];
+      ins.forEach((i) => { i.onmidimessage = onMidi; });
+      stat.textContent = ins.length ? "Listening to: " + ins.map((i) => i.name).join(", ") : "No MIDI inputs found. Plug one in; it is picked up when it appears.";
+    };
+    acc.onstatechange = hook;
+    hook();
+  } catch (err) { stat.textContent = "MIDI was not allowed: " + err.message; }
+});
+let keyCh = 0, keyOct = 48;
+document.querySelectorAll(".mch").forEach((b) => b.addEventListener("click", () => {
+  keyCh = +b.dataset.c;
+  document.querySelectorAll(".mch").forEach((x) => x.classList.toggle("on", x === b));
+}));
+const KEYNAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const BLACK = [1, 3, 6, 8, 10];
+function buildPiano() {
+  const pn = document.getElementById("piano");
+  const whites = [];
+  for (let n = 0; n < 25; n++) if (!BLACK.includes(n % 12)) whites.push(n);
+  whites.forEach((n) => { const k = document.createElement("div"); k.className = "w"; k.dataset.n = n; k.setAttribute("aria-label", KEYNAMES[n % 12]); pn.appendChild(k); });
+  const ww = 100 / whites.length;
+  for (let n = 0; n < 25; n++) if (BLACK.includes(n % 12)) {
+    const left = whites.indexOf(n - 1);
+    const k = document.createElement("div"); k.className = "b"; k.dataset.n = n;
+    k.style.left = `calc(${(left + 1) * ww}% - ${ww * 0.3}%)`; k.style.width = `${ww * 0.6}%`;
+    pn.appendChild(k);
+  }
+  const held = new Map();
+  const on = (el, id) => { const n = keyOct + +el.dataset.n; held.set(id, { el, n, c: keyCh }); el.classList.add("down"); midiSend([0x90 | keyCh, n, 100]); };
+  const off = (id) => { const h = held.get(id); if (!h) return; held.delete(id); h.el.classList.remove("down"); midiSend([0x80 | h.c, h.n, 0]); };
+  pn.addEventListener("pointerdown", (e) => { const el = e.target.closest("[data-n]"); if (!el) return; pn.setPointerCapture(e.pointerId); on(el, e.pointerId); });
+  pn.addEventListener("pointerup", (e) => off(e.pointerId));
+  pn.addEventListener("pointercancel", (e) => off(e.pointerId));
+}
+buildPiano();
+const octLab = () => { document.getElementById("octlab").textContent = "C" + (keyOct / 12 - 1); };
+document.getElementById("octdn").addEventListener("click", () => { keyOct = Math.max(24, keyOct - 12); octLab(); });
+document.getElementById("octup").addEventListener("click", () => { keyOct = Math.min(84, keyOct + 12); octLab(); });
 
 /* ---- the screen it doesn't have ---- */
 const ledT = [...document.querySelectorAll("#ledt .led")], ledP = [...document.querySelectorAll("#ledp .led")];

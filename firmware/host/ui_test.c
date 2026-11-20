@@ -321,6 +321,27 @@ int main(void)
 		(void)n;
 	}
 
+	/* ---- MIDI in ---- */
+	{
+		run(3000);
+		gl_midi_note(0, 60, 100); run(10);
+		CHECK(gl_glow[0] > 0.4f, "a MIDI note on channel 1 plays its voice (glow %.2f)", gl_glow[0]);
+		run(2000);
+		gl_midi_note(0, 60, 0); run(50);
+		float tempo = glui_patch()->g[GP_TEMPO];
+		glui_midi_tempo(100.0f); run(20);
+		CHECK(fabsf(glui_patch()->g[GP_TEMPO] - 0.8f) < 0.01f, "MIDI clock sets the tempo (%.2f)", glui_patch()->g[GP_TEMPO]);
+		glui_midi_tempo(20.0f + 100.0f * tempo); run(20);
+		float tone = glui_patch()->ch[1][CP_TONE];
+		glui_midi_cc(1, 74, 127); run(20);
+		CHECK(glui_patch()->ch[1][CP_TONE] > 0.99f, "CC 74 on MIDI channel 2: channel 2's tone");
+		glui_midi_cc(1, 74, (int)(tone * 127.0f + 0.5f)); run(20);
+		gl_midi_note(3, 36, 120); run(10);
+		CHECK(gl_glow[3] > 0.4f, "note 36 on the Pulse's channel: the kick (glow %.2f)", gl_glow[3]);
+		gl_midi_note(3, 36, 0);
+		run(4500);
+	}
+
 	/* PLAY: rest and grow */
 	tap(GB_PLAY); run(50);
 	CHECK(!gl_playing, "PLAY rests");

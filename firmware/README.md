@@ -182,6 +182,8 @@ language, the voices, the pieces and power. Open it in any browser.
 
 ## The emulator
 
+**MIDI in (emulator first).** In Chrome or Edge, *Connect MIDI* listens to every MIDI input: channels 1-4 play Glag's channels 1-4, each in its own voice (the same note player arp mode uses, `gl_midi_note`); while a channel has notes held, and for 4 s after its last, its own sequencer rests. Pads, strings, swell, super and drone hold while the key is held (an attack, a sustain, a release when it lets go); plucks ring their own length. On the Pulse's channel notes are drums by name in any octave (C kick, D snare, F# hat, A# open hat, C# click). CCs (`glui_midi_cc`): 1 the macro, 7 level, 10 pan, 16 register, 71 character, 72 length, 73 activity, 74 tone, 91 reverb send, 93 echo send; the faders pick the new values up as after a page change. Program change picks the piece; MIDI clock sets the tempo. On-screen keys (two octaves, a channel picker) play the same way without a keyboard. On the device the same calls will be fed by the BSP's USB-MIDI class over the USB-C port (the SP-1 is a USB device: it is played from a computer, phone or a USB MIDI host box, not a keyboard plugged straight in).
+
 The emulator carries every audition piece (all 62, plus the four labs) so shuffle and the pieces can be tried; `PIECES=stock sh web/build.sh` builds the firmware's sixteen only.
 
 `web/` builds the engine and the controls to WebAssembly and runs them in a page with the SP-1's

@@ -128,6 +128,13 @@ const gl_patch *glui_patch(void);       /* what is playing */
 /* What fader f (0..3) controls right now: its stored value, and whether the fader has picked
  * it up yet (soft takeover). For emulators and logs. */
 float glui_target(int f, int *caught);
+/* MIDI in (the notes go straight to gl_midi_note): a controller change on Glag channel ch (0..3),
+ * a program change (the piece), and a tempo from MIDI clock (BPM). CCs: 1 the macro, 7 level,
+ * 10 pan, 16 register, 71 character, 72 length, 73 activity, 74 tone, 91 reverb send, 93 echo
+ * send. They move the stored values; the faders pick them up again as after a page change. */
+void glui_midi_cc(int ch, int cc, int value);
+void glui_midi_program(int program);
+void glui_midi_tempo(float bpm);
 /* Call every few milliseconds. Posts to the engine itself. */
 void glui_tick(uint32_t now_ms, const gl_input *in, gl_ui_out *out);
 

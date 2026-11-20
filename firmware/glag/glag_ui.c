@@ -575,6 +575,47 @@ static void demo_track(uint32_t now)
 	gl_fresh(demo_on == 1 ? DEMO_SEED : now * 2654435761u + 1u);
 }
 
+/* ---- MIDI in: controllers, programs, tempo ---- */
+static uint8_t midi_recatch;
+void glui_midi_cc(int ch, int cc, int value)
+{
+	if ((unsigned)ch >= 4u)
+		return;
+	float v = (float)(value < 0 ? 0 : value > 127 ? 127 : value) * (1.0f / 127.0f);
+	int p = -1;
+	switch (cc) {
+	case 1:
+		mac_step[ch] = (int)(v * MAC_STEPS + 0.5f);
+		gl_macro(ch, v, mac_period[ch]);
+		return;
+	case 7: p = CP_LEVEL; break;
+	case 10: p = CP_PAN; break;
+	case 16: p = CP_REGISTER; v = (float)(int)(v * 4.0f + 0.5f) * 0.25f; break;
+	case 71: p = CP_CHAR; break;
+	case 72: p = CP_LENGTH; break;
+	case 73: p = CP_ACTIVITY; break;
+	case 74: p = CP_TONE; break;
+	case 91: p = CP_VERB; break;
+	case 93: p = CP_ECHO; break;
+	default: return;
+	}
+	cur.ch[ch][p] = v;
+	dirty = 1;
+	midi_recatch = 1;
+}
+void glui_midi_program(int program)
+{
+	load_piece(program);
+	midi_recatch = 1;
+}
+void glui_midi_tempo(float bpm)
+{
+	float v = (bpm - 20.0f) * 0.01f;
+	cur.g[GP_TEMPO] = v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+	dirty = 1;
+	midi_recatch = 1;
+}
+
 void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 {
 	uint16_t btn = in->buttons;
@@ -636,6 +677,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		demo_gain = demo_gain > 1.0f ? 1.0f : demo_gain;
 	}
 
+	if (midi_recatch) {                           /* MIDI moved values: the faders pick them up anew */
+		midi_recatch = 0;
+		uncatch_all(in);
+	}
 	/* the faders' layer follows ••; changing it re-arms the soft takeover */
 	if (fn != layer_shift) {
 		layer_shift = fn;
