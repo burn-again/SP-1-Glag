@@ -84,7 +84,7 @@ const char *const GL_VOICE_NAME[GV_COUNT] = {"Pad", "Bells", "Bass", "Piano", "M
                                              "Drone", "Kalimba", "Flute", "Arp", "Swell",
                                              "EP", "Gong", "Pizz", "Shimmer", "Tails", "Pulse",
                                              "Strings", "Glow", "Seq", "Super",
-                                             "Ribbon", "Funk", "Harp", "Harpsichord"};
+                                             "Ribbon", "Funk", "Harp", "Harpsichord", "Kit"};
 const char *const GL_MODE_NAME[GL_NMODES] = {"Ionian", "Dorian", "Phrygian", "Lydian",
                                              "Mixolydian", "Aeolian", "Pent maj", "Pent min"};
 static const uint16_t MODE_POOL[GL_NMODES] = {
@@ -153,10 +153,28 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
  * the rest are mono (their channel pan places them), which saves a buffer and half the mixing. SPREAD: how far each side sits
  * from the channel's pan. */
 static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1,
-                                        0, 0, 1, 1};
+                                        0, 0, 1, 1, 0};
 static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
                                        0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f, 0.35f, 0.0f, 0.0f, 0.4f,
-                                       0.0f, 0.0f, 0.35f, 0.25f};
+                                       0.0f, 0.0f, 0.35f, 0.25f, 0.0f};
+
+/* the kit (glag_kit.h): a snare (also the roll's), and each sound's state */
+typedef struct { float x1, y1, x2, y2, e1, e2, drop, dk, b, bk, n, nk, hp, l1, l2, lpk, nl, drive, lo; } kit_snare;
+typedef struct {
+	float k_x[5], k_y[5], k_e[5], k_amp[5], k_dec[5], k_glide, k_gk, k_att, k_ai, k_nz, k_nzk, k_lp, k_lpk;
+	kit_snare sn;
+	uint32_t h_ph[6];
+	float h_a, h_k, h_s0, h_s1, h_t, h_len, h_f, h_grit, h_lo, h_bp, h_hp, h_l2, h_l3;
+	float ha_v[2][2], hb_v[2][2], h_ad, h_c, h_s;
+	uint32_t d_ic, d_im, d_pc, d_pm;
+	float d_index, d_ik, d_a, d_k, d_fb, d_m1, d_m2;
+	int d_grit;
+	float t_len, t_t, t_a, t_prob, t_bp, t_prox, t_w0, t_w1, t_ph0, t_c, t_lo, t_b, t_hp, t_r1, t_r2;
+	float n_f1, n_sweep, n_fm, n_md, n_menv, n_cut, n_a, n_ak, n_att, n_p1, n_p2, n_lo1, n_bp1, n_lo2, n_bp2, n_dc;
+	uint8_t r_n, r_i;
+	float r_gap, r_accel, r_t, r_vel, r_hold, r_q, r_semis, r_acc, r_held;
+	kit_snare rs;
+} kit_state;
 
 typedef struct {
 	uint8_t voice, want, fading;
@@ -202,6 +220,7 @@ typedef struct {
 	/* bells: a note waiting to sound, per loop */
 	float bp_t[4], bp_note[4], bp_vel[4], bp_ratio[4];
 	uint8_t bp_on;
+	kit_state kt;                  /* the kit (glag_kit.h) */
 } chan;
 
 static gl_patch P;                         /* the patch the render plays */
@@ -351,12 +370,12 @@ static int place(int pc, float from, int lo, int hi)
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
 /* plucked or struck (bright into the reverb), rather than held */
 static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0,
-                                       0, 0, 1, 1};
+                                       0, 0, 1, 1, 1};
 #ifndef GLOW_HOME
 #define GLOW_HOME 69                       /* glow: A4, as it began (its top is cut instead) */
 #endif
 static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, GLOW_HOME, 55, 57,
-                                      67, 40, 62, 60};
+                                      67, 40, 62, 60, 36};
 
 /* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
  * Per voice, how far the macro moves:   tone  char  trem  oct   len   act */
@@ -385,6 +404,7 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{70, 80,  0, 30, 40, 60},   /* funk: fingers to slap, busier, more off the beat */
 	{40, 90,  0, 40, 50, 40},   /* harp: plucks, rolled chords, glissandi */
 	{40, 70,  0, 40, 50, 50},   /* harpsichord: the stops, the figures */
+	{50, 90,  0,  0, 50, 50},   /* kit: the split (core -> tissue and Nord -> rolls), decays, hits */
 };
 /* arp mode (glag_play.h): whether a channel is being played by it, and the held voices' short
  * envelope while it is */
@@ -539,6 +559,7 @@ static int nslots(int voice)
 	case GV_FUNK: return 1;
 	case GV_HARP: return alt_m[GV_HARP] == 3 ? 4 : 0;
 	case GV_HARPSI: return 0;                 /* strings: counted below */
+	case GV_KIT: return 0;                    /* drums: outside the budget */
 	default: return 3;
 	}
 }
@@ -1448,6 +1469,8 @@ static void ribbon_control(chan *c, int ch, float sdt, float tone, float len)
 	}
 }
 
+#include "glag_kit.h"
+
 /* ---- the sixteenth-note step: every voice's sequencer ---- */
 static void chan_step(chan *c, int ch, uint32_t step)
 {
@@ -1460,6 +1483,9 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		break;
 	case GV_PULSE:
 		pulse_step(c, ch, step);
+		break;
+	case GV_KIT:
+		kit_step(c, ch, step);
 		break;
 	case GV_BASS: {
 		int bar = (step & 15) == 0;
@@ -1526,7 +1552,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	case GV_GLOW:
 	case GV_TAILS: {
 		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
-		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0, 0, 0, 0, 0};
+		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0, 0, 0, 0, 0, 0};
 		float p = act * act * PMAX[c->voice];
 		if (c->voice == GV_GLOW && (step & 15u) == 0u)
 			c->arp_dir = (uint8_t)((c->arp_dir + 1u) & 3u);   /* full macro: a bar each at 0, -1, -2, -1 octaves */
@@ -2904,6 +2930,9 @@ static int chan_render(chan *c, float *A, float *B)
 	if (!STEREO[c->voice])
 		B = A;                                  /* mono voice: both sides are one buffer */
 	switch (c->voice) {
+	case GV_KIT:
+		any = kit_render(c, A);
+		break;
 	case GV_PULSE:                              /* the kick and the click; its noise is in pulse_noise */
 		if (c->pk_a > 1e-4f) {                    /* the kick: a sine whose pitch falls */
 			any = 1;
@@ -3495,7 +3524,7 @@ static void clock_step(int play)
 	}
 	if (play)
 		for (int c = 0; c < GL_NCH; c++)
-			if (!CH[c].fading && !(play == 2 && CH[c].voice == GV_PULSE)) {
+			if (!CH[c].fading && !(play == 2 && (CH[c].voice == GV_PULSE || CH[c].voice == GV_KIT))) {
 				/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
 				uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
 				if (step_n % dv == 0u) {
@@ -3702,8 +3731,8 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			/* the drums may be taken out while the pump goes on; bass and held voices spared */
 			int ro = voice_role(CH[c].voice);
 			float pc = ro == ROLE_BASS || ro == ROLE_HELD ? 1.0f - (1.0f - pg) * (1.0f - W.pspare) : pg;
-			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE ? W.pdr_s : 1.0f);
-			if (CH[c].voice == GV_PULSE)
+			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE || CH[c].voice == GV_KIT ? W.pdr_s : 1.0f);
+			if (CH[c].voice == GV_PULSE || CH[c].voice == GV_KIT)
 				pc = 1.0f;
 			if (g <= 0.0f)
 				continue;                   /* silent: its envelopes still run in control() */
@@ -3772,7 +3801,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				}
 			}
 			pump_prev[c] = pc;
-			if (vo == GV_PULSE && dist.amt && dist.post == 3) {   /* the drums only: kick and click */
+			if ((vo == GV_PULSE || vo == GV_KIT) && dist.amt && dist.post == 3) {   /* the drums only: kick and click */
 				dist_block(ca, VSUB, 6);
 				dist_block(cb, VSUB, 7);
 			}
@@ -4347,6 +4376,27 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{80, 50, 30, 50, 0, 10, 50, 90, 75}, {70, 60, 35, 50, 0, 15, 50, 70, 60},
 	  {75, 55, 25, 50, 20, 35, 55, 50, 50}, {55, 70, 40, 75, 25, 40, 45, 50, 66}},
 	 {80, 30, 35, 50, 4, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 0, 1, 1}, 8, {4, 3, 3, 3}, 8, 0, {0, 0, 0, 0}},
+	/* ---- the Kit (after the 1997 drum recipes): CHARACTER is its split, and the macro moves it ---- */
+	/* lofi: the core only (kick, R-8 snare, metal hat, clank), clean, with an EP and a pad */
+	{"Canvas Room", {GV_KIT, GV_EP, GV_BASS, GV_PAD},
+	 {{55, 45, 35, 50, 10, 20, 50, 15, 83}, {40, 45, 55, 50, 25, 45, 40, 40, 59},
+	  {35, 30, 80, 50, 5, 15, 50, 30, 59}, {40, 30, 70, 50, 10, 60, 60, 30, 42}},
+	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}},
+	/* the shifted hats and the clank in front, a sequence and strings behind */
+	{"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS},
+	 {{65, 60, 45, 50, 15, 25, 50, 55, 74}, {55, 45, 40, 50, 30, 35, 40, 45, 46},
+	  {45, 35, 60, 50, 0, 10, 50, 40, 57}, {30, 35, 75, 50, 15, 55, 60, 30, 33}},
+	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}},
+	/* the whole kit: crunch, the Nord hits, rolls into each phrase, open hats; Phrygian */
+	{"Crunch Roll", {GV_KIT, GV_GLOW, GV_DRONE, GV_SEQ},
+	 {{75, 55, 55, 50, 20, 30, 50, 85, 72}, {35, 35, 65, 50, 30, 55, 35, 40, 39},
+	  {30, 25, 90, 50, 0, 45, 50, 30, 29}, {50, 50, 35, 25, 35, 30, 65, 60, 37}},
+	 {80, 40, 50, 50, 4, 2, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {2, 1, 1, 1}, 8, {4, 2, 2, 3}, 8, 0, {0, 0, 0, 0}},
+	/* ambient: few hits, long ones (tissue strokes, long hats), bells and a shimmer in a hall */
+	{"Tissue Hall", {GV_KIT, GV_BELLS, GV_PAD, GV_SHIMMER},
+	 {{25, 40, 80, 50, 25, 50, 50, 60, 70}, {35, 45, 60, 50, 40, 60, 40, 30, 53},
+	  {50, 30, 80, 50, 15, 70, 60, 30, 53}, {25, 40, 70, 50, 20, 60, 55, 40, 35}},
+	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
 	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},
@@ -4364,6 +4414,10 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{60, 45, 65, 50, 25, 70, 45, 60, 90}, {35, 30, 80, 50, 10, 70, 55, 40, 32},
 	  {30, 20, 70, 50, 0, 20, 50, 30, 40}, {20, 25, 60, 50, 0, 50, 50, 0, 20}},
 	 {44, 30, 75, 50, 7, 0, 25, 40}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 0, {2, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
+	{"Lab Kit", {GV_KIT, GV_PAD, GV_BASS, GV_EP},
+	 {{60, 50, 50, 50, 10, 25, 50, 50, 82}, {40, 30, 70, 50, 10, 60, 50, 30, 32},
+	  {40, 30, 70, 50, 0, 15, 50, 30, 49}, {30, 40, 60, 50, 20, 45, 60, 30, 32}},
+	 {70, 30, 50, 50, 0, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 0, 0, 0}, 0, 0, {0, 0, 0, 0}},
 #endif
 };
 

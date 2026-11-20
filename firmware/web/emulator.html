@@ -165,7 +165,7 @@ details summary { cursor: pointer; font-weight: 500; }
 const WASM_B64 = "@@WASM@@";
 const VOICES = ["Pad", "Bells", "Bass", "Piano", "Marimba", "Drone", "Kalimba", "Flute", "Arp",
   "Swell", "EP", "Gong", "Pizz", "Shimmer", "Tails", "Pulse", "Strings", "Glow", "Seq", "Super",
-  "Ribbon", "Funk", "Harp", "Harpsichord"];
+  "Ribbon", "Funk", "Harp", "Harpsichord", "Kit"];
 const REVERBS = ["Hall", "Chamber", "Shimmer", "Bloom"], SHIMS = ["octave", "fifth", "seventh"];
 const PIECES = ["Garden", "Departures", "Voices", "Afternoon", "Night Bus", "Shoreline", "Glass", "Tides",
   "Gate Seven", "Long Wait", "Night Flight", "Lounge", "Rain City", "Deep Water", "Lobby 84", "Long Haul"];
@@ -175,10 +175,10 @@ const CHAR = ["Colour: warm to hollow", "Ratios: harmonic, bell, glass (upper ha
   "Ratio 2.5 to 5", "Interval: 5th, 4th, oct, 9th", "Brightness", "Vibrato", "Pattern: up, up-down, random, pedal, loops of 16, 7, 5",
   "Detune and vibrato", "Tine amount", "Metal: 1.4, 1.73, 2.76, 3.14", "Octaves: none, alternate, random jumps",
   "Buzz (feedback)", "Tail: falls, blooms, rises", "Rings, swing (upper half: 4/4 with a backbeat)", "Chorus I toward II, the pulse's sway", "The octave and third", "Pattern: octave bounce, thirds, gallop, walk (3 octaves)", "Spread: how far the five saws drift apart",
-  "Brass to reed (a harmonica's nasal pulse)", "Fingers to slap (the envelope filter's quack)", "Plucks, rolled chords, glissandi", "Stops: lute, 8', 8' + 4'"];
+  "Brass to reed (a harmonica's nasal pulse)", "Fingers to slap (the envelope filter's quack)", "Plucks, rolled chords, glissandi", "Stops: lute, 8', 8' + 4'", "The split: the core, then tissue and Nord, then rolls and open hats"];
 /* worst-case cost per channel by voice, and the fixed part (model %, see host/cpu) */
 const CPU_BASE = 37.0, CPU_VOICE = [5.9, 7.8, 3.1, 5.0, 5.0, 4.5, 4.7, 2.5, 6.6,
-  5.6, 5.2, 3.9, 6.0, 5.8, 5.8, 5.1, 10.0, 6.8, 10.3, 10.0, 5.2, 3.8, 7.9, 9.4], CPU_SCALE = 1.4;
+  5.6, 5.2, 3.9, 6.0, 5.8, 5.8, 5.1, 10.0, 6.8, 10.3, 10.0, 5.2, 3.8, 7.9, 9.4, 9.8], CPU_SCALE = 1.4;
 const B = { T1: 0, T2: 1, T3: 2, T4: 3, PLAY: 4, VOLUP: 5, VOLDN: 6, FFWD: 7, RWD: 8, FN: 9 };
 const PAGES = ["Home", "Channel", "Extended", "Harmony", "Playworld"];
 const DISTS = ["Chebyshev", "Overdrive", "Fuzz", "XOR"];

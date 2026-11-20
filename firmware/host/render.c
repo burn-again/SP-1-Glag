@@ -37,6 +37,10 @@ int main(int argc, char **argv)
 		p.ch[0][CP_TONE] = (float)atof(getenv("TONE"));
 	if (getenv("REG"))      /* channel 1's register step, -2..+2 */
 		p.ch[0][CP_REGISTER] = ((float)atof(getenv("REG")) + 2.0f) * 0.25f;
+	if (getenv("LEN"))
+		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
+	if (getenv("KIT"))       /* KIT=lanes mask: the kit's sounds on their own */
+		gl_kit_solo(atoi(getenv("KIT")));
 	if (getenv("CHAR"))
 		p.ch[0][CP_CHAR] = (float)atof(getenv("CHAR"));
 	{	/* the piece's channel macros; MACRO=4444 (steps per channel) and MPER=seconds override */

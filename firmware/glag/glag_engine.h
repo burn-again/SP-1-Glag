@@ -54,7 +54,7 @@ enum gl_voice {
 	GV_PAD, GV_BELLS, GV_BASS, GV_PIANO, GV_MARIMBA, GV_DRONE, GV_KALIMBA, GV_FLUTE, GV_ARP,
 	GV_SWELL, GV_EP, GV_GONG, GV_PIZZ, GV_SHIMMER, GV_TAILS, GV_PULSE,
 	GV_STRINGS, GV_GLOW, GV_SEQ, GV_SUPER,
-	GV_RIBBON, GV_FUNK, GV_HARP, GV_HARPSI,
+	GV_RIBBON, GV_FUNK, GV_HARP, GV_HARPSI, GV_KIT,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];
@@ -150,6 +150,7 @@ void gl_crank(void);
  * drums by the note's name in any octave: C kick, D/E snare, F#/G# hat, A# open hat, C#/D# click
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
+void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */
@@ -191,7 +192,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 66                   /* an audition build: fifty more (four of them labs) */
+#define GL_NPIECES 71                   /* an audition build: fifty-five more (five of them labs) */
 #else
 #define GL_NPIECES 16
 #endif

@@ -31,6 +31,10 @@ int main(void)
 	if (cfg_stress & 1)
 		for (int c = 0; c < 4; c++)
 			p.ch[c][CP_ACTIVITY] = p.ch[c][CP_LENGTH] = 1.0f;
+#ifdef KCHAR
+	for (int c = 0; c < 4; c++)
+		p.ch[c][CP_CHAR] = KCHAR;       /* e.g. the kit's split: every lane at 1 */
+#endif
 	for (int c = 0; c < 4; c++)
 		if (cfg_mute & (1u << c))
 			p.ch[c][CP_LEVEL] = 0.0f;

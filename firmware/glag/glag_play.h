@@ -130,7 +130,7 @@ static inline float fminf_(float a, float b) { return a < b ? a : b; }
 enum { ROLE_HELD, ROLE_PLUCK, ROLE_BASS, ROLE_DRUMS };
 static int voice_role(int v)
 {
-	if (v == GV_PULSE)
+	if (v == GV_PULSE || v == GV_KIT)
 		return ROLE_DRUMS;
 	if (v == GV_BASS || v == GV_FUNK)
 		return ROLE_BASS;
@@ -373,7 +373,7 @@ static void pump_step(uint32_t step)
 		return;
 	int r = W.prhythm, has = 0;
 	for (int c = 0; c < GL_NCH; c++)
-		has |= CH[c].voice == GV_PULSE && P.ch[c][CP_LEVEL] > 0.0f;
+		has |= (CH[c].voice == GV_PULSE || CH[c].voice == GV_KIT) && P.ch[c][CP_LEVEL] > 0.0f;
 	if (r == 0 && has)
 		return;                                       /* the kick does it */
 	uint32_t every = r == 2 ? 2u : r == 3 ? 8u : 4u;
@@ -388,7 +388,7 @@ static void pump_step(uint32_t step)
  * strings struck short). SPREAD: 0, every channel on the same note at once (one huge stacked
  * arp); up, each channel a little further along the pattern, and past two thirds the odd ones
  * at half speed. Turning it on or off is taken on the next bar. */
-static int arp_live(int ch) { return W.arp_on && CH[ch].voice != GV_PULSE; }
+static int arp_live(int ch) { return W.arp_on && CH[ch].voice != GV_PULSE && CH[ch].voice != GV_KIT; }
 static int arp_held(int v)
 {
 	return v == GV_PAD || v == GV_SWELL || v == GV_DRONE || v == GV_SUPER || v == GV_STRINGS;
@@ -408,6 +408,7 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 	float tone = eff_tone(ch), chr = P.ch[ch][CP_CHAR];
 	switch (c->voice) {
 	case GV_PULSE:
+	case GV_KIT:
 		return 0;
 	case GV_KALIMBA: {
 		int k = c->ks_next;
@@ -533,6 +534,13 @@ static void midi_drum(chan *c, int ch, int note, float vel)
 	int mask = MAP[note % 12];
 	if (vel < 0.5f)
 		mask &= ~(8 | 16);                           /* soft: no accent */
+	if (c->voice == GV_KIT) {
+		/* the kit: C kick, C# clank, D / E snare (E the Nord hit), D# tissue, F# / G# hat,
+		 * G roll, A ghost, A# open hat, the rest the hat */
+		static const int8_t LANE[12] = {0, 3, 1, 4, 5, 2, 2, 8, 2, 7, 6, 2};
+		kit_fire(c, ch, LANE[note % 12], vel);
+		return;
+	}
 	pulse_fire(c, ch, mask);
 }
 static void midi_tick(float dt)
@@ -546,7 +554,7 @@ static void midi_tick(float dt)
 			midi_t[ch] = 4.0f;
 			if (midi_n[ch] < 255)
 				midi_n[ch]++;
-			if (c->voice == GV_PULSE)
+			if (c->voice == GV_PULSE || c->voice == GV_KIT)
 				midi_drum(c, ch, note, vel);
 			else {
 				nvoice *v = voice_note(c, ch, note, 0.3f + 0.7f * vel, 30.0f);

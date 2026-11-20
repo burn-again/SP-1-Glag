@@ -41,6 +41,7 @@ The first hardware session decides the rest; see [Testing on the device](#testin
 | Funk | a funk bassist: a bar of sixteenths written afresh on each chord, always on the one, ghost notes, octave pops, slides up into the root; saw and square through a resonant low-pass with an envelope filter (its macro pushes the line off the beat) | fingers toward slap (the envelope filter's quack) |
 | Harp | Karplus-Strong strings (eight per channel, tuned by an all-pass): single plucks, rolled chords, glissandi, each strum slow, middling or fast, rolls easing out, glissandi slower at their ends; its macro moves the pluck from a noise burst toward a finger's pull | plucks, rolled chords, glissandi |
 | Harpsichord | quill-plucked strings running Nyman's figures through each chord (Alberti, up and down, rising threes, a ground), a bass note on each bar, dampers falling after the note's length | stops: lute (buff), 8', 8' and 4' |
+| Kit | seven drum sounds after the 1997 recipes (Chiastic Slide era): a canvas kick (five membrane modes, a slack glide, a fingertip), an R-8 snare with Feel (every hit a little off) and ghosts, an 808 metal hat through a frequency shifter (sliding as it rings; long when LENGTH is up, open on the off-beat), a DX100 2-op clank, tissue paper over a mic, a Nord sync/FM hit, an EPS crunch roll into each phrase; lanes of 16, 16, 12, 7, 10 and 13 steps drifting against each other. REGISTER the pitch, TONE the brightness, LENGTH the decays, ACTIVITY the hits. Under the load governor its colour lanes sit out and the core plays on | the split: the core (kick, snare, hat, clank), then tissue (from 0.33), the Nord (0.4), open hats (0.55), rolls (0.6); each sound's own controls move with it (Feel and crunch, the shift's sweep, the clank's ratio, the crackle, the sync sweep and FM, the roll's bits and rate) |
 
 Every channel page reads the same four faders: **character, tone, length, register**. The extended
 page: **echo send, reverb send, pan, activity**. A fader means the same thing on every voice, except
@@ -71,7 +72,7 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 |---|---|---|
 | Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
-| | •• + T1-T4 | the next voice on that channel (all twenty-four, any channel, duplicates allowed; 17-20 show as a double flash, 21-24 a triple) |
+| | •• + T1-T4 | the next voice on that channel (all twenty-five, any channel, duplicates allowed; 17-20 show as a double flash, 21-24 a triple, 25 (the Kit) four flashes) |
 | Playworld (PLAY held 2 s; again, or •• twice, to leave) | T1 | song mode: on (page 1), pages 2-4, off (an outro: two bars down to the held voice, then the piece back over four bars). Page 1: each channel's stagger; 2: each channel's loop (x1/4 to x4 of the song); 3: arrangement (breakdown and build, waves, slow build), length (a cycle of 4x 4 to 32 bars), fills and builds, how full; 4: randomness (settings, the macros' pace, key travel, straying). Changes land on the next bar and glide |
 | | T2 | arp mode: on, off (taken on the next bar). Every channel but the drums played by one arp in its own voice, at its shortest decay and sustain (pads, strings, swell, super and drone struck short). F1 octaves (1-4), F2 pattern (up, down, up-down, random), F3 division (16ths, 8ths, dotted 8ths, quarters), F4 spread (0: every channel on the same note at once; up: each further along; past two thirds the odd channels at half speed) |
 | | T3 | the pump: on (page 1), page 2, off. Page 1: depth, release, bend, drums (down to none: the pump goes on without them; with no Pulse it pumps on the beat). Page 2: master compressor, rhythm (the kick, beats, eighths, half bars), how much the space ducks, how much bass and held voices are spared |
@@ -296,8 +297,13 @@ real SP-1s: hardware cost was 1.25 to 1.65 times this model (about 1.4 typically
 | Harp x 4 | 73 % | 77 % | 102-108 % |
 | Harpsichord x 4 | 71 % | 82 % | 99-115 % |
 | Strings, Ribbon, Harp, Harpsichord | 66 % | 72 % | 92-101 % |
+| Kit x 4 | 78 % | 139 % | 109-194 % |
+| Pad, Bells, Bass, Kit | 67 % | 89 % | 94-125 % |
+| Pad, Bells, Bass, Pulse (the same settings) | 65 % | 83 % | 91-116 % |
 
 Numbers from 0.6.2 (the filters around the tape and reverbs, and the Pulse's noise at 48 kHz, cost about 3 points; the table had last been measured before 0.6.0). Worst blocks past about 70 % on the model lean on the governor below. The Pulse has no notes to give way, so it has its own rule: only the first Pulse in a piece makes its hats at 48 kHz; a second, third or fourth makes them at 24 kHz, at half the cost (with distortion before the effects, all of them do).
+
+The Kit costs about what the Pulse does in a mix (the first build ran at 136 %: now recursive sines for the kick and snare, a two-stage-per-side Hilbert pair fitted to the hat's band, integer phase for the hat's six squares, decays that stop at -60 dB, and the Nord oversampled only while its sync sweeps). Four Kits at once is the outlier; when the governor steps in, each Kit drops its clank, tissue, Nord, rolls and ghosts and keeps the kick, snare and hats.
 
 Harp and Harpsichord rows are the stress case (every channel at full activity and length); their strings, eight to a channel, each count half a voice in the budget, so under the governor they thin out before anything overruns.
 

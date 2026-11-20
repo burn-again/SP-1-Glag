@@ -16,7 +16,7 @@ import capstone as cs
 ELF = sys.argv[1]
 TOOL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].endswith('-') else None
 # the first four characters are the voices (base 36, 0-n); after them, m<mask> and d<dist>
-configs = [a for a in sys.argv[2:] if len(a) >= 4 and all(ch in '0123456789abcdefghijklmn' for ch in a[:4]) and all(ch in '0123456789md' for ch in a[4:])] or ['0127']
+configs = [a for a in sys.argv[2:] if len(a) >= 4 and all(ch in '0123456789abcdefghijklmno' for ch in a[:4]) and all(ch in '0123456789md' for ch in a[4:])] or ['0127']
 NM = TOOL + 'nm' if TOOL else 'arm-zephyr-eabi-nm'
 OBJCOPY = TOOL + 'objcopy' if TOOL else 'arm-zephyr-eabi-objcopy'
 
@@ -115,7 +115,7 @@ PROF = {} if '--prof' in sys.argv else None
 STRESS = '--stress' in sys.argv
 names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp',
          'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails', 'Pulse', 'Strings', 'Glow', 'Seq', 'Super',
-         'Ribbon', 'Funk', 'Harp', 'Harpsichord']
+         'Ribbon', 'Funk', 'Harp', 'Harpsichord', 'Kit']
 for v in configs:
     avg, worst = run(v)
     vv = v[:4]
