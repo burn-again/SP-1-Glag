@@ -251,29 +251,40 @@ class GlagCore {
       this.w.wg_set_saved(s.piece, 1);
     }
     this.w.wg_init(opt.seed);
-    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0;
+    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0; this.pos = 0; this.ef = 0;
+    this.ratio = 48000 / (typeof sampleRate !== "undefined" && sampleRate > 0 ? sampleRate : 48000);   /* the worklet's own rate */
     this.frames = 0; this.f = [0, 0, 0, 0]; this.b = 0; this.p = 0; this.sent = 0; this.lastSave = 0;
   }
   input(f, b, p) { this.f = f; this.b = b; this.p |= p || 0; }
-  /* fill L and R; returns a state message about 33 times a second, else null */
+  /* fill L and R; returns a state message about 33 times a second, else null. The engine runs
+   * at 48 kHz; when the browser runs at another rate (Safari, many 44.1 kHz devices) its
+   * samples are read at that rate, interpolated, so pitch and tempo stay true */
   run(L, R) {
-    const w = this.w;
+    const w = this.w, ratio = this.ratio;
     for (let off = 0; off < L.length; off += 128) {
       const len = Math.min(128, L.length - off);
       w.wg_input(this.f[0], this.f[1], this.f[2], this.f[3], this.b | this.p);   /* a tap shows for one tick */
       this.p = 0;
-      w.wg_tick(Math.floor(this.frames / 48));
-      while (this.n < len) {
+      w.wg_tick(Math.floor(this.ef / 48));
+      const need = Math.ceil(this.pos + len * ratio) + 2;
+      while (this.n < need) {
         const a = new Float32Array(w.memory.buffer, w.wg_render(48), 96);
         for (let i = 0; i < 96; i++) this.fifo[(this.r + this.n * 2 + i) & 4095] = a[i];
         this.n += 48;
+        this.ef += 48;
       }
       for (let i = 0; i < len; i++) {
-        L[off + i] = this.fifo[this.r]; R[off + i] = this.fifo[(this.r + 1) & 4095];
-        this.r = (this.r + 2) & 4095;
+        const k = Math.floor(this.pos), fr = this.pos - k;
+        const i0 = (this.r + 2 * k) & 4095, i1 = (this.r + 2 * k + 2) & 4095;
+        L[off + i] = this.fifo[i0] + (this.fifo[i1] - this.fifo[i0]) * fr;
+        R[off + i] = this.fifo[(i0 + 1) & 4095] + (this.fifo[(i1 + 1) & 4095] - this.fifo[(i0 + 1) & 4095]) * fr;
+        this.pos += ratio;
       }
-      this.n -= len;
-      this.frames += len;
+      const adv = Math.floor(this.pos);
+      this.r = (this.r + 2 * adv) & 4095;
+      this.n -= adv;
+      this.pos -= adv;
+      this.frames = this.ef;
     }
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
@@ -321,7 +332,7 @@ startBtn.addEventListener("click", async () => {
     else { await ctx.resume(); startBtn.textContent = "Stop sound"; status.textContent = "Playing"; }
     return;
   }
-  ctx = new AudioContext({ sampleRate: 48000 });
+  try { ctx = new AudioContext({ sampleRate: 48000 }); } catch (e) { ctx = new AudioContext(); }   /* (resampled in the worklet if not 48 kHz) */
   const opt = { wasm: b64(WASM_B64), seed: (Math.random() * 4294967295) >>> 0, saved: loadSaved() };
   const onState = (data) => {
     state = new DataView(data.st);
