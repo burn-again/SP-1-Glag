@@ -21,10 +21,17 @@
  * REGISTER the pitch, ACTIVITY the hits. The lanes are of different lengths (16, 16, 12, 7, 10,
  * 13) and drift against each other. */
 
-/* The Kit runs at 12 kHz (its colour shuts above ~5.6 kHz anyway): KSUB samples a block, raised
- * to the channel's 24 kHz at the end (kit_render) */
-#define KSR (VSR * 0.5f)
-#define KSUB (VSUB / 2u)
+/* The Kit's own rate: KIT_KSUB samples a millisecond (12, 16 or 24: 12, 16 or 24 kHz; the default
+ * 12, as its colour shuts above ~5.6 kHz anyway), raised to the channel's 24 kHz at the end
+ * (kit_render). KP(a) carries a one-pole's coefficient, written for 24 kHz, to the Kit's rate
+ * (folded by the compiler). */
+#ifndef KIT_KSUB
+#define KIT_KSUB 12
+#endif
+#define KSUB ((uint32_t)KIT_KSUB)
+#define KSR (VSR * (float)KIT_KSUB / (float)VSUB)
+#define KRAT ((float)VSUB / (float)KIT_KSUB)
+#define KP(a) (1.0f - __builtin_powf(1.0f - (a), KRAT))
 static inline uint32_t kinc(float hz) { return (uint32_t)(hz * (4294967296.0f / KSR)); }
 static uint32_t kit_r = 0x6D2B79F5u;
 static inline float kn(void)
@@ -65,8 +72,8 @@ static inline float ksvf_run(const ksvf *f, float *s1, float *s2, float x, float
 
 static const float K_MEM[5] = {1.0f, 1.594f, 2.136f, 2.296f, 2.653f};
 static const float K_MEMA[5] = {1.0f, 0.6f, 0.45f, 0.35f, 0.3f};
-/* the 808's six squares (Hz), as phase steps at 12 kHz */
-#define KM(f) ((uint32_t)((f) * 4294967296.0 / 12000.0 + 0.5))
+/* the 808's six squares (Hz), as phase steps at the Kit's rate */
+#define KM(f) ((uint32_t)((f) * 4294967296.0 / (24000.0 * KIT_KSUB / 24.0) + 0.5))
 static const uint32_t K_METAL[6] = {KM(205.3), KM(304.4), KM(369.6), KM(522.7), KM(540.0), KM(800.0)};
 static const float K_RAT[4] = {1.41f, 3.5f, 7.07f, 0.5f};
 /* the Hilbert pair: two chains of all-passes (c - z^-2) / (1 - c z^-2), the first a sample later,
@@ -111,14 +118,14 @@ static void kit_snare_block(kit_snare *s, float *A, float g)
 		y2 -= e2 * x2;
 		float body = (x1 * 0.7f + x2 * 0.45f) * b;
 		float w = kn();
-		hp += 0.55f * (w - hp);                         /* ~1.5 kHz high-pass */
+		hp += KP(0.33f) * (w - hp);                         /* ~1.5 kHz high-pass */
 		l1 += lpk * (w - hp - l1);
 		l2 += lpk * (l1 - l2);
 		float y = body + l2 * n * nl;
 		b *= bk;
 		n *= nk;
 		if (dr > 0.0f) {                                /* the phono input: lows up, then crunch */
-			lo += 0.055f * (y - lo);
+			lo += KP(0.028f) * (y - lo);
 			float u = clampf((y + lo * lg) * dg, -1.5f, 1.5f);
 			A[i] += (u - 0.148148f * u * u * u) * og;   /* (a cubic: flat at 1.5) */
 		} else
@@ -347,7 +354,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->r_accel = 0.3f + 0.5f * x;
 		k->r_t = 0.0f;
 		k->r_vel = vel;
-		k->r_hold = clampf(KSR / (14000.0f - 10000.0f * x), 1.0f, 3.0f);
+		k->r_hold = clampf(KSR / (14000.0f - 10000.0f * x), 1.0f, 4.0f);
 		k->r_q = fexp2(12.0f - 6.0f * x);
 		/* tuned: the snare's body on the key's root (near 185 Hz), each hit a step of the scale */
 		k->r_semis = (float)(((root_pc - 6 + 18) % 12) - 6);
@@ -583,13 +590,17 @@ static void kit_step(chan *c, int ch, uint32_t step)
  *   4 soggy     a resonant low-pass that opens on each hit and closes in 30 ms, a little
  *               saturation, and the pitch sagging as the hit dies (a short delay stretching)
  *   5 metal     two combs a tritone apart on the root (C4), one inverted: a hollow, bell-like ring
+ *   7 comb-sog  soggy by a comb instead: a short comb on the chord's root (C4), fed back inverted
+ *               through a dark one-pole (boxy, hollow, damp), its delay wandering on an LFO, the
+ *               dry dulled under it; then a Chebyshev shaper on the low end only (below ~250 Hz),
+ *               the top left clean. A pressed hit tightens the comb, a long one feeds it more
  *   6 sog+cheby soggy, then a Chebyshev shaper (second and third harmonics): the default. Each hit
  *               sets how the soggy filter behaves: a pressed one shuts it fast and opens it less,
  *               a long one lets it close slowly
  * The combs live in the channel's string buffer (the Kit has no strings). */
 static inline float kabs(float x) { return x < 0.0f ? -x : x; }
 static uint8_t kit_col_m = 6;                        /* (the default: soggy, then Chebyshev) */
-void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 6 ? 6 : method); }
+void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 7 ? 7 : method); }
 #define KC_N 1536                                     /* each comb's line: 128 ms at 12 kHz */
 static inline float kc_read(const int16_t *b, uint16_t w, float d)
 {
@@ -628,9 +639,9 @@ static void kit_color(chan *c, float *A)
 		float d = k->c_d1, lp = k->c_lp1;
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {
-			d += (tgt - d) * 0.0016f;                      /* (it glides to the next tone) */
+			d += (tgt - d) * KP(0.0008f);                      /* (it glides to the next tone) */
 			float y = kc_read(b1, w, d);
-			lp += 0.7f * (y - lp);                        /* (darker each time round) */
+			lp += KP(0.45f) * (y - lp);                        /* (darker each time round) */
 			float in = A[i] + 0.9f * lp;
 			b1[w] = kc_w(in);
 			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
@@ -654,7 +665,7 @@ static void kit_color(chan *c, float *A)
 		float ph = k->c_ph, e = k->c_env;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i], ax = kabs(x);
-			e += (ax > e ? 0.51f : 0.0034f) * (ax - e);     /* (in at once, out over ~25 ms) */
+			e += (ax > e ? KP(0.3f) : KP(0.0017f)) * (ax - e);     /* (in at once, out over ~25 ms) */
 			ph += inc0 * (1.0f + 9.0f * x);                /* through zero when the drums swing low */
 			ph -= (float)(int)ph;
 			ph += ph < 0.0f ? 1.0f : 0.0f;
@@ -681,20 +692,20 @@ static void kit_color(chan *c, float *A)
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i], ax = kabs(x);
-			fa += (ax > fa ? 0.75f : 2.0f * relk) * (ax - fa);     /* (30 ms; 10 pressed, 120 long) */
-			e += (ax > e ? 0.36f : 0.0007f) * (ax - e);     /* (120 ms) */
+			fa += (ax > fa ? KP(0.5f) : KRAT * relk) * (ax - fa);     /* (30 ms; 10 pressed, 120 long) */
+			e += (ax > e ? KP(0.2f) : KP(0.00035f)) * (ax - e);     /* (120 ms) */
 			float lp;
 			ksvf_run(&lpf, &s1, &s2, x, &lp);
 			float u = clampf(lp * 1.8f, -1.5f, 1.5f);
 			b1[w] = kc_w(u - 0.148148f * u * u * u);
 			/* the read point drifts back as the hit dies: its pitch sags */
-			float tgt = 24.0f + 70.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f);
+			float tgt = (48.0f + 140.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f)) / KRAT;
 			d += (tgt - d) * 0.004f;
 			float o = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
 			if (m == 6) {                                  /* Chebyshev: T2 and T3 on top */
 				float v = clampf(o * 1.6f, -1.0f, 1.0f);
 				float y = v + 0.3f * (2.0f * v * v) + 0.22f * (4.0f * v * v * v - 3.0f * v);
-				dc += 0.004f * (y - dc);
+				dc += KP(0.002f) * (y - dc);
 				o = (y - dc) * 0.62f;
 			}
 			A[i] = o;
@@ -703,6 +714,38 @@ static void kit_color(chan *c, float *A)
 		}
 		k->c_env = e; k->c_fast = fa; k->c_s1 = s1; k->c_s2 = s2; k->c_d1 = d; k->c_w = w; k->c_dc = dc;
 		tail += kabs(A[KSUB - 1]);
+	} else if (m == 7) {
+		const int ch = (int)(c - CH);
+		k->c_lfo += dt * 0.11f;
+		k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
+		const float lw = 0.5f + 0.5f * mac_depth[ch];
+		/* the comb: a period of the chord's root (C4 octave), a pressed hit an octave up (tighter),
+		 * wandering 3 % on the LFO; a long hit feeds it more */
+		const float press = k->c_relk > 0.004f ? 1.0f : 0.0f, lng = k->c_relk > 0.0f && k->c_relk < 0.001f ? 1.0f : 0.0f;
+		float tgt = KSR / (kit_hz(60 + chord_pc[0]) * (press ? 2.0f : 1.0f));
+		tgt *= 1.0f + 0.03f * lw * sin_u((uint32_t)(k->c_lfo * 4294967296.0f));
+		if (k->c_d1 < 2.0f)
+			k->c_d1 = tgt;
+		const float fb = -(0.62f + 0.2f * lng), damp = KP(0.35f), dull = KP(0.25f), lowk = KP(0.065f);
+		float d = k->c_d1, l1 = k->c_lp1, l2 = k->c_lp2, lo = k->c_s1, dc = k->c_dc;
+		uint16_t w = k->c_w;
+		for (uint32_t i = 0; i < KSUB; i++) {
+			d += (tgt - d) * KP(0.003f);
+			float x = A[i], y = kc_read(b1, w, d);
+			l1 += damp * (y - l1);                         /* (dark each time round) */
+			b1[w] = kc_w(x + fb * l1);
+			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
+			l2 += dull * (x - l2);                         /* (the dry, dulled) */
+			float o = l2 * 0.7f + l1 * 0.8f;
+			/* Chebyshev below ~250 Hz: the low band shaped, the rest as it was */
+			lo += lowk * (o - lo);
+			float v = clampf(lo * 1.8f, -1.0f, 1.0f);
+			float sh = v + 0.35f * (2.0f * v * v) + 0.25f * (4.0f * v * v * v - 3.0f * v);
+			dc += KP(0.002f) * (sh - dc);
+			A[i] = (o - lo) + (sh - dc) * 0.62f;
+			tail = tail > kabs(l1) + kabs(lo) ? tail : kabs(l1) + kabs(lo);
+		}
+		k->c_d1 = d; k->c_lp1 = l1; k->c_lp2 = l2; k->c_s1 = lo; k->c_dc = dc; k->c_w = w;
 	} else if (m == 5) {
 		const float f = kit_hz(60 + chord_pc[0]);
 		const float d1 = KSR / f, d2 = KSR / (f * 1.4142f);
@@ -710,8 +753,8 @@ static void kit_color(chan *c, float *A)
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			float y1 = kc_read(b1, w, d1), y2 = kc_read(b2, w, d2);
-			l1 += 0.84f * (y1 - l1);
-			l2 += 0.84f * (y2 - l2);
+			l1 += KP(0.6f) * (y1 - l1);
+			l2 += KP(0.6f) * (y2 - l2);
 			b1[w] = kc_w(A[i] * 0.5f + 0.93f * l1);
 			b2[w] = kc_w(A[i] * 0.5f - 0.92f * l2);       /* (inverted: odd harmonics, hollow) */
 			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
@@ -807,9 +850,9 @@ static int kit_render12(chan *c, float *A)
 			float s = (float)(3 - n) * (1.0f / 3.0f);
 			/* the high band (its body) and a little of the low metal */
 			float lp, bp = ksvf_run(&hf, &bp1, &lo, s, &lp);
-			hh += 0.84f * (bp - hh);
-			l2 += 0.59f * (s - l2);
-			l3 += 0.59f * (l2 - l3);
+			hh += KP(0.6f) * (bp - hh);
+			l2 += KP(0.36f) * (s - l2);
+			l3 += KP(0.36f) * (l2 - l3);
 			float x0 = ((bp - hh) * 2.0f + (l2 - l3) * grit) * ha;
 			ha *= hk;
 			/* the two all-pass chains (in z^-2: y = c x + v[n-2], v = c y - x; the two
@@ -883,11 +926,11 @@ static int kit_render12(chan *c, float *A)
 				float a = u / pr;
 				tc += (kit_r & 1u ? -1.0f : 1.0f) * a * a * a;
 			}
-			tc *= 0.81f;                                   /* ~0.4 ms */
+			tc *= 1.0f - KP(0.1f);                                   /* ~0.4 ms */
 			float lp, bp = ksvf_run(&tf, &tb, &tl, (tc * 1.2f + w * 0.12f) * ep, &lp);
-			th += 0.19f * (bp - th);
-			r1 += 0.0465f * (w * ep - r1);
-			r2 += 0.0465f * (r1 - r2);
+			th += KP(0.1f) * (bp - th);
+			r1 += KP(0.0235f) * (w * ep - r1);
+			r2 += KP(0.0235f) * (r1 - r2);
 			A[i] += (bp - th) * ga + r2 * gr;
 		}
 		k->t_c = tc; k->t_b = tb; k->t_lo = tl; k->t_hp = th; k->t_r1 = r1; k->t_r2 = r2;
@@ -924,9 +967,9 @@ static int kit_render12(chan *c, float *A)
 				ksvf_run(&nf, &s1, &s2, 0.55f * o2 + 0.45f * tri, &l1);
 				acc += l1;
 			}
-			att = att < 1.0f ? att + 0.008f : 1.0f;          /* (a 10 ms attack) */
+			att = att < 1.0f ? att + 0.004f * KRAT : 1.0f;          /* (a 10 ms attack) */
 			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f);
-			dc += 0.016f * (y - dc);                      /* its offset (the FM runs it backwards) */
+			dc += KP(0.008f) * (y - dc);                      /* its offset (the FM runs it backwards) */
 			A[i] += y - dc;
 			na *= k->n_ak;
 		}
@@ -982,7 +1025,8 @@ static int kit_render12(chan *c, float *A)
 	return any;
 }
 
-/* ---- into the channel: the 12 kHz kit raised to 24 kHz (each new sample, and the one between) ---- */
+/* ---- into the channel: the kit at its rate raised to 24 kHz (straight lines between its samples,
+ * a gentle low-pass taking the edge off the images) ---- */
 static int kit_render(chan *c, float *A)
 {
 	float b[KSUB];
@@ -992,8 +1036,12 @@ static int kit_render(chan *c, float *A)
 		c->kt.up_prev = 0.0f;
 		return 0;
 	}
+#if KIT_KSUB == 24
+	for (uint32_t i = 0; i < VSUB; i++)
+		A[i] += b[i];
+#elif KIT_KSUB * 2 == 24
 	float p = c->kt.up_prev, lp = c->kt.up_lp;
-	for (uint32_t i = 0; i < KSUB; i++) {           /* (a gentle low-pass takes the edge off the images) */
+	for (uint32_t i = 0; i < KSUB; i++) {
 		lp += 0.62f * (0.5f * (p + b[i]) - lp);
 		A[2 * i] += lp;
 		lp += 0.62f * (b[i] - lp);
@@ -1002,5 +1050,17 @@ static int kit_render(chan *c, float *A)
 	}
 	c->kt.up_prev = p;
 	c->kt.up_lp = lp;
+#else
+	float p = c->kt.up_prev, lp = c->kt.up_lp;
+	for (uint32_t j = 0; j < VSUB; j++) {
+		float pos = (float)(j + 1u) * ((float)KSUB / (float)VSUB) - 1.0f;   /* (in b; -1 is the last block's) */
+		int i0 = pos < 0.0f ? -1 : (int)pos;
+		float f = pos - (float)i0, a0 = i0 < 0 ? p : b[i0], a1 = b[i0 + 1 < (int)KSUB ? i0 + 1 : (int)KSUB - 1];
+		lp += 0.62f * (a0 + f * (a1 - a0) - lp);
+		A[j] += lp;
+	}
+	c->kt.up_prev = b[KSUB - 1];
+	c->kt.up_lp = lp;
+#endif
 	return 1;
 }

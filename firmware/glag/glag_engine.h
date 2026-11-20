@@ -154,7 +154,7 @@ void gl_crank(void);
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
 void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */
-void gl_kit_color(int method);        /* audition only: the Kit's colour (0 none, 1 comb, 2 chord resonators, 3 through-zero FM, 4 soggy, 5 metal, 6 soggy + Chebyshev: the default) */
+void gl_kit_color(int method);        /* audition only: the Kit's colour (0 none, 1 comb, 2 chord resonators, 3 through-zero FM, 4 soggy, 5 metal, 6 soggy + Chebyshev: the default, 7 a comb's soggy + Chebyshev on the low end) */
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
