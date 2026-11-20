@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
 	if (getenv("KIT"))       /* KIT=lanes mask: the kit's sounds on their own */
 		gl_kit_solo(atoi(getenv("KIT")));
-	if (getenv("KCOL"))      /* KCOL=1..5: the Kit's colour (comb, resonators, TZFM, soggy, metal) */
+	if (getenv("KCOL"))      /* KCOL=0..6: the Kit's colour (none, comb, resonators, TZFM, soggy, metal, soggy + Chebyshev = the default) */
 		gl_kit_color(atoi(getenv("KCOL")));
 	if (getenv("KROT"))      /* KROT=1: the Kit rotates on every phrase */
 		gl_kit_rotate(1);

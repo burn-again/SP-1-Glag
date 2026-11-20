@@ -162,13 +162,35 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	/* short by default; an accent (velocity 1: the phrase's downbeat, the odd tissue stroke, a
 	 * hard MIDI hit) rings long */
 	const int big = vel >= 0.99f;
-	const float dm = big ? 1.5f : 0.6f;
+	/* the rule of threes: every third kick pressed (a hand pushing into the head: its pitch
+	 * rising, damped, muffled), every third snare left to ring (its soggy filter closing slowly),
+	 * every third hat leaned on; and now and then a pressed hit anywhere */
+	int press = 0, lng = big;
+	if (lane == 0) {
+		k->n_k++;
+		press = k->n_k % 3u == 0u || ku() < 0.1f;
+	} else if (lane == 1) {
+		k->n_s++;
+		lng |= k->n_s % 3u == 0u;
+		press = !lng && ku() < 0.12f;
+	} else if (lane == 2) {
+		k->n_h++;
+		if (k->n_h % 3u == 0u && vel < 0.95f)
+			vel = 0.95f;
+	}
+	if (lane == 0 || lane == 1 || lane == 9) {
+		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.0014f;   /* the soggy filter: shut in 10, 120 or 30 ms */
+		k->c_ceil = press ? 3.0f : lng ? 4.8f : 4.5f;             /* how far it opens */
+	}
+	const float dm = big ? 1.5f : lng ? 1.1f : 0.6f;
 	const float root = (float)chord_pc[0];              /* the clank plays the chord's root */
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
 		float f0 = clampf(72.0f * oct, 40.0f, 140.0f) * (1.0f + 0.02f * kn());
 		float damp = 0.8f - 0.6f * l, firm = 0.2f + 0.6f * t, slack = 0.1f + 0.7f * x;
-		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f);
+		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f) * (press ? 0.55f : 1.0f);
+		if (press)
+			f0 *= 1.15f;
 		for (int m = 0; m < 5; m++) {
 			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / VSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
@@ -176,11 +198,11 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			k->k_amp[m] = vel * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
 			k->k_dec[m] = kexp(tau1 / fexp2(0.8f * flog2(K_MEM[m])));
 		}
-		k->k_glide = slack * 0.25f;
+		k->k_glide = press ? -0.18f : slack * 0.25f;   /* (pressed: from below, rising) */
 		k->k_gk = fexp2(-1.4427f / (0.03f * 1000.0f));    /* (once a millisecond) */
 		k->k_att = 0.0f;
 		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * VSR);
-		k->k_nz = vel * 0.75f;
+		k->k_nz = vel * (press ? 0.35f : 0.75f);
 		k->k_nzk = kexp(0.014f - firm * 0.011f);
 		k->k_lpk = clampf((1500.0f + firm * 4000.0f) * (6.2832f / VSR), 0.05f, 0.9f);
 		pump_tgt = 1.0f;                                   /* Playworld's pump follows the kick */
@@ -195,7 +217,12 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		if (lane == 9)
 			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, 1.0f, vel);
 		else
-			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
+			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : press ? dec * 0.5f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
+		if (press && lane == 1) {                         /* pressed: rising from below, muffled */
+			k->sn.drop = -0.2f;
+			k->sn.dk = fexp2(-1.4427f / 25.0f);
+			k->sn.n *= 0.5f;
+		}
 		break;
 	}
 	case 2:     /* metal hat: decay (LENGTH; long when open), shift at the hit and at the end, tone */
@@ -468,7 +495,9 @@ static void kit_step(chan *c, int ch, uint32_t step)
 		/* euclidean rings */
 		float acc = s16 == 0 ? 0.95f : (s16 & 3) == 0 ? 0.8f : 0.6f;
 		int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f);
-		if (euclid_hit(kk, 16, s16))
+		/* the phrase's fourth bar: the kick in threes across it (0, 3, 6, 9, 12, 15) */
+		int kick = phrase >= 48 && !lean ? s16 % 3 == 0 : euclid_hit(kk, 16, s16);
+		if (kick)
 			kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
 		if (euclid_hit(sk, 16, (s16 + 12) % 16)) {
 			/* the phrase's last snare an accent, often squashed; now and then one on the 4 */
@@ -509,10 +538,13 @@ static void kit_step(chan *c, int ch, uint32_t step)
  *   4 soggy     a resonant low-pass that opens on each hit and closes in 30 ms, a little
  *               saturation, and the pitch sagging as the hit dies (a short delay stretching)
  *   5 metal     two combs a tritone apart on the root (C4), one inverted: a hollow, bell-like ring
+ *   6 sog+cheby soggy, then a Chebyshev shaper (second and third harmonics): the default. Each hit
+ *               sets how the soggy filter behaves: a pressed one shuts it fast and opens it less,
+ *               a long one lets it close slowly
  * The combs live in the channel's string buffer (the Kit has no strings). */
 static inline float kabs(float x) { return x < 0.0f ? -x : x; }
-static uint8_t kit_col_m;
-void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 5 ? 5 : method); }
+static uint8_t kit_col_m = 6;                        /* (the default: soggy, then Chebyshev) */
+void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 6 ? 6 : method); }
 #define KC_N 1536                                     /* each comb's line: 64 ms at 24 kHz */
 static inline float kc_read(const int16_t *b, uint16_t w, float d)
 {
@@ -586,14 +618,15 @@ static void kit_color(chan *c, float *A)
 			tail = tail > e ? tail : e;
 		}
 		k->c_ph = ph; k->c_env = e;
-	} else if (m == 4) {
-		float e = k->c_env, fa = k->c_fast, s1 = k->c_s1, s2 = k->c_s2, d = k->c_d1;
+	} else if (m == 4 || m == 6) {
+		float e = k->c_env, fa = k->c_fast, s1 = k->c_s1, s2 = k->c_s2, d = k->c_d1, dc = k->c_dc;
+		const float relk = k->c_relk > 0.0f ? k->c_relk : 0.0014f, ceil = k->c_ceil > 0.0f ? k->c_ceil : 4.5f;
 		/* the low-pass's place, once a block: 250 Hz shut, up to ~5 kHz on the hit */
-		const ksvf lpf = ksvf_set(ktan(250.0f * fexp2(4.5f * clampf(fa * 3.0f, 0.0f, 1.0f)) / VSR), 0.6f);
+		const ksvf lpf = ksvf_set(ktan(250.0f * fexp2(ceil * clampf(fa * 3.0f, 0.0f, 1.0f)) / VSR), 0.6f);
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < VSUB; i++) {
 			float x = A[i], ax = kabs(x);
-			fa += (ax > fa ? 0.5f : 0.0014f) * (ax - fa);  /* (30 ms) */
+			fa += (ax > fa ? 0.5f : relk) * (ax - fa);     /* (30 ms; 10 pressed, 120 long) */
 			e += (ax > e ? 0.2f : 0.00035f) * (ax - e);     /* (120 ms) */
 			float lp;
 			ksvf_run(&lpf, &s1, &s2, x, &lp);
@@ -602,11 +635,18 @@ static void kit_color(chan *c, float *A)
 			/* the read point drifts back as the hit dies: its pitch sags */
 			float tgt = 48.0f + 140.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f);
 			d += (tgt - d) * 0.002f;
-			A[i] = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
+			float o = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
+			if (m == 6) {                                  /* Chebyshev: T2 and T3 on top */
+				float v = clampf(o * 1.6f, -1.0f, 1.0f);
+				float y = v + 0.3f * (2.0f * v * v) + 0.22f * (4.0f * v * v * v - 3.0f * v);
+				dc += 0.002f * (y - dc);
+				o = (y - dc) * 0.62f;
+			}
+			A[i] = o;
 			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
 			tail = tail > e ? tail : e;
 		}
-		k->c_env = e; k->c_fast = fa; k->c_s1 = s1; k->c_s2 = s2; k->c_d1 = d; k->c_w = w;
+		k->c_env = e; k->c_fast = fa; k->c_s1 = s1; k->c_s2 = s2; k->c_d1 = d; k->c_w = w; k->c_dc = dc;
 		tail += kabs(A[VSUB - 1]);
 	} else if (m == 5) {
 		const float f = kit_hz(60 + chord_pc[0]);
