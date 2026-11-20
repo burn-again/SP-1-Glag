@@ -184,10 +184,10 @@ async function boot() {
     const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1), n = L.length;
     const need = Math.ceil(n * ratio) + 2;
     while ((fifo.length >> 1) - Math.floor(pos) < need) {
-      const ptr = W.kt_render(1024);
-      const blk = new Float32Array(W.memory.buffer, ptr, 2048);
+      const ptr = W.kt_render(960);        /* (20 whole blocks of the engine's 48 frames) */
+      const blk = new Float32Array(W.memory.buffer, ptr, 1920);
       const keep = fifo.subarray(Math.floor(pos) * 2);
-      const nf = new Float32Array(keep.length + 2048); nf.set(keep); nf.set(blk, keep.length);
+      const nf = new Float32Array(keep.length + 1920); nf.set(keep); nf.set(blk, keep.length);
       pos -= Math.floor(pos); fifo = nf;
     }
     for (let i = 0; i < n; i++) {

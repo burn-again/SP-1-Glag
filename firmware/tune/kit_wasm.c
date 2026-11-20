@@ -87,11 +87,13 @@ EXPORT float kt_get_tempo(void) { return patch.g[GP_TEMPO]; }
 EXPORT void kt_macro(float depth) { gl_macro(0, depth, 8.0f); }
 EXPORT void kt_dist(int type, int amt, int post_) { gl_dist(type, amt, post_); }
 EXPORT void kt_lanes(int mask) { gl_kit_solo(mask); }
-/* n frames (up to 1024) at 48 kHz, interleaved floats */
+/* n frames at 48 kHz, interleaved floats: whole 1 ms blocks only (the engine renders 48 frames at
+ * a time, and a part block would be left stale), so n is rounded down to a multiple of 48 */
 EXPORT float *kt_render(int n)
 {
-	if (n > 1024)
-		n = 1024;
+	if (n > 1008)
+		n = 1008;
+	n -= n % 48;
 	gl_render(pcm, (uint32_t)n, 0.9f);
 	for (int i = 0; i < 2 * n; i++) {
 		out[i] = (float)pcm[i] * (1.0f / 32768.0f);
