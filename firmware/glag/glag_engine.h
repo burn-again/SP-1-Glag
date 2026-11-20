@@ -137,6 +137,10 @@ void gl_panic(void);
  * depth 0 = off .. 1 = full (twice as wide as half); period_s: seconds per glide. Outside the
  * patch: the posted controls are the centre it moves around. */
 void gl_macro(int ch, float depth, float period_s);
+/* Start the posted patch afresh, as at power-on with this seed: the chord walk from its home
+ * chord, the dice, the clock and the slow LFOs from the start, every channel reset, the echo and
+ * reverb emptied. For the album (between tracks, in silence): each piece plays as recorded. */
+void gl_fresh(uint32_t seed);
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */

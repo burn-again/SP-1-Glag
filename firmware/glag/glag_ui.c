@@ -78,6 +78,7 @@ static uint8_t play_world_done;
 #define DEMO_PIECE_MS 120000u
 #define DEMO_FADE_MS 4000u
 #define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
+#define DEMO_SEED 1234u                         /* the seed the clips were rendered with */
 static int demo_on, demo_idx, play_prev_page;
 static uint32_t demo_t0;
 static float demo_gain = 1.0f;
@@ -483,6 +484,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			if (t >= DEMO_PIECE_MS) {                 /* the switch, in the quiet */
 				demo_idx = (demo_idx + 1) % DEMO_COUNT;
 				load_piece(demo_idx);
+				gl_post_patch(&cur);
+				dirty = 0;
+				gl_fresh(DEMO_SEED);                 /* each track from its start, as recorded */
 				uncatch_all(in);
 				demo_t0 = now;
 				t = 0;
@@ -609,6 +613,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		demo_on = 1;
 		demo_idx = 0;
 		load_piece(0);
+		gl_post_patch(&cur);
+		dirty = 0;
+		gl_fresh(DEMO_SEED);
 		uncatch_all(in);
 		demo_t0 = now;
 		demo_gain = 0.0f;

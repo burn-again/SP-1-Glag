@@ -208,7 +208,8 @@ static gl_patch post_buf[2];
 static volatile uint32_t post_seq, post_seen = 0xFFFFFFFFu;
 
 static volatile uint8_t cmd_play = 1, cmd_freeze, cmd_slow;
-static volatile uint32_t cmd_next, cmd_panic;
+static volatile uint32_t cmd_next, cmd_panic, cmd_fresh, cmd_fresh_seed;
+static uint32_t seen_fresh;
 static uint32_t seen_next, seen_panic;
 
 /* harmony */
@@ -3237,6 +3238,12 @@ void gl_init(uint32_t seed)
 	space_settle();                        /* the tape at its length: no slide at the start */
 }
 
+void gl_fresh(uint32_t seed)
+{
+	cmd_fresh_seed = seed;
+	cmd_fresh++;
+}
+
 void gl_post_patch(const gl_patch *p)
 {
 	uint32_t s = post_seq + 1u;
@@ -3457,6 +3464,40 @@ static inline float macro_trem(int c)
 static void control(float dt)
 {
 	uint32_t s = post_seq;
+	if (cmd_fresh != seen_fresh) {
+		/* the album: this piece from its start, exactly as rendered: the state of power-on with
+		 * this seed (piece 1 loaded, its chord built, every channel reset, the space emptied),
+		 * then the posted piece taken on top of it, as the renders take theirs */
+		seen_fresh = cmd_fresh;
+		rng = cmd_fresh_seed ? cmd_fresh_seed : 0x9E3779B9u;
+		step_n = 0;
+		step_acc = 0.0f;
+		chord_timer = 0.0f;
+		chord_moves = 0;
+		key_off = 0;
+		mode_swap = 0;
+		speed = 1.0f;
+		arc = 0.0f;
+		lfo_vib = lfo_trem = lfo_arc1 = lfo_arc2 = 0;
+		for (int c = 0; c < GL_NCH; c++)
+			for (int k = 0; k < 2; k++)
+				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
+		gl_piece(0, &P);
+		space_init();
+		mode_cur = root_cur = -1;
+		chord_deg = 0;
+		harmony_update();
+		chord_build();
+		chord_pending = 0;
+		for (int c = 0; c < GL_NCH; c++) {
+			chan_reset(&CH[c], P.voice[c]);
+			if (CH[c].voice == GV_BELLS)
+				bells_fill(&CH[c], c);
+		}
+		derive();
+		space_settle();
+		post_seen = s - 1u;                       /* and now the piece itself, as posted */
+	}
 	if (s != post_seen) {
 		P = post_buf[s & 1u];
 		Pb = P;
