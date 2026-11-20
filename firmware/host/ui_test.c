@@ -263,11 +263,11 @@ int main(void)
 		CHECK(out.page == PG_HOME && out.world_song == 0, "PLAY held in Playworld: back to Home (song off now)");
 	}
 
-	/* ---- demo mode: PLAY held 15 s, let go ---- */
+	/* ---- demo mode: PLAY held 10 s, let go: the album ---- */
 	{
 		int pg = out.page;
-		down(GB_PLAY); run(15200); up(GB_PLAY); run(100);
-		CHECK(out.demo == 1 && out.piece == 0, "PLAY held 15 s: the demo, from piece 1 (demo %d, piece %d)", out.demo, out.piece);
+		down(GB_PLAY); run(10200); up(GB_PLAY); run(100);
+		CHECK(out.demo == 1 && out.piece == 0, "PLAY held 10 s: the album, from piece 1 (demo %d, piece %d)", out.demo, out.piece);
 		CHECK(out.page == pg, "the demo leaves you on the page you were on (%d)", out.page);
 		CHECK(out.volume < 0.05f, "it fades in from silence (%.3f)", out.volume);
 		run(5000);
@@ -283,6 +283,37 @@ int main(void)
 		tap(GB_T1); run(1500);
 		CHECK(!out.demo && out.piece == 0 && gl_playing == was && out.page == pg, "any other press ends it, on that piece, and does nothing else");
 		CHECK(out.volume > 0.2f, "the volume back up (%.3f)", out.volume);
+	}
+
+	/* ---- shuffle: PLAY held 20 s ---- */
+	{
+		int pg = out.page;
+		down(GB_PLAY); run(20200); up(GB_PLAY); run(100);
+		CHECK(out.demo == 2 && out.page == pg, "PLAY held 20 s: shuffle (demo %d)", out.demo);
+		CHECK(out.world_song == 1, "shuffle puts each track in song mode (%d)", out.world_song);
+		int first = out.piece, seen[GL_NPIECES] = {0}, repeats = 0, n = 0;
+		seen[first] = 1;
+		for (int k = 0; k < 6; k++) {
+			tap(GB_FFWD); run(4300);
+			repeats += seen[out.piece];
+			seen[out.piece] = 1;
+			n++;
+		}
+		CHECK(repeats == 0, "shuffle: no piece twice in a row of seven (%d repeats)", repeats);
+		CHECK(out.demo == 2 && out.world_song == 1, "still shuffling, still in song mode");
+		tap(GB_T2); run(1500);
+		CHECK(!out.demo, "a press ends shuffle");
+		/* back to a plain piece 1 for the tests after */
+		down(GB_PLAY); run(10200); up(GB_PLAY); run(500);
+		tap(GB_T1); run(1500);
+		down(GB_PLAY); run(2100); up(GB_PLAY); run(300);      /* Playworld: song mode off for what follows */
+		for (int k = 0; k < 5 && out.world_song; k++) { tap(GB_T1); run(300); }
+		tap(GB_T3); run(100);
+		while (out.world_pump) { tap(GB_T3); run(100); }
+		while (out.world_tex) { tap(GB_T4); run(100); }
+		down(GB_PLAY); run(2100); up(GB_PLAY); run(300);
+		down(GB_FN); down(GB_VOLDN); run(3200); up(GB_VOLDN); up(GB_FN); run(1600);   /* distortion off, as at boot */
+		(void)n;
 	}
 
 	/* PLAY: rest and grow */

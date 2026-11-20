@@ -74,12 +74,14 @@ static uint32_t w_anim_t0;
 static int w_anim_from, w_anim_to, w_anim_kind;  /* 0 none, 1 glide to a page, 2 fade out, 3 not yet */
 static uint8_t play_world_done;
 /* ---- demo mode: the album ---- */
-#define DEMO_HOLD_MS 15000u
+#define DEMO_HOLD_MS 10000u
+#define SHUF_HOLD_MS 20000u
 #define DEMO_PIECE_MS 120000u
 #define DEMO_FADE_MS 4000u
 #define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
 #define DEMO_SEED 1234u                         /* the seed the clips were rendered with */
-static int demo_on, demo_idx, play_prev_page;
+static int demo_on, demo_idx, demo_n, play_prev_page;   /* demo_on: 1 the album, 2 shuffle */
+static uint8_t demo_list[GL_NPIECES];
 static uint32_t demo_t0;
 static float demo_gain = 1.0f;
 static int show = SH_MUSIC;
@@ -440,6 +442,118 @@ static void say(int what, uint32_t now, uint32_t ms)
 #define PRESSED(b) ((btn & ~prev_btn) & (1u << (b)))
 #define RELEASED(b) ((~btn & prev_btn) & (1u << (b)))
 
+/* ---- shuffle: every piece (but the labs) in a random order, each with random settings ---- */
+static float clampf_ui(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
+static float urand(void)
+{
+	seed = seed * 1664525u + 1013904223u;
+	return (float)(seed >> 8) * (1.0f / 16777216.0f);
+}
+static int irand(int n) { int k = (int)(urand() * (float)n); return k >= n ? n - 1 : k; }
+static void shuffle_list(uint32_t now)
+{
+	seed ^= now * 2654435761u;
+	demo_n = 0;
+	for (int i = 0; i < GL_NPIECES; i++) {
+		const char *nm = gl_piece_name(i);
+		if (!(nm[0] == 'L' && nm[1] == 'a' && nm[2] == 'b' && nm[3] == ' '))
+			demo_list[demo_n++] = (uint8_t)i;
+	}
+	for (int i = demo_n - 1; i > 0; i--) {             /* Fisher-Yates */
+		int j = irand(i + 1);
+		uint8_t t = demo_list[i];
+		demo_list[i] = demo_list[j];
+		demo_list[j] = t;
+	}
+}
+static void shuffle_settings(void)
+{
+	/* song mode, always, with an arrangement of its own */
+	for (int c = 0; c < 4; c++) {
+		wv_song[0][c] = 0.6f * urand();
+		wv_song[1][c] = (float)(1 + irand(3)) * 0.25f;   /* x1/2, x1, x2 */
+	}
+	wv_song[2][0] = (float)irand(3) * 0.5f;
+	wv_song[2][1] = (float)(1 + irand(3)) * 0.25f;        /* 8, 16 or 24 bars a quarter */
+	wv_song[2][2] = urand();
+	wv_song[2][3] = 0.4f + 0.6f * urand();
+	wv_song[3][0] = 0.6f * urand();
+	wv_song[3][1] = 0.6f * urand();
+	wv_song[3][2] = urand() < 0.4f ? 0.2f + 0.6f * urand() : 0.0f;
+	wv_song[3][3] = 0.5f * urand();
+	w_song = 1;
+	gl_world(GW_SONG, 1.0f);
+	world_apply_all(0);
+	/* the pump, now and then (a quarter of those without drums) */
+	if (urand() < 0.35f) {
+		float p0[4] = {0.3f + 0.6f * urand(), urand(), urand() < 0.5f ? 0.8f * urand() : 0.0f, urand() < 0.25f ? 0.0f : 1.0f};
+		float p1[4] = {0.6f * urand(), (float)irand(4) / 3.0f, 0.5f + 0.5f * urand(), 0.6f * urand()};
+		for (int f = 0; f < 4; f++) {
+			wv_pump[0][f] = p0[f];
+			wv_pump[1][f] = p1[f];
+		}
+		w_pump = 1;
+		world_apply_all(2);
+	} else {
+		w_pump = 0;
+		gl_world(GW_PUMP, 0.0f);
+	}
+	/* a texture, now and then */
+	if (urand() < 0.3f) {
+		w_tex = 1 + irand(4);
+		wv_tex[w_tex][0] = 0.25f + 0.35f * urand();
+		for (int f = 1; f < 4; f++)
+			wv_tex[w_tex][f] = 0.2f + 0.6f * urand();
+		gl_world(GW_TEXTURE, (float)w_tex);
+		world_apply_all(3);
+	} else {
+		w_tex = 0;
+		gl_world(GW_TEXTURE, 0.0f);
+	}
+	w_focus = 0;
+	/* distortion, now and then, mostly gentle */
+	if (urand() < 0.3f) {
+		dist_type = irand(GD_COUNT);
+		dist_amt = urand() < 0.75f ? 1 + irand(2) : 3;
+		dist_post = irand(4);
+	} else
+		dist_amt = 0;
+	gl_dist(dist_type, dist_amt, dist_post);
+	/* the space: another reverb, reverse, ping-pong, an echo time, how much of each */
+	if (urand() < 0.5f) {
+		cur.space[GL_SP_REVERB] = (uint8_t)irand(GR_COUNT);
+		cur.space[GL_SP_SHIMMER] = (uint8_t)irand(GS_COUNT);
+	}
+	uint8_t fl = cur.space[GL_SP_FLAGS] & (uint8_t)~(GL_FLAG_REVERSE | GL_FLAG_PINGPONG);
+	if (urand() < 0.25f)
+		fl |= GL_FLAG_REVERSE;
+	if (urand() < 0.3f)
+		fl |= GL_FLAG_PINGPONG;
+	cur.space[GL_SP_FLAGS] = fl;
+	if (urand() < 0.5f)
+		cur.space[GL_SP_ECHO] = (uint8_t)irand(GL_NECHO);
+	cur.g[GP_DELAY] = clampf_ui(cur.g[GP_DELAY] + 0.3f * (urand() - 0.5f));
+	cur.g[GP_REVERB] = clampf_ui(cur.g[GP_REVERB] + 0.3f * (urand() - 0.5f));
+	gl_world(GW_AUTOF, urand() < 0.2f ? 0.3f + 0.5f * urand() : 0.0f);
+	/* macros: about half the channels, at their own depth and pace */
+	for (int c = 0; c < 4; c++) {
+		mac_step[c] = urand() < 0.5f ? 1 + irand(MAC_STEPS) : 0;
+		mac_period[c] = 4.0f + 20.0f * urand();
+		macro_post(c);
+	}
+}
+/* the next track: its piece afresh (the album's as recorded; shuffle's with its own dice and
+ * settings) */
+static void demo_track(uint32_t now)
+{
+	load_piece(demo_list[demo_idx]);
+	if (demo_on == 2)
+		shuffle_settings();
+	gl_post_patch(&cur);
+	dirty = 0;
+	gl_fresh(demo_on == 1 ? DEMO_SEED : now * 2654435761u + 1u);
+}
+
 void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 {
 	uint16_t btn = in->buttons;
@@ -466,7 +580,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		if (PRESSED(GB_FFWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS)
 			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);     /* to the next: fading out now */
 		if (PRESSED(GB_RWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS) {
-			demo_idx = (demo_idx + DEMO_COUNT - 2) % DEMO_COUNT;   /* the one before (the fade's switch adds one) */
+			demo_idx = (demo_idx + 2 * demo_n - 2) % demo_n;   /* the one before (the fade's switch adds one) */
 			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);
 		}
 		int stop = 0;
@@ -474,6 +588,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			stop |= PRESSED(b) != 0;
 		if (stop) {
 			demo_on = 0;
+			gl_world(GW_KEY_HOLD, 0.0f);
 			if (PRESSED(GB_PLAY))
 				play_world_done = 1;                 /* this press is spent: no rest, no Playworld */
 		}
@@ -482,11 +597,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		if (demo_on) {
 			t = now - demo_t0;
 			if (t >= DEMO_PIECE_MS) {                 /* the switch, in the quiet */
-				demo_idx = (demo_idx + 1) % DEMO_COUNT;
-				load_piece(demo_idx);
-				gl_post_patch(&cur);
-				dirty = 0;
-				gl_fresh(DEMO_SEED);                 /* each track from its start, as recorded */
+				demo_idx = (demo_idx + 1) % demo_n;
+				if (demo_on == 2 && demo_idx == 0)
+					shuffle_list(now);               /* the whole list played: a new order */
+				demo_track(now);
 				uncatch_all(in);
 				demo_t0 = now;
 				t = 0;
@@ -596,12 +710,16 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		gl_play(playing);
 	}
 	if (DOWN(GB_PLAY) && !fn && play_world_done == 1 && !demo_on) {
-		/* still held past Playworld: on toward the demo, the play row filling again (blinking),
-		 * then all four flashing: let go to start it */
+		/* still held past Playworld: the play row filling again (blinking slowly) toward the
+		 * album; at 10 s it flashes (let go: the album) and fills again, blinking fast, toward
+		 * shuffle; at 20 s a light runs round and round (let go: shuffle) */
 		uint32_t held = now - down_at[GB_PLAY];
-		if (held >= DEMO_HOLD_MS) {
-			show_val = 1.0f;
-			say((now / 150u) & 1u ? SH_VALUE : SH_FIND, now, 100);
+		if (held >= SHUF_HOLD_MS) {
+			show_dir = 1;
+			say(SH_SWEEP, now, 100);
+		} else if (held >= DEMO_HOLD_MS) {
+			show_val = (now / 600u) & 1u ? 1.0f : (float)(held - DEMO_HOLD_MS) / (float)(SHUF_HOLD_MS - DEMO_HOLD_MS);
+			say((now / 120u) & 1u ? SH_VALUE : SH_FIND, now, 100);
 		} else if (held >= WORLD_HOLD_MS + 500u) {
 			show_val = (float)(held - WORLD_HOLD_MS) / (float)(DEMO_HOLD_MS - WORLD_HOLD_MS);
 			say((now / 400u) & 1u ? SH_VALUE : SH_FIND, now, 100);
@@ -610,12 +728,18 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	if (RELEASED(GB_PLAY) && play_world_done == 1 && !(prev_btn & (1u << GB_FN)) &&
 	    now - down_at[GB_PLAY] >= DEMO_HOLD_MS && !demo_on) {
 		go(play_prev_page, chan, in);                 /* (the Playworld step on the way is undone) */
-		demo_on = 1;
+		demo_on = now - down_at[GB_PLAY] >= SHUF_HOLD_MS ? 2 : 1;
 		demo_idx = 0;
-		load_piece(0);
-		gl_post_patch(&cur);
-		dirty = 0;
-		gl_fresh(DEMO_SEED);
+		if (demo_on == 1) {                          /* the album: the AMB-1 pieces, each in its key */
+			demo_n = DEMO_COUNT;
+			for (int i = 0; i < demo_n; i++)
+				demo_list[i] = (uint8_t)i;
+			gl_world(GW_KEY_HOLD, 1.0f);
+		} else {
+			shuffle_list(now);
+			gl_world(GW_KEY_HOLD, 0.0f);
+		}
+		demo_track(now);
 		uncatch_all(in);
 		demo_t0 = now;
 		demo_gain = 0.0f;

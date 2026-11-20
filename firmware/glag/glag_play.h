@@ -38,11 +38,12 @@ static struct {
 	int prhythm;
 	/* the textures' controls past their level (rain, vinyl, tape hiss, surf) */
 	float tp[5][3];
+	int key_hold;
 } W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0,
        {0}, {0}, 0.6f, 0.6f, 0.7f, 0.7f, 16.0f, {2, 2, 2, 2}, {2, 2, 2, 2}, 0,
        0.0f, 0.0f, 0.0f, 0.0f, {0}, 0, 0, -1, 0, 0.0f,
        1.0f / 3.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0,
-       {{0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}};
+       {{0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}, 0};
 
 void gl_world(int what, float v)
 {
@@ -89,6 +90,7 @@ void gl_world(int what, float v)
 	case GW_PUMP_RHYTHM: W.prhythm = (int)v & 3; break;
 	case GW_PUMP_SPACE: W.pspace = clampf(v, 0.0f, 1.0f); break;
 	case GW_PUMP_SPARE: W.pspare = clampf(v, 0.0f, 1.0f); break;
+	case GW_KEY_HOLD: W.key_hold = v > 0.5f; break;
 	default: break;
 	}
 }
@@ -304,7 +306,7 @@ static void form_tick(float dt)
 /* ---- key travel: on the bar, once the time is up ---- */
 static void key_tick(float dt)
 {
-	if (W.key_min <= 0.0f) {
+	if (W.key_min <= 0.0f || W.key_hold) {          /* off, or held to the piece's own key */
 		if (key_off || mode_swap) {
 			key_off = 0;
 			mode_swap = 0;
