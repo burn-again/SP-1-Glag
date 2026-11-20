@@ -21,6 +21,11 @@
  * REGISTER the pitch, ACTIVITY the hits. The lanes are of different lengths (16, 16, 12, 7, 10,
  * 13) and drift against each other. */
 
+/* The Kit runs at 12 kHz (its colour shuts above ~5.6 kHz anyway): KSUB samples a block, raised
+ * to the channel's 24 kHz at the end (kit_render) */
+#define KSR (VSR * 0.5f)
+#define KSUB (VSUB / 2u)
+static inline uint32_t kinc(float hz) { return (uint32_t)(hz * (4294967296.0f / KSR)); }
 static uint32_t kit_r = 0x6D2B79F5u;
 static inline float kn(void)
 {
@@ -29,7 +34,7 @@ static inline float kn(void)
 }
 static inline float ku(void) { return 0.5f + 0.5f * kn(); }
 static inline float ksat(float x) { x = clampf(x, -3.0f, 3.0f); return x * (27.0f + x * x) / (27.0f + 9.0f * x * x); }
-static inline float kexp(float t_s) { return t_s > 0.0f ? fexp2(-6.644f / (t_s * VSR)) : 0.0f; }   /* down 40 dB in t seconds */
+static inline float kexp(float t_s) { return t_s > 0.0f ? fexp2(-6.644f / (t_s * KSR)) : 0.0f; }   /* down 40 dB in t seconds */
 
 /* a trapezoidal state-variable filter's coefficients (stable up to the top of the band):
  * g = tan(pi fc / sr), k = 1 / Q */
@@ -60,8 +65,8 @@ static inline float ksvf_run(const ksvf *f, float *s1, float *s2, float x, float
 
 static const float K_MEM[5] = {1.0f, 1.594f, 2.136f, 2.296f, 2.653f};
 static const float K_MEMA[5] = {1.0f, 0.6f, 0.45f, 0.35f, 0.3f};
-/* the 808's six squares (Hz), as phase steps at 24 kHz */
-#define KM(f) ((uint32_t)((f) * 4294967296.0 / 24000.0 + 0.5))
+/* the 808's six squares (Hz), as phase steps at 12 kHz */
+#define KM(f) ((uint32_t)((f) * 4294967296.0 / 12000.0 + 0.5))
 static const uint32_t K_METAL[6] = {KM(205.3), KM(304.4), KM(369.6), KM(522.7), KM(540.0), KM(800.0)};
 static const float K_RAT[4] = {1.41f, 3.5f, 7.07f, 0.5f};
 /* the Hilbert pair: two chains of all-passes (c - z^-2) / (1 - c z^-2), the first a sample later,
@@ -73,8 +78,8 @@ static const float K_HB[2] = {0.1288429f, 0.6854797f};
 static void kit_snare_hit(kit_snare *s, float semis, float dec, float nu, float drive, float vel)
 {
 	float k = fexp2(semis * (1.0f / 12.0f));
-	s->e1 = 185.0f * k * (6.2832f / VSR);
-	s->e2 = 330.0f * k * (6.2832f / VSR);
+	s->e1 = 185.0f * k * (6.2832f / KSR);
+	s->e2 = 330.0f * k * (6.2832f / KSR);
 	if (s->x1 * s->x1 + s->y1 * s->y1 < 0.5f)
 		s->x1 = 0.0f, s->y1 = 1.0f;
 	if (s->x2 * s->x2 + s->y2 * s->y2 < 0.5f)
@@ -85,7 +90,7 @@ static void kit_snare_hit(kit_snare *s, float semis, float dec, float nu, float 
 	s->bk = kexp(0.06f + dec * 0.15f);
 	s->n = vel;
 	s->nk = kexp(0.12f + dec * 0.5f);
-	s->lpk = clampf((3000.0f + nu * 800.0f) * (6.2832f / VSR), 0.05f, 0.95f);
+	s->lpk = clampf((3000.0f + nu * 800.0f) * (6.2832f / KSR), 0.05f, 0.95f);
 	s->nl = (0.3f + nu * (0.8f / 15.0f)) * 1.6f;
 	s->drive = drive;
 }
@@ -99,21 +104,21 @@ static void kit_snare_block(kit_snare *s, float *A, float g)
 	float x1 = s->x1, y1 = s->y1, x2 = s->x2, y2 = s->y2, b = s->b, n = s->n, hp = s->hp, l1 = s->l1, l2 = s->l2, lo = s->lo;
 	const float bk = s->bk, nk = s->nk, lpk = s->lpk, nl = s->nl, dr = s->drive;
 	const float dg = 1.0f + 5.0f * dr, lg = 4.0f * dr, og = g / (1.0f + 0.7f * dr);
-	for (uint32_t i = 0; i < VSUB; i++) {
+	for (uint32_t i = 0; i < KSUB; i++) {
 		x1 += e1 * y1;
 		y1 -= e1 * x1;
 		x2 += e2 * y2;
 		y2 -= e2 * x2;
 		float body = (x1 * 0.7f + x2 * 0.45f) * b;
 		float w = kn();
-		hp += 0.33f * (w - hp);                         /* ~1.5 kHz high-pass */
+		hp += 0.55f * (w - hp);                         /* ~1.5 kHz high-pass */
 		l1 += lpk * (w - hp - l1);
 		l2 += lpk * (l1 - l2);
 		float y = body + l2 * n * nl;
 		b *= bk;
 		n *= nk;
 		if (dr > 0.0f) {                                /* the phono input: lows up, then crunch */
-			lo += 0.028f * (y - lo);
+			lo += 0.055f * (y - lo);
 			float u = clampf((y + lo * lg) * dg, -1.5f, 1.5f);
 			A[i] += (u - 0.148148f * u * u * u) * og;   /* (a cubic: flat at 1.5) */
 		} else
@@ -155,7 +160,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		lane = kit_rot(lane, k->rot_r);
 	if (kit_solo && !KSOLO(lane))
 		return;
-	const float t = eff_tone(ch), l = P.ch[ch][CP_LENGTH], x = P.ch[ch][CP_CHAR];
+	/* the macro's dynamics: the deeper it goes, the more each hit's velocity spreads into its level,
+	 * its brightness and its length (hard hits louder, brighter, longer; soft ones duller, shorter) */
+	const float dyn = mac_depth[ch], dv = vel - 0.75f;
+	const float t = clampf(eff_tone(ch) + dyn * 1.6f * dv, 0.0f, 1.0f), l = P.ch[ch][CP_LENGTH], x = P.ch[ch][CP_CHAR];
+	const float dyn_d = clampf(1.0f + dyn * 3.0f * dv, 0.35f, 2.0f);
+	if (vel < 0.99f)
+		vel = clampf(vel * (1.0f + dyn * 1.8f * dv), 0.05f, 0.98f);
 	const float reg = (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2), oct = fexp2(reg * 0.5f);
 	notes_fired++;
 	c->glow = vel;
@@ -182,17 +193,18 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.0014f;   /* the soggy filter: shut in 10, 120 or 30 ms */
 		k->c_ceil = press ? 3.0f : lng ? 4.8f : 4.5f;             /* how far it opens */
 	}
-	const float dm = big ? 1.5f : lng ? 1.1f : 0.6f;
+	const float dm = (big ? 1.5f : lng ? 1.1f : 0.6f) * dyn_d;
 	const float root = (float)chord_pc[0];              /* the clank plays the chord's root */
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
-		float f0 = clampf(72.0f * oct, 40.0f, 140.0f) * (1.0f + 0.02f * kn());
+		/* tuned: the chord's root, the one nearest D2 (73 Hz) */
+		float f0 = clampf(kit_hz(38 + ((chord_pc[0] - 38 + 66) % 12) - 6) * oct, 40.0f, 140.0f) * (1.0f + 0.004f * kn());
 		float damp = 0.8f - 0.6f * l, firm = 0.2f + 0.6f * t, slack = 0.1f + 0.7f * x;
 		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f) * (press ? 0.55f : 1.0f);
 		if (press)
 			f0 *= 1.15f;
 		for (int m = 0; m < 5; m++) {
-			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / VSR);
+			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / KSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
 				k->k_x[m] = 0.0f, k->k_y[m] = 1.0f;
 			k->k_amp[m] = vel * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
@@ -201,10 +213,10 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->k_glide = press ? -0.18f : slack * 0.25f;   /* (pressed: from below, rising) */
 		k->k_gk = fexp2(-1.4427f / (0.03f * 1000.0f));    /* (once a millisecond) */
 		k->k_att = 0.0f;
-		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * VSR);
+		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * KSR);
 		k->k_nz = vel * (press ? 0.35f : 0.75f);
 		k->k_nzk = kexp(0.014f - firm * 0.011f);
-		k->k_lpk = clampf((1500.0f + firm * 4000.0f) * (6.2832f / VSR), 0.05f, 0.9f);
+		k->k_lpk = clampf((1500.0f + firm * 4000.0f) * (6.2832f / KSR), 0.05f, 0.9f);
 		pump_tgt = 1.0f;                                   /* Playworld's pump follows the kick */
 		break;
 	}
@@ -212,7 +224,9 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	case 7:     /* (7: a ghost, quieter and shorter) */
 	case 9: {   /* (9: squashed: an accent pitched down 4 to 7 semitones, driven hard) */
 		float feel = 2.0f + 4.0f * x;
-		float semis = reg * 3.0f + kn() * feel * 0.06f, dec = clampf((0.1f + 0.6f * l) * dm * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
+		/* tuned: its body on the chord's third or fifth, the one nearest F#3 (185 Hz) */
+		int tn = chord_pc[ku() < 0.5f ? 1 : 2];
+		float semis = (float)(54 + ((tn - 54 + 66) % 12) - 6 - 54) + reg * 12.0f * 0.25f + kn() * feel * 0.02f, dec = clampf((0.1f + 0.6f * l) * dm * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
 		float nu = clampf(4.0f + 11.0f * t + kn() * feel * 0.4f, 0.0f, 15.0f);
 		if (lane == 9)
 			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, 1.0f, vel);
@@ -261,8 +275,8 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	}
 	case 3: {   /* DX100 clank: ratio (CHARACTER), carrier (REGISTER), index (TONE), decay (LENGTH) */
 		float fc = 440.0f * fexp2((36.0f + root - 69.0f) / 12.0f) * oct * (1.0f + 0.002f * kn());   /* C2-B2 */
-		k->d_ic = hz_inc(fc);
-		k->d_im = hz_inc(fc * K_RAT[stepped(x, 4)]);
+		k->d_ic = kinc(fc);
+		k->d_im = kinc(fc * K_RAT[stepped(x, 4)]);
 		k->d_index = (1.5f + 5.0f * t) * IDX_SCALE;
 		k->d_ik = kexp((0.05f + 0.3f * l) * dm * 0.35f);
 		k->d_a = vel;
@@ -275,7 +289,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->t_len = big ? 0.25f + 0.6f * l : 0.04f + 0.12f * l;   /* (held over MIDI: until let go) */
 		k->t_t = 0.0f;
 		k->t_a = vel;
-		k->t_prob = (300.0f + 1200.0f * x) / VSR;
+		k->t_prob = (300.0f + 1200.0f * x) / KSR;
 		k->t_fc = 1500.0f + 5500.0f * t;
 		k->t_prox = 0.2f + 0.4f * x;
 		k->t_w0 = 2.0f + 3.0f * ku();
@@ -309,6 +323,22 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->n_p1 = k->n_p2 = 0.0f;
 		break;
 	}
+	case 10:    /* toms: the roll's snare tuned to the chord, its body ringing, little noise: */
+	case 11:    /* 10 the root, 11 the third, 12 the fifth (G2 to F#3), 13 the root an octave up */
+	case 12:
+	case 13: {
+		if (k->r_i < k->r_n)
+			break;                                        /* (a roll is playing) */
+		int tn = chord_pc[lane == 13 ? 0 : lane - 10];
+		float semis = (float)(43 + ((tn - 43 + 48) % 12) - 54) + (lane == 13 ? 12.0f : 0.0f);
+		kit_snare_hit(&k->rs, semis, clampf(0.6f * dm, 0.2f, 1.0f), 1.0f, 0.0f, vel);
+		k->rs.n *= 0.1f;
+		k->rs.drop = 0.25f;                               /* (a tom's bend) */
+		k->rs.bk = kexp(0.25f + 0.4f * l);
+		k->r_hold = 1.0f;
+		k->r_q = 32768.0f;                                /* (the sampler out of the way) */
+		break;
+	}
 	case 8: {   /* EPS crunch roll: retriggers, acceleration, pitch step; rate and bits from CHARACTER */
 		float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
 		k->r_n = (uint8_t)(4 + (int)(8.0f * x));
@@ -317,7 +347,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->r_accel = 0.3f + 0.5f * x;
 		k->r_t = 0.0f;
 		k->r_vel = vel;
-		k->r_hold = clampf(VSR / (22000.0f - 14000.0f * x), 1.0f, 4.0f);
+		k->r_hold = clampf(KSR / (14000.0f - 10000.0f * x), 1.0f, 3.0f);
 		k->r_q = fexp2(12.0f - 6.0f * x);
 		/* tuned: the snare's body on the key's root (near 185 Hz), each hit a step of the scale */
 		k->r_semis = (float)(((root_pc - 6 + 18) % 12) - 6);
@@ -446,12 +476,20 @@ static void kit_step(chan *c, int ch, uint32_t step)
 			k->rot_i++;
 			k->rot_left = k->rot_seg == 3 ? (uint8_t)(k->rot_i % 3u == 2u ? 6 : 5) : k->rot_seg == 2 ? 8 : 16;
 		}
-	} else if (phrase == 0 && (kit_rot_always || (mac_depth[ch] > 0.99f && ku() < 0.4f))) {
+	} else if (phrase == 0 && (kit_rot_always || ku() < (mac_depth[ch] - 0.4f) * 0.9f)) {   /* (from 0.4 of the macro up, likelier as it goes) */
 		k->rot_r = 1;
 		k->rot_i = 0;
 		k->rot_seg = (uint8_t)(1 + (int)(ku() * 3.0f));
 		k->rot_left = k->rot_seg == 3 ? 5 : k->rot_seg == 2 ? 8 : 16;
 	}
+	/* the macro turns the euclidean rings: at each phrase (more often as it goes deeper) the kick's,
+	 * the snare's and the hats' rings move to new places, so the pattern keeps shifting */
+	if (phrase == 0 && ku() < mac_depth[ch] * 1.2f) {
+		k->eo_k = (uint8_t)(ku() * 16.0f);
+		k->eo_s = (uint8_t)(ku() * 16.0f);
+		k->eo_h = (uint8_t)(ku() * 12.0f);
+	} else if (phrase == 0 && mac_depth[ch] <= 0.0f)
+		k->eo_k = k->eo_s = k->eo_h = 0;
 	const int gv = (int)GL_CHX_GRV(P.chx[ch]);
 	if (gv >= 1 && gv < GL_NGROOVE) {
 		/* a groove: this step's two slots */
@@ -496,16 +534,17 @@ static void kit_step(chan *c, int ch, uint32_t step)
 		float acc = s16 == 0 ? 0.95f : (s16 & 3) == 0 ? 0.8f : 0.6f;
 		int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f);
 		/* the phrase's fourth bar: the kick in threes across it (0, 3, 6, 9, 12, 15) */
-		int kick = phrase >= 48 && !lean ? s16 % 3 == 0 : euclid_hit(kk, 16, s16);
+		int ek = (s16 + k->eo_k) % 16, es = (s16 + 12 + k->eo_s) % 16, eh = (int)((step + k->eo_h) % 12u);
+		int kick = phrase >= 48 && !lean ? s16 % 3 == 0 : euclid_hit(kk, 16, ek);
 		if (kick)
 			kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
-		if (euclid_hit(sk, 16, (s16 + 12) % 16)) {
+		if (euclid_hit(sk, 16, es)) {
 			/* the phrase's last snare an accent, often squashed; now and then one on the 4 */
 			int sq = (phrase == 60 && ku() < 0.5f) || (s16 == 12 && ku() < 0.12f);
 			kit_fire(c, ch, sq ? 9 : 1, sq ? 0.95f : phrase == 60 ? 1.0f : 0.82f + 0.13f * ku());
 		} else if (!lean && h > 0.25f && (s16 & 1) && ku() < 0.22f * h)
 			kit_fire(c, ch, 7, 0.8f);                    /* a ghost note */
-		int s12 = (int)(step % 12u);
+		int s12 = eh;
 		if (!lean && s16 == 12 && ((step >> 4) & 1u) && ku() < 0.35f * h)
 			kit_trip(c, ch, 6, step_s, 0.6f);            /* the bar's last beat in triplets */
 		else if (euclid_hit(hk, 12, s12)) {
@@ -514,7 +553,13 @@ static void kit_step(chan *c, int ch, uint32_t step)
 			kit_fire(c, ch, op ? 6 : 2, op ? 0.9f : (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.12f * ku()));
 		}
 	}
-	if (form_fill && s16 >= 12)
+	/* a tom fill down the chord into the next phrase (now and then; always on Playworld's fill):
+	 * the root up high, the fifth, the third, the root */
+	if ((KSOLO(10) && s16 == 12) || (!lean && phrase == 60 && (form_fill || ku() < 0.3f + 0.3f * h))) {
+		static const uint8_t TL[4] = {13, 12, 11, 10};
+		for (int i = 0; i < 4; i++)
+			kit_later(c, ch, TL[i], 0.85f - 0.05f * (float)i, (float)i * step_s);
+	} else if (form_fill && s16 >= 12)
 		kit_fire(c, ch, 1, 0.7f + 0.2f * ku());          /* Playworld's fill */
 	if (lean)
 		return;
@@ -545,7 +590,7 @@ static void kit_step(chan *c, int ch, uint32_t step)
 static inline float kabs(float x) { return x < 0.0f ? -x : x; }
 static uint8_t kit_col_m = 6;                        /* (the default: soggy, then Chebyshev) */
 void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 6 ? 6 : method); }
-#define KC_N 1536                                     /* each comb's line: 64 ms at 24 kHz */
+#define KC_N 1536                                     /* each comb's line: 128 ms at 12 kHz */
 static inline float kc_read(const int16_t *b, uint16_t w, float d)
 {
 	float pos = (float)w - d;
@@ -564,7 +609,7 @@ static void kit_color(chan *c, float *A)
 	kit_state *k = &c->kt;
 	const int m = kit_col_m;
 	int16_t *b1 = c->ks, *b2 = c->ks + KC_N;
-	const float dt = (float)VSUB / VSR;
+	const float dt = (float)KSUB / KSR;
 	float tail = 0.0f;
 	if (m == 1) {
 		/* which chord tone: root, fifth, third, a new one every ~3 s */
@@ -577,15 +622,15 @@ static void kit_color(chan *c, float *A)
 		float f = kit_hz(48 + chord_pc[SEL[k->c_sel]]);
 		k->c_lfo += dt * 0.3f;
 		k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
-		float tgt = VSR / f * (1.0f + 0.006f * sin_u((uint32_t)(k->c_lfo * 4294967296.0f)));
+		float tgt = KSR / f * (1.0f + 0.006f * sin_u((uint32_t)(k->c_lfo * 4294967296.0f)));
 		if (k->c_d1 < 8.0f)
 			k->c_d1 = tgt;
 		float d = k->c_d1, lp = k->c_lp1;
 		uint16_t w = k->c_w;
-		for (uint32_t i = 0; i < VSUB; i++) {
-			d += (tgt - d) * 0.0008f;                      /* (it glides to the next tone) */
+		for (uint32_t i = 0; i < KSUB; i++) {
+			d += (tgt - d) * 0.0016f;                      /* (it glides to the next tone) */
 			float y = kc_read(b1, w, d);
-			lp += 0.45f * (y - lp);                        /* (darker each time round) */
+			lp += 0.7f * (y - lp);                        /* (darker each time round) */
 			float in = A[i] + 0.9f * lp;
 			b1[w] = kc_w(in);
 			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
@@ -596,8 +641,8 @@ static void kit_color(chan *c, float *A)
 	} else if (m == 2) {
 		ksvf f[3];
 		for (int j = 0; j < 3; j++)
-			f[j] = ksvf_set(ktan(kit_hz(72 + chord_pc[j]) / VSR), 0.006f);
-		for (uint32_t i = 0; i < VSUB; i++) {
+			f[j] = ksvf_set(ktan(kit_hz(72 + chord_pc[j]) / KSR), 0.006f);
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i] * 0.006f * 6.0f, sum = 0.0f, lp;
 			for (int j = 0; j < 3; j++)
 				sum += ksvf_run(&f[j], &k->c_r1[j], &k->c_r2[j], x, &lp);
@@ -605,11 +650,11 @@ static void kit_color(chan *c, float *A)
 			tail = tail > kabs(sum) ? tail : kabs(sum);
 		}
 	} else if (m == 3) {
-		const float inc0 = kit_hz(60 + chord_pc[0]) / VSR;
+		const float inc0 = kit_hz(60 + chord_pc[0]) / KSR;
 		float ph = k->c_ph, e = k->c_env;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i], ax = kabs(x);
-			e += (ax > e ? 0.3f : 0.0017f) * (ax - e);     /* (in at once, out over ~25 ms) */
+			e += (ax > e ? 0.51f : 0.0034f) * (ax - e);     /* (in at once, out over ~25 ms) */
 			ph += inc0 * (1.0f + 9.0f * x);                /* through zero when the drums swing low */
 			ph -= (float)(int)ph;
 			ph += ph < 0.0f ? 1.0f : 0.0f;
@@ -621,25 +666,35 @@ static void kit_color(chan *c, float *A)
 	} else if (m == 4 || m == 6) {
 		float e = k->c_env, fa = k->c_fast, s1 = k->c_s1, s2 = k->c_s2, d = k->c_d1, dc = k->c_dc;
 		const float relk = k->c_relk > 0.0f ? k->c_relk : 0.0014f, ceil = k->c_ceil > 0.0f ? k->c_ceil : 4.5f;
-		/* the low-pass's place, once a block: 250 Hz shut, up to ~5 kHz on the hit */
-		const ksvf lpf = ksvf_set(ktan(250.0f * fexp2(ceil * clampf(fa * 3.0f, 0.0f, 1.0f)) / VSR), 0.6f);
+		/* three slow LFOs (14, 8 and 5 s round, deeper with the macro) move where it rests, how far
+		 * it opens and how much it rings: the texture shifts over the phrase */
+		const int ch = (int)(c - CH);
+		const float lw = 0.6f + 0.4f * mac_depth[ch];
+		k->c_lfo += dt * 0.07f; k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
+		k->c_l2 += dt * 0.125f; k->c_l2 -= k->c_l2 >= 1.0f ? 1.0f : 0.0f;
+		k->c_l3 += dt * 0.2f; k->c_l3 -= k->c_l3 >= 1.0f ? 1.0f : 0.0f;
+		const float o1 = sin_u((uint32_t)(k->c_lfo * 4294967296.0f)) * lw, o2 = sin_u((uint32_t)(k->c_l2 * 4294967296.0f)) * lw;
+		const float o3 = sin_u((uint32_t)(k->c_l3 * 4294967296.0f)) * lw;
+		/* the low-pass's place, once a block: ~250 Hz shut (110-570 as the LFO goes), up to ~5 kHz on the hit */
+		const float base = 250.0f * fexp2(1.2f * o1), cl = ceil + 0.8f * o2;
+		const ksvf lpf = ksvf_set(ktan(clampf(base * fexp2(cl * clampf(fa * 3.0f, 0.0f, 1.0f)), 60.0f, 0.45f * KSR) / KSR), 0.6f - 0.25f * o3);
 		uint16_t w = k->c_w;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i], ax = kabs(x);
-			fa += (ax > fa ? 0.5f : relk) * (ax - fa);     /* (30 ms; 10 pressed, 120 long) */
-			e += (ax > e ? 0.2f : 0.00035f) * (ax - e);     /* (120 ms) */
+			fa += (ax > fa ? 0.75f : 2.0f * relk) * (ax - fa);     /* (30 ms; 10 pressed, 120 long) */
+			e += (ax > e ? 0.36f : 0.0007f) * (ax - e);     /* (120 ms) */
 			float lp;
 			ksvf_run(&lpf, &s1, &s2, x, &lp);
 			float u = clampf(lp * 1.8f, -1.5f, 1.5f);
 			b1[w] = kc_w(u - 0.148148f * u * u * u);
 			/* the read point drifts back as the hit dies: its pitch sags */
-			float tgt = 48.0f + 140.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f);
-			d += (tgt - d) * 0.002f;
+			float tgt = 24.0f + 70.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f);
+			d += (tgt - d) * 0.004f;
 			float o = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
 			if (m == 6) {                                  /* Chebyshev: T2 and T3 on top */
 				float v = clampf(o * 1.6f, -1.0f, 1.0f);
 				float y = v + 0.3f * (2.0f * v * v) + 0.22f * (4.0f * v * v * v - 3.0f * v);
-				dc += 0.002f * (y - dc);
+				dc += 0.004f * (y - dc);
 				o = (y - dc) * 0.62f;
 			}
 			A[i] = o;
@@ -647,16 +702,16 @@ static void kit_color(chan *c, float *A)
 			tail = tail > e ? tail : e;
 		}
 		k->c_env = e; k->c_fast = fa; k->c_s1 = s1; k->c_s2 = s2; k->c_d1 = d; k->c_w = w; k->c_dc = dc;
-		tail += kabs(A[VSUB - 1]);
+		tail += kabs(A[KSUB - 1]);
 	} else if (m == 5) {
 		const float f = kit_hz(60 + chord_pc[0]);
-		const float d1 = VSR / f, d2 = VSR / (f * 1.4142f);
+		const float d1 = KSR / f, d2 = KSR / (f * 1.4142f);
 		float l1 = k->c_lp1, l2 = k->c_lp2;
 		uint16_t w = k->c_w;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float y1 = kc_read(b1, w, d1), y2 = kc_read(b2, w, d2);
-			l1 += 0.6f * (y1 - l1);
-			l2 += 0.6f * (y2 - l2);
+			l1 += 0.84f * (y1 - l1);
+			l2 += 0.84f * (y2 - l2);
 			b1[w] = kc_w(A[i] * 0.5f + 0.93f * l1);
 			b2[w] = kc_w(A[i] * 0.5f - 0.92f * l2);       /* (inverted: odd harmonics, hollow) */
 			w = (uint16_t)(w + 1u >= KC_N ? 0 : w + 1u);
@@ -669,15 +724,15 @@ static void kit_color(chan *c, float *A)
 	k->c_tail = tail;
 }
 
-/* ---- the sound, 24 kHz, mono into the channel ---- */
-static int kit_render(chan *c, float *A)
+/* ---- the sound, 12 kHz, mono ---- */
+static int kit_render12(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
 	int any = 0;
 	/* the hits waiting off the grid */
 	for (int i = 0; i < 8; i++)
 		if (k->q_t[i] > 0.0f) {
-			k->q_t[i] -= (float)VSUB / VSR;
+			k->q_t[i] -= (float)KSUB / KSR;
 			if (k->q_t[i] <= 0.0f) {
 				k->q_t[i] = 0.0f;
 				kit_fire(c, (int)(c - CH), k->q_l[i], k->q_v[i]);
@@ -694,7 +749,7 @@ static int kit_render(chan *c, float *A)
 				continue;
 			float x = k->k_x[m], y = k->k_y[m], a = k->k_amp[m] * 1.3f;
 			const float e = k->k_e[m] * g, dk = k->k_dec[m];
-			for (uint32_t i = 0; i < VSUB; i++) {
+			for (uint32_t i = 0; i < KSUB; i++) {
 				x += e * y;
 				y -= e * x;
 				A[i] += a * x;
@@ -706,7 +761,7 @@ static int kit_render(chan *c, float *A)
 		if (k->k_nz > 1e-3f) {
 			float lp = k->k_lp, nz = k->k_nz;
 			const float lk = k->k_lpk, nzk = k->k_nzk;
-			for (uint32_t i = 0; i < VSUB; i++) {
+			for (uint32_t i = 0; i < KSUB; i++) {
 				lp += lk * (kn() * nz - lp);
 				nz *= nzk;
 				A[i] += lp * 0.6f;
@@ -722,16 +777,16 @@ static int kit_render(chan *c, float *A)
 	/* metal hat, frequency-shifted */
 	if (k->h_a > 1e-3f) {
 		any = 1;
-		const float dt = 1.0f / VSR;
+		const float dt = 1.0f / KSR;
 		/* the band: placed per hit, swept down from above in the first ms, settling lower on a
 		 * long hat; the low-pass after the shift closes as it rings */
 		const float prog = k->h_len > 0.0f ? clampf(k->h_t / k->h_len, 0.0f, 1.0f) : 1.0f;
-		const ksvf hf = ksvf_set(ktan(k->h_fc0 * (1.0f + k->h_fenv) * (1.0f - (1.0f - k->h_f) * prog) / VSR), 0.8f);
+		const ksvf hf = ksvf_set(ktan(k->h_fc0 * (1.0f + k->h_fenv) * (1.0f - (1.0f - k->h_f) * prog) / KSR), 0.8f);
 		k->h_fenv *= 0.936f;                              /* (15 ms) */
 		k->h_lpk += (k->h_lpe - k->h_lpk) * 0.025f;        /* (about 40 ms) */
 		/* the shift's frequency (it slides over the ring), as a turn per sample, once a block */
 		float f = k->h_t < k->h_len ? k->h_s0 + (k->h_s1 - k->h_s0) * k->h_t / k->h_len : k->h_s1;
-		k->h_t += dt * VSUB;
+		k->h_t += dt * KSUB;
 		uint32_t rp = (uint32_t)(int32_t)(f * dt * 4294967296.0f);
 		const float cr = sin_u(rp + 0x40000000u), sr = sin_u(rp);
 		float pc = k->h_c, ps = k->h_s, nrm = pc * pc + ps * ps;
@@ -744,7 +799,7 @@ static int kit_render(chan *c, float *A)
 		float bp1 = k->h_bp, lo = k->h_lo, hh = k->h_hp, l2 = k->h_l2, l3 = k->h_l3, ha = k->h_a, ad = k->h_ad;
 		const float hk = k->h_k, grit = k->h_grit, hlk = k->h_lpk;
 		float hl = k->h_lp;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			/* the squares: each one's top bit, counted */
 			ph0 += K_METAL[0]; ph1 += K_METAL[1]; ph2 += K_METAL[2];
 			ph3 += K_METAL[3]; ph4 += K_METAL[4]; ph5 += K_METAL[5];
@@ -752,9 +807,9 @@ static int kit_render(chan *c, float *A)
 			float s = (float)(3 - n) * (1.0f / 3.0f);
 			/* the high band (its body) and a little of the low metal */
 			float lp, bp = ksvf_run(&hf, &bp1, &lo, s, &lp);
-			hh += 0.6f * (bp - hh);
-			l2 += 0.36f * (s - l2);
-			l3 += 0.36f * (l2 - l3);
+			hh += 0.84f * (bp - hh);
+			l2 += 0.59f * (s - l2);
+			l3 += 0.59f * (l2 - l3);
 			float x0 = ((bp - hh) * 2.0f + (l2 - l3) * grit) * ha;
 			ha *= hk;
 			/* the two all-pass chains (in z^-2: y = c x + v[n-2], v = c y - x; the two
@@ -784,7 +839,7 @@ static int kit_render(chan *c, float *A)
 	/* DX100 clank */
 	if (k->d_a > 1e-3f) {
 		any = 1;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float mo = sin_u(k->d_pm + (uint32_t)(int32_t)(k->d_fb * (k->d_m1 + k->d_m2) * 0.5f * 683565275.6f));
 			k->d_m2 = k->d_m1;
 			k->d_m1 = mo;
@@ -801,7 +856,7 @@ static int kit_render(chan *c, float *A)
 	/* tissue paper over a mic */
 	if (k->t_a > 1e-4f && k->t_t < k->t_len + 0.08f) {
 		any = 1;
-		const float dt = 1.0f / VSR;
+		const float dt = 1.0f / KSR;
 		/* the stroke's envelope and the hand's pressure, once a block: in over 30 ms, then fading
 		 * (a long stroke to a fifth of itself), and out; after the first 30 ms its band falls,
 		 * an octave and a half over the stroke */
@@ -817,22 +872,22 @@ static int kit_render(chan *c, float *A)
 				e *= 1.0f - (t - k->t_len) * (1.0f / 0.06f);
 		}
 		e = e < 0.0f ? 0.0f : e;
-		const ksvf tf = ksvf_set(ktan(k->t_fc * fexp2(-1.5f * fall) / VSR), 1.25f);
+		const ksvf tf = ksvf_set(ktan(k->t_fc * fexp2(-1.5f * fall) / KSR), 1.25f);
 		float press = 0.6f + 0.4f * sin_u((uint32_t)((k->t_w0 * t + k->t_ph0) * 4294967296.0f)) * sin_u((uint32_t)((k->t_w1 * t) * 4294967296.0f));
-		k->t_t += dt * VSUB;
+		k->t_t += dt * KSUB;
 		const float ep = e * press, pr = k->t_prob * press, ga = 1.5f * k->t_a, gr = k->t_prox * 4.0f * k->t_a;   /* (quieter) */
 		float tc = k->t_c, tb = k->t_b, tl = k->t_lo, th = k->t_hp, r1 = k->t_r1, r2 = k->t_r2;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float w = kn(), u = 0.5f + 0.5f * w;
 			if (u < pr) {                                 /* a crackle: its size and sign from the same draw */
 				float a = u / pr;
 				tc += (kit_r & 1u ? -1.0f : 1.0f) * a * a * a;
 			}
-			tc *= 0.9f;                                   /* ~0.4 ms */
+			tc *= 0.81f;                                   /* ~0.4 ms */
 			float lp, bp = ksvf_run(&tf, &tb, &tl, (tc * 1.2f + w * 0.12f) * ep, &lp);
-			th += 0.1f * (bp - th);
-			r1 += 0.0235f * (w * ep - r1);
-			r2 += 0.0235f * (r1 - r2);
+			th += 0.19f * (bp - th);
+			r1 += 0.0465f * (w * ep - r1);
+			r2 += 0.0465f * (r1 - r2);
 			A[i] += (bp - th) * ga + r2 * gr;
 		}
 		k->t_c = tc; k->t_b = tb; k->t_lo = tl; k->t_hp = th; k->t_r1 = r1; k->t_r2 = r2;
@@ -842,16 +897,16 @@ static int kit_render(chan *c, float *A)
 	if (k->n_a > 1e-3f) {
 		any = 1;
 		const int os = k->n_menv > 0.03f ? 2 : 1;          /* twice the rate while the sync sweeps */
-		const float dt2 = 1.0f / ((float)os * VSR);
+		const float dt2 = 1.0f / ((float)os * KSR);
 		/* the sweep and the filter move once a block (1 ms) */
 		const float f2 = k->n_f1 * fexp2(k->n_sweep * k->n_menv * (1.0f / 12.0f));
-		const float fc = clampf(k->n_cut * fexp2(2.0f * k->n_menv), 60.0f, 0.21f * (float)os * VSR);
+		const float fc = clampf(k->n_cut * fexp2(2.0f * k->n_menv), 60.0f, 0.21f * (float)os * KSR);
 		const ksvf nf = ksvf_set(ktan(fc * dt2), 0.7f);
 		k->n_menv *= k->n_md;
 		const float fm4 = k->n_fm * (0.3f + 0.7f * k->n_menv) * 4.0f, f1 = k->n_f1 * dt2, i2 = f2 * dt2;
 		float p1 = k->n_p1, p2 = k->n_p2, s1 = k->n_bp1, s2 = k->n_lo1;
 		float na = k->n_a, att = k->n_att, dc = k->n_dc;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			float acc = 0.0f;
 			for (int o = 0; o < os; o++) {
 				float o2 = 2.0f * p2 - 1.0f;
@@ -869,9 +924,9 @@ static int kit_render(chan *c, float *A)
 				ksvf_run(&nf, &s1, &s2, 0.55f * o2 + 0.45f * tri, &l1);
 				acc += l1;
 			}
-			att = att < 1.0f ? att + 0.004f : 1.0f;          /* (a 10 ms attack) */
+			att = att < 1.0f ? att + 0.008f : 1.0f;          /* (a 10 ms attack) */
 			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f);
-			dc += 0.008f * (y - dc);                      /* its offset (the FM runs it backwards) */
+			dc += 0.016f * (y - dc);                      /* its offset (the FM runs it backwards) */
 			A[i] += y - dc;
 			na *= k->n_ak;
 		}
@@ -882,7 +937,7 @@ static int kit_render(chan *c, float *A)
 	if (k->r_i < k->r_n || k->rs.b > 1e-3f || k->rs.n > 1e-3f) {
 		any = 1;
 		if (k->r_i < k->r_n) {
-			k->r_t -= (float)VSUB / VSR;
+			k->r_t -= (float)KSUB / KSR;
 			if (k->r_t <= 0.0f) {
 				int h = k->r_i++;
 				const float fr = (float)h / (float)(k->r_n > 1 ? k->r_n - 1 : 1);
@@ -906,11 +961,11 @@ static int kit_render(chan *c, float *A)
 				k->r_t += gap;
 			}
 		}
-		float buf[VSUB] = {0};
+		float buf[KSUB] = {0};
 		kit_snare_block(&k->rs, buf, 1.0f);
 		float acc = k->r_acc, held = k->r_held;
 		const float hold = k->r_hold, q = k->r_q, iq = 1.0f / k->r_q;
-		for (uint32_t i = 0; i < VSUB; i++) {
+		for (uint32_t i = 0; i < KSUB; i++) {
 			acc += 1.0f;
 			if (acc >= hold) {                            /* the sampler's rate and bits */
 				acc -= hold;
@@ -925,4 +980,27 @@ static int kit_render(chan *c, float *A)
 		any = 1;
 	}
 	return any;
+}
+
+/* ---- into the channel: the 12 kHz kit raised to 24 kHz (each new sample, and the one between) ---- */
+static int kit_render(chan *c, float *A)
+{
+	float b[KSUB];
+	for (uint32_t i = 0; i < KSUB; i++)
+		b[i] = 0.0f;
+	if (!kit_render12(c, b)) {
+		c->kt.up_prev = 0.0f;
+		return 0;
+	}
+	float p = c->kt.up_prev, lp = c->kt.up_lp;
+	for (uint32_t i = 0; i < KSUB; i++) {           /* (a gentle low-pass takes the edge off the images) */
+		lp += 0.62f * (0.5f * (p + b[i]) - lp);
+		A[2 * i] += lp;
+		lp += 0.62f * (b[i] - lp);
+		A[2 * i + 1] += lp;
+		p = b[i];
+	}
+	c->kt.up_prev = p;
+	c->kt.up_lp = lp;
+	return 1;
 }

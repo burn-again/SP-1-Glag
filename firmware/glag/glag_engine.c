@@ -187,6 +187,8 @@ typedef struct {
 	float c_r1[3], c_r2[3];
 	float c_ph, c_env, c_fast, c_s1, c_s2, c_relk, c_ceil, c_dc;
 	uint8_t n_k, n_s, n_h;         /* hits counted, for the rule of threes */
+	float up_prev, up_lp, c_l2, c_l3;     /* the last 12 kHz sample (for the 24 kHz rise); two more LFOs */
+	uint8_t eo_k, eo_s, eo_h;      /* the euclidean rings turned by the macro */
 	kit_snare rs;
 } kit_state;
 
@@ -4394,23 +4396,23 @@ static const recipe PIECES[GL_NPIECES] = {
 	 * dry, as those records' drums are (no echo, no reverb on its channel) ---- */
 	/* lofi: the core only (kick, R-8 snare, metal hat, clank), clean, with an EP and a pad */
 	{"Canvas Room", {GV_KIT, GV_EP, GV_BASS, GV_PAD},
-	 {{55, 45, 35, 50, 0, 0, 50, 15, 89}, {40, 45, 55, 50, 25, 45, 40, 40, 63},
-	  {35, 30, 80, 50, 5, 15, 50, 30, 63}, {40, 30, 70, 50, 10, 60, 60, 30, 45}},
+	 {{55, 45, 35, 50, 0, 0, 50, 15, 92}, {40, 45, 55, 50, 25, 45, 40, 40, 65},
+	  {35, 30, 80, 50, 5, 15, 50, 30, 65}, {40, 30, 70, 50, 10, 60, 60, 30, 46}},
 	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}},
 	/* the shifted hats and the clank in front, a sequence and strings behind */
 	{"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS},
-	 {{65, 60, 45, 50, 0, 0, 50, 55, 83}, {55, 45, 40, 50, 30, 35, 40, 45, 51},
-	  {45, 35, 60, 50, 0, 10, 50, 40, 64}, {30, 35, 75, 50, 15, 55, 60, 30, 37}},
+	 {{65, 60, 45, 50, 0, 0, 50, 55, 86}, {55, 45, 40, 50, 30, 35, 40, 45, 53},
+	  {45, 35, 60, 50, 0, 10, 50, 40, 66}, {30, 35, 75, 50, 15, 55, 60, 30, 38}},
 	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}},
 	/* the whole kit: crunch, the Nord hits, rolls into each phrase, open hats; Phrygian */
 	{"Crunch Roll", {GV_KIT, GV_GLOW, GV_DRONE, GV_SEQ},
-	 {{75, 55, 55, 50, 0, 0, 50, 85, 94}, {35, 35, 65, 50, 30, 55, 35, 40, 51},
-	  {30, 25, 90, 50, 0, 45, 50, 30, 37}, {50, 50, 35, 25, 35, 30, 65, 60, 48}},
+	 {{75, 55, 55, 50, 0, 0, 50, 85, 98}, {35, 35, 65, 50, 30, 55, 35, 40, 53},
+	  {30, 25, 90, 50, 0, 45, 50, 30, 39}, {50, 50, 35, 25, 35, 30, 65, 60, 50}},
 	 {80, 40, 50, 50, 4, 2, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {2, 1, 1, 1}, 8, {4, 2, 2, 3}, 8, 0, {0, 0, 0, 0}},
 	/* ambient: few hits, long ones (tissue strokes, long hats), bells and a shimmer in a hall */
 	{"Tissue Hall", {GV_KIT, GV_BELLS, GV_PAD, GV_SHIMMER},
-	 {{25, 40, 50, 50, 0, 0, 50, 60, 85}, {35, 45, 60, 50, 40, 60, 40, 30, 64},
-	  {50, 30, 80, 50, 15, 70, 60, 30, 64}, {25, 40, 70, 50, 20, 60, 55, 40, 42}},
+	 {{25, 40, 50, 50, 0, 0, 50, 60, 87}, {35, 45, 60, 50, 40, 60, 40, 30, 66},
+	  {50, 30, 80, 50, 15, 70, 60, 30, 66}, {25, 40, 70, 50, 20, 60, 55, 40, 43}},
 	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}},
 	/* ---- the Kit's grooves (•• + FFWD on its channel), each at the tempo it has in mind ---- */
 	/* UK garage two-step: 65 here, 130 felt; a swung kick that skips the 3, hats shuffling,
@@ -4454,8 +4456,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	/* cumbia at 95: the kick on 1 and 3, a scraped tissue for the guiro, a walking bass,
 	 * the muted brass as an accordion, plucks */
 	{"Cumbia Lamp", {GV_KIT, GV_FUNK, GV_RIBBON, GV_PIZZ},
-	 {{55, 55, 30, 50, 0, 0, 50, 35, 100}, {45, 35, 40, 50, 0, 10, 50, 15, 72},
-	  {45, 55, 40, 50, 20, 35, 40, 40, 52}, {45, 50, 35, 50, 20, 30, 60, 40, 46}},
+	 {{55, 55, 30, 50, 0, 0, 50, 35, 100}, {45, 35, 40, 50, 0, 10, 50, 15, 75},
+	  {45, 55, 40, 50, 20, 35, 40, 40, 54}, {45, 50, 35, 50, 20, 30, 60, 40, 48}},
 	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 0, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}},
 	/* jazz at 70 (140 felt): a ride swung in triplets, ghosted comping on the snare, feathered
 	 * kicks; an EP comping, a bass, a swell */
