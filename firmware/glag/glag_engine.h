@@ -192,7 +192,7 @@ extern volatile float gl_peak;           /* output peak, 0..1, decays */
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 71                   /* an audition build: fifty-five more (five of them labs) */
+#define GL_NPIECES 75                   /* an audition build: fifty-nine more (five of them labs) */
 #else
 #define GL_NPIECES 16
 #endif

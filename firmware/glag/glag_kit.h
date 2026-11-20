@@ -122,6 +122,15 @@ static void kit_snare_block(kit_snare *s, float *A, float g)
 	s->x1 = x1; s->y1 = y1; s->x2 = x2; s->y2 = y2; s->b = b; s->n = n; s->hp = hp; s->l1 = l1; s->l2 = l2; s->lo = lo;
 }
 
+/* the key: semitones above the root of the scale's degree d (any integer, octaves included) */
+static int kit_deg(int d)
+{
+	int n = scale_n > 0 ? scale_n : 7, o = d >= 0 ? d / n : -((-d + n - 1) / n), i = d - o * n;
+	int rel = scale_n > 0 ? (scale_pc[i] - root_pc + 12) % 12 : 2 * i;
+	return rel + 12 * o;
+}
+static float kit_hz(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
+
 /* audition: only these lanes sound (and each one's own pattern runs whatever CHARACTER is) */
 static uint32_t kit_solo;
 void gl_kit_solo(int lanes) { kit_solo = (uint32_t)lanes; }
@@ -141,7 +150,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	 * hard MIDI hit) rings long */
 	const int big = vel >= 0.99f;
 	const float dm = big ? 1.5f : 0.6f;
-	const float root = (float)chord_pc[0];              /* the clank and the Nord play the chord's root */
+	const float root = (float)chord_pc[0];              /* the clank plays the chord's root */
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
 		float f0 = clampf(72.0f * oct, 40.0f, 140.0f) * (1.0f + 0.02f * kn());
@@ -165,11 +174,15 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		break;
 	}
 	case 1:     /* R-8 snare: pitch, decay, nuance, feel; crunch rising with CHARACTER */
-	case 7: {   /* (7: a ghost, quieter and shorter) */
+	case 7:     /* (7: a ghost, quieter and shorter) */
+	case 9: {   /* (9: squashed: an accent pitched down 4 to 7 semitones, driven hard) */
 		float feel = 2.0f + 4.0f * x;
 		float semis = reg * 3.0f + kn() * feel * 0.06f, dec = clampf((0.1f + 0.6f * l) * dm * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
 		float nu = clampf(4.0f + 11.0f * t + kn() * feel * 0.4f, 0.0f, 15.0f);
-		kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
+		if (lane == 9)
+			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, 1.0f, vel);
+		else
+			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
 		break;
 	}
 	case 2:     /* metal hat: decay (LENGTH; long when open), shift at the hit and at the end, tone */
@@ -180,15 +193,30 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		dec = dec > 1.2f ? 1.2f : dec;
 		/* the longer it rings, the darker and quieter: a long hat sits back, muted */
 		float dark = clampf((dec - 0.05f) * 5.0f, 0.0f, 1.0f);
-		k->h_a = vel * (1.0f - 0.45f * dark);
+		k->h_a = vel * (1.0f - 0.35f * dark);
 		k->h_k = kexp(dec);
-		k->h_s0 = 60.0f + 240.0f * xs;
+		/* every hit its own: the squares' phases scattered, the band placed anew and swept down
+		 * from above it in the first 15 ms (as a struck cymbal's top falls away), the shift's start
+		 * moved a little */
+		for (int m = 0; m < 6; m++)
+			k->h_ph[m] += (uint32_t)(int32_t)(kn() * 2147483647.0f);
+		k->h_fc0 = (4000.0f + 6000.0f * t) * (0.8f + 0.45f * ku());
+		k->h_fenv = 0.5f + 0.7f * ku();
+		k->h_s0 = (60.0f + 240.0f * xs) * (0.8f + 0.4f * ku());
 		k->h_s1 = -60.0f * xs + 20.0f * kn();
+		if (dark > 0.0f) {
+			/* a long hat: bright at first, then darker; its shift slides onto a note of the key
+			 * (between 65 and 123 Hz, up or down) */
+			int d = (int)(ku() * 7.0f);
+			float hz = kit_hz(36 + root_pc + kit_deg(d) % 12);
+			k->h_s1 = (kn() < 0.0f ? -hz : hz) * (0.5f + 0.5f * dark);
+		}
 		k->h_t = 0.0f;
 		k->h_len = dec;
-		k->h_f = ktan((4000.0f + 6000.0f * t) * (1.0f - 0.45f * dark) / VSR);
+		k->h_f = 1.0f - 0.45f * dark;                    /* (the band's place at the end, a fraction) */
 		k->h_grit = (0.2f + 0.5f * xs) * (1.0f - 0.6f * open);
-		k->h_lpk = 1.0f - 0.7f * dark;                   /* a low-pass after the shift */
+		k->h_lpk = 1.0f;                                  /* the low-pass after the shift: open at first */
+		k->h_lpe = 1.0f - 0.75f * dark;                   /* and where it closes to */
 		break;
 	}
 	case 3: {   /* DX100 clank: ratio (CHARACTER), carrier (REGISTER), index (TONE), decay (LENGTH) */
@@ -208,7 +236,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->t_t = 0.0f;
 		k->t_a = vel;
 		k->t_prob = (300.0f + 1200.0f * x) / VSR;
-		k->t_bp = ktan((1500.0f + 5500.0f * t) / VSR);
+		k->t_fc = 1500.0f + 5500.0f * t;
 		k->t_prox = 0.2f + 0.4f * x;
 		k->t_w0 = 2.0f + 3.0f * ku();
 		k->t_w1 = 0.7f + ku();
@@ -216,14 +244,26 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		break;
 	}
 	case 5: {   /* Nord sync hit: pitch (REGISTER), sync sweep and FM (CHARACTER), cutoff (TONE), decay (LENGTH) */
-		k->n_f1 = 440.0f * fexp2((48.0f + root - 69.0f) / 12.0f) * oct;   /* C3-B3, the root */
+		/* a note of the key in the C2 octave: the chord's root or fifth most often, any degree now
+		 * and then */
+		{
+			float u = ku();
+			int d = u < 0.45f ? 0 : u < 0.7f ? 4 : u < 0.85f ? 2 : (int)(ku() * 7.0f);
+			int at = 0;
+			for (int i = 0; i < scale_n; i++)
+				if (scale_pc[i] == chord_pc[0])
+					at = i;
+			k->n_f1 = kit_hz(36 + root_pc + kit_deg(at + d)) * oct;
+			if (k->n_f1 > 140.0f * oct)
+				k->n_f1 *= 0.5f;
+		}
 		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f);
 		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
 		k->n_md = fexp2(-1.4427f / (0.04f * 1000.0f));   /* (once a millisecond) */
 		k->n_menv = 1.0f;
 		k->n_cut = 350.0f * fexp2(3.0f * t);
 		k->n_a = vel;
-		k->n_ak = kexp((0.1f + 0.5f * l) * dm);
+		k->n_ak = kexp((0.25f + 0.9f * l) * dm);
 		k->n_att = 0.0f;
 		k->n_p1 = k->n_p2 = 0.0f;
 		break;
@@ -238,7 +278,26 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->r_vel = vel;
 		k->r_hold = clampf(VSR / (22000.0f - 14000.0f * x), 1.0f, 4.0f);
 		k->r_q = fexp2(12.0f - 6.0f * x);
-		k->r_semis = reg * 3.0f;
+		/* tuned: the snare's body on the key's root (near 185 Hz), each hit a step of the scale */
+		k->r_semis = (float)(((root_pc - 6 + 18) % 12) - 6);
+		/* four kinds: a fall (as it was), a build that swells into the beat (a rush in reverse),
+		 * one split by a pause, a harp's glissando of ringing tuned hits */
+		{
+			int m = alt_m[GV_KIT];
+			if (m < 1 || m > 4) {
+				float u = ku();
+				m = u < 0.35f ? 1 : u < 0.6f ? 2 : u < 0.85f ? 3 : 4;
+			}
+			k->r_mode = (uint8_t)(m - 1);
+		}
+		k->r_dir = (int8_t)(k->r_mode == 1 || k->r_mode == 3 ? 1 : ku() < 0.6f ? 1 : -1);
+		k->r_split = (uint8_t)(k->r_mode == 2 ? k->r_n / 2 : 255);
+		if (k->r_mode == 1)
+			k->r_accel = 0.7f;
+		if (k->r_mode == 3) {
+			k->r_gap = step_s * 0.4f;
+			k->r_accel = 0.2f;
+		}
 		break;
 	}
 	default:
@@ -253,6 +312,61 @@ static void kit_hold(chan *c, int lane, int on)
 		c->kt.t_len = on ? 4.0f : (c->kt.t_t < c->kt.t_len ? c->kt.t_t : c->kt.t_len);
 }
 
+/* a hit a moment from now (off the grid: the odd slots, swing, triplets) */
+static void kit_later(chan *c, int ch, int lane, float vel, float t_s)
+{
+	if (t_s <= 0.0005f) {
+		kit_fire(c, ch, lane, vel);
+		return;
+	}
+	kit_state *k = &c->kt;
+	for (int i = 0; i < 8; i++)
+		if (k->q_t[i] <= 0.0f) {
+			k->q_t[i] = t_s;
+			k->q_v[i] = vel;
+			k->q_l[i] = (uint8_t)lane;
+			return;
+		}
+}
+/* hats in triplets: n of them, three to every two sixteenths, from now */
+static void kit_trip(chan *c, int ch, int n, float step_s, float vel)
+{
+	for (int i = 0; i < n; i++)
+		kit_later(c, ch, 2, vel * (i == 0 ? 1.0f : 0.75f + 0.15f * ku()), (float)i * step_s * (2.0f / 3.0f));
+}
+
+/* ---- the grooves (•• + FFWD on a Kit channel): one bar of the device in 32 slots, half a step
+ * each, for the kick, the snare and the hats. x strong, X an accent (rings long), o a hit,
+ * g a ghost (more of them with ACTIVITY), s a squashed snare, O an open hat, t hats in triplets.
+ * Each has its tempo in mind: two-step at 65 (130 felt), drill at 70 (140), jungle at 85 (170),
+ * downtempo at 85 in sixteenths (unit 2). Swing delays the off slots. ---- */
+typedef struct { const char *k, *s, *h; float swing; uint8_t unit; } kit_groove;
+static const kit_groove KG[4] = {
+	{"x.........o.....x.....o...o.....", "....x.......x.......x.......x..g",
+	 "..o.g.o...o.g.o...o.g.o.g.o...O.", 0.35f, 1},                              /* two-step */
+	{"x......o..o.....x.....o...o..o..", "........x.............g.s.....g.",
+	 "o.o.o.t.o.o.o.o.o.o.t.o.o.o.t.o.", 0.0f, 1},                               /* drill */
+	{"x.x.......xx....x.x.......x.....", "....x..g.x..x..g....x..g.x....s.",
+	 "o.o.o.o.o.o.o.o.o.o.o.o.o.o.o.O.", 0.1f, 1},                               /* jungle */
+	{"x...........o...........o.......", "........x...............x.....g.",
+	 "o...o...o...o...o...o...o...o.O.", 0.3f, 2},                               /* downtempo */
+};
+static void kit_slot(chan *c, int ch, char e, int lane, float vel, float t_s, float h, int lean)
+{
+	switch (e) {
+	case 'X': kit_later(c, ch, lane, 1.0f, t_s); break;
+	case 'x': kit_later(c, ch, lane, 0.95f, t_s); break;
+	case 'o': kit_later(c, ch, lane, vel, t_s); break;
+	case 'g':
+		if (!lean && ku() < 0.3f + 0.7f * h)
+			kit_later(c, ch, lane == 1 ? 7 : lane, lane == 1 ? 0.8f : 0.4f, t_s);
+		break;
+	case 's': kit_later(c, ch, ku() < 0.5f + 0.4f * h ? 9 : lane, 0.95f, t_s); break;
+	case 'O': kit_later(c, ch, 6, 0.85f, t_s); break;
+	default: break;
+	}
+}
+
 /* ---- the lanes ---- */
 static void kit_step(chan *c, int ch, uint32_t step)
 {
@@ -260,32 +374,71 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	const int s16 = (int)(step % 16u);
 	/* the load governor stepping in (a block past 88 %): the core plays on, the colour waits */
 	const int lean = gov_cap < FM_CAP && !kit_solo;
-	float acc = s16 == 0 ? 0.95f : (s16 & 3) == 0 ? 0.8f : 0.6f;
 	const int phrase = (int)(step % 64u);                 /* four bars: the accents land here */
-	int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f), ck = 1 + (int)(h * 3.0f + 0.5f);
-	if (euclid_hit(kk, 16, s16))
-		kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
-	if (euclid_hit(sk, 16, (s16 + 12) % 16))
-		kit_fire(c, ch, 1, phrase == 60 ? 1.0f : 0.82f + 0.13f * ku());
-	else if (!lean && h > 0.35f && (s16 & 1) && ku() < 0.12f * h)
-		kit_fire(c, ch, 7, 0.8f);                        /* a ghost note */
-	int s12 = (int)(step % 12u);
-	if (euclid_hit(hk, 12, s12)) {
-		/* the open hat: past 0.55, once in a while, on the off-beat */
-		int op = s12 == 6 && (KSOLO(6) || (x > 0.55f && ku() < 0.25f));
-		kit_fire(c, ch, op ? 6 : 2, op ? 0.9f : (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.12f * ku()));
+	const float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]) * (float)(GL_CHX_DIV(P.chx[ch]) + 1u);
+	const int gv = (int)GL_CHX_IVL(P.chx[ch]);
+	if (gv >= 1 && gv <= 4) {
+		/* a groove: this step's two slots */
+		const kit_groove *g = &KG[gv - 1];
+		for (int j = 0; j < 2; j++) {
+			int sl = s16 * 2 + j;
+			float t_s = 0.0f;
+			if (g->unit == 1) {
+				if (j)
+					t_s = 0.5f * step_s * (1.0f + g->swing);
+			} else {
+				if (j)
+					continue;
+				if (s16 & 1)
+					t_s = g->swing * step_s * 0.5f;
+				sl = (s16 * 2) % 32;
+			}
+			float hv = (j || (s16 & 1) ? 0.55f : 0.75f) * (0.85f + 0.12f * ku());
+			char ek = g->k[sl], es = g->s[sl], eh = g->h[sl];
+			if (ek == 'x' && phrase == 0 && j == 0)
+				ek = 'X';
+			kit_slot(c, ch, ek, 0, 0.8f * (0.85f + 0.12f * ku()), t_s, h, lean);
+			if (es == 'x' && phrase >= 56 && ku() < 0.35f)
+				es = 's';                                 /* the phrase's end: now and then squashed */
+			kit_slot(c, ch, es, 1, 0.85f, t_s, h, lean);
+			if (eh == 't')
+				kit_trip(c, ch, 3, step_s * (g->unit == 1 ? 0.5f : 1.0f), hv);
+			else
+				kit_slot(c, ch, eh, 2, hv, t_s, h, lean);
+		}
+	} else {
+		/* euclidean rings */
+		float acc = s16 == 0 ? 0.95f : (s16 & 3) == 0 ? 0.8f : 0.6f;
+		int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f);
+		if (euclid_hit(kk, 16, s16))
+			kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
+		if (euclid_hit(sk, 16, (s16 + 12) % 16)) {
+			/* the phrase's last snare an accent, often squashed; now and then one on the 4 */
+			int sq = (phrase == 60 && ku() < 0.5f) || (s16 == 12 && ku() < 0.12f);
+			kit_fire(c, ch, sq ? 9 : 1, sq ? 0.95f : phrase == 60 ? 1.0f : 0.82f + 0.13f * ku());
+		} else if (!lean && h > 0.25f && (s16 & 1) && ku() < 0.22f * h)
+			kit_fire(c, ch, 7, 0.8f);                    /* a ghost note */
+		int s12 = (int)(step % 12u);
+		if (!lean && s16 == 12 && ((step >> 4) & 1u) && ku() < 0.35f * h)
+			kit_trip(c, ch, 6, step_s, 0.6f);            /* the bar's last beat in triplets */
+		else if (euclid_hit(hk, 12, s12)) {
+			/* the open hat: past 0.55, once in a while, on the off-beat */
+			int op = s12 == 6 && (KSOLO(6) || (x > 0.55f && ku() < 0.25f));
+			kit_fire(c, ch, op ? 6 : 2, op ? 0.9f : (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.12f * ku()));
+		}
 	}
 	if (form_fill && s16 >= 12)
 		kit_fire(c, ch, 1, 0.7f + 0.2f * ku());          /* Playworld's fill */
 	if (lean)
 		return;
+	int ck = 1 + (int)(h * 3.0f + 0.5f);
 	if (euclid_hit(ck, 7, (int)((step + 2u) % 7u)))
 		kit_fire(c, ch, 3, 0.6f + 0.3f * ku());
 	if ((x > 0.33f || KSOLO(4)) && euclid_hit(h > 0.5f ? 2 : 1, 10, (int)((step + 5u) % 10u)))
 		kit_fire(c, ch, 4, ku() < 0.15f ? 1.0f : 0.7f + 0.25f * ku());   /* now and then a long stroke */
 	if ((x > 0.4f || KSOLO(5)) && euclid_hit(h > 0.6f ? 2 : 1, 13, (int)((step + 9u) % 13u)))
 		kit_fire(c, ch, 5, 0.7f + 0.25f * ku());
-	if ((x > 0.6f || KSOLO(8)) && (step % (KSOLO(8) ? 16u : 64u)) == (KSOLO(8) ? 8u : 56u) && ku() < 0.5f + 0.5f * h)
+	if ((x > 0.6f || KSOLO(8)) && (step % (KSOLO(8) ? 16u : 64u)) == (KSOLO(8) ? 4u : 56u) && ku() < 0.5f + 0.5f * h)
 		kit_fire(c, ch, 8, 0.8f);                        /* a roll into the next phrase */
 }
 
@@ -294,6 +447,15 @@ static int kit_render(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
 	int any = 0;
+	/* the hits waiting off the grid */
+	for (int i = 0; i < 8; i++)
+		if (k->q_t[i] > 0.0f) {
+			k->q_t[i] -= (float)VSUB / VSR;
+			if (k->q_t[i] <= 0.0f) {
+				k->q_t[i] = 0.0f;
+				kit_fire(c, (int)(c - CH), k->q_l[i], k->q_v[i]);
+			}
+		}
 	/* canvas kick */
 	if (k->k_amp[0] > 1e-3f || k->k_nz > 1e-3f) {
 		any = 1;
@@ -334,7 +496,12 @@ static int kit_render(chan *c, float *A)
 	if (k->h_a > 1e-3f) {
 		any = 1;
 		const float dt = 1.0f / VSR;
-		const ksvf hf = ksvf_set(k->h_f, 0.8f);
+		/* the band: placed per hit, swept down from above in the first ms, settling lower on a
+		 * long hat; the low-pass after the shift closes as it rings */
+		const float prog = k->h_len > 0.0f ? clampf(k->h_t / k->h_len, 0.0f, 1.0f) : 1.0f;
+		const ksvf hf = ksvf_set(ktan(k->h_fc0 * (1.0f + k->h_fenv) * (1.0f - (1.0f - k->h_f) * prog) / VSR), 0.8f);
+		k->h_fenv *= 0.936f;                              /* (15 ms) */
+		k->h_lpk += (k->h_lpe - k->h_lpk) * 0.025f;        /* (about 40 ms) */
 		/* the shift's frequency (it slides over the ring), as a turn per sample, once a block */
 		float f = k->h_t < k->h_len ? k->h_s0 + (k->h_s1 - k->h_s0) * k->h_t / k->h_len : k->h_s1;
 		k->h_t += dt * VSUB;
@@ -408,13 +575,25 @@ static int kit_render(chan *c, float *A)
 	if (k->t_a > 1e-4f && k->t_t < k->t_len + 0.08f) {
 		any = 1;
 		const float dt = 1.0f / VSR;
-		const ksvf tf = ksvf_set(k->t_bp, 1.25f);
-		/* the stroke's envelope and the hand's pressure, once a block */
-		float t = k->t_t, e = t < 0.03f ? t * (1.0f / 0.03f) : t < k->t_len ? 1.0f : 1.0f - (t - k->t_len) * (1.0f / 0.06f);
+		/* the stroke's envelope and the hand's pressure, once a block: in over 30 ms, then fading
+		 * (a long stroke to a fifth of itself), and out; after the first 30 ms its band falls,
+		 * an octave and a half over the stroke */
+		float t = k->t_t, e, fall = 0.0f;
+		if (t < 0.03f)
+			e = t * (1.0f / 0.03f);
+		else {
+			float u = (t - 0.03f) / (k->t_len > 0.06f ? k->t_len - 0.03f : 0.03f);
+			u = u > 1.0f ? 1.0f : u;
+			fall = u;
+			e = 1.0f - 0.8f * u;
+			if (t > k->t_len)
+				e *= 1.0f - (t - k->t_len) * (1.0f / 0.06f);
+		}
 		e = e < 0.0f ? 0.0f : e;
+		const ksvf tf = ksvf_set(ktan(k->t_fc * fexp2(-1.5f * fall) / VSR), 1.25f);
 		float press = 0.6f + 0.4f * sin_u((uint32_t)((k->t_w0 * t + k->t_ph0) * 4294967296.0f)) * sin_u((uint32_t)((k->t_w1 * t) * 4294967296.0f));
 		k->t_t += dt * VSUB;
-		const float ep = e * press, pr = k->t_prob * press, ga = 2.4f * k->t_a, gr = k->t_prox * 6.0f * k->t_a;
+		const float ep = e * press, pr = k->t_prob * press, ga = 1.5f * k->t_a, gr = k->t_prox * 4.0f * k->t_a;   /* (quieter) */
 		float tc = k->t_c, tb = k->t_b, tl = k->t_lo, th = k->t_hp, r1 = k->t_r1, r2 = k->t_r2;
 		for (uint32_t i = 0; i < VSUB; i++) {
 			float w = kn(), u = 0.5f + 0.5f * w;
@@ -479,10 +658,25 @@ static int kit_render(chan *c, float *A)
 			k->r_t -= (float)VSUB / VSR;
 			if (k->r_t <= 0.0f) {
 				int h = k->r_i++;
-				float gain = 0.55f + 0.45f * (1.0f - (float)h / (float)k->r_n);
-				const float st = alt_m[GV_KIT] == 1 ? -1.0f : alt_m[GV_KIT] == 2 ? 0.0f : 1.0f;   /* up, down, level */
-				kit_snare_hit(&k->rs, k->r_semis + st * (float)h, 0.3f, 10.0f, 0.3f, k->r_vel * gain);
-				k->r_t += k->r_gap * (1.0f - k->r_accel * 0.8f * (float)h / (float)(k->r_n > 1 ? k->r_n - 1 : 1));
+				const float fr = (float)h / (float)(k->r_n > 1 ? k->r_n - 1 : 1);
+				float gain = k->r_mode == 1 ? 0.2f + 0.8f * fr * fr : k->r_mode == 3 ? 0.8f - 0.3f * fr : 0.55f + 0.45f * (1.0f - fr);
+				float semis = k->r_semis + (float)kit_deg(k->r_dir * h * (k->r_mode == 3 ? 2 : 1));
+				while (semis > 14.0f)
+					semis -= 12.0f;                           /* (folded back into the snare's range) */
+				while (semis < -10.0f)
+					semis += 12.0f;
+				if (k->r_mode == 3)                           /* the harp: ringing, little noise, clean */
+				{
+					kit_snare_hit(&k->rs, semis, 1.0f, 1.0f, 0.0f, k->r_vel * gain);
+					k->rs.n *= 0.12f;                         /* (mostly its body: tuned) */
+					k->rs.bk = kexp(0.5f);
+				}
+				else
+					kit_snare_hit(&k->rs, semis, 0.3f, 10.0f, 0.3f, k->r_vel * gain);
+				float gap = k->r_gap * (1.0f - k->r_accel * 0.8f * fr);
+				if (h + 1 == k->r_split)
+					gap *= 3.0f;                              /* the pause that splits it */
+				k->r_t += gap;
 			}
 		}
 		float buf[VSUB] = {0};
@@ -495,7 +689,7 @@ static int kit_render(chan *c, float *A)
 				acc -= hold;
 				held = (float)(int32_t)(buf[i] * q) * iq;
 			}
-			A[i] += held * 0.9f;
+			A[i] += held * 0.6f;
 		}
 		k->r_acc = acc; k->r_held = held;
 	}

@@ -164,15 +164,19 @@ typedef struct {
 	float k_x[5], k_y[5], k_e[5], k_amp[5], k_dec[5], k_glide, k_gk, k_att, k_ai, k_nz, k_nzk, k_lp, k_lpk;
 	kit_snare sn;
 	uint32_t h_ph[6];
-	float h_a, h_k, h_s0, h_s1, h_t, h_len, h_f, h_grit, h_lpk, h_lp, h_lo, h_bp, h_hp, h_l2, h_l3;
+	float h_a, h_k, h_s0, h_s1, h_t, h_len, h_f, h_grit, h_lpk, h_lp, h_lpe, h_fc0, h_fenv, h_lo, h_bp, h_hp, h_l2, h_l3;
 	float ha_v[2][2], hb_v[2][2], h_ad, h_c, h_s;
 	uint32_t d_ic, d_im, d_pc, d_pm;
 	float d_index, d_ik, d_a, d_k, d_fb, d_m1, d_m2;
 	int d_grit;
-	float t_len, t_t, t_a, t_prob, t_bp, t_prox, t_w0, t_w1, t_ph0, t_c, t_lo, t_b, t_hp, t_r1, t_r2;
+	float t_len, t_t, t_a, t_prob, t_bp, t_fc, t_prox, t_w0, t_w1, t_ph0, t_c, t_lo, t_b, t_hp, t_r1, t_r2;
 	float n_f1, n_sweep, n_fm, n_md, n_menv, n_cut, n_a, n_ak, n_att, n_p1, n_p2, n_lo1, n_bp1, n_lo2, n_bp2, n_dc;
-	uint8_t r_n, r_i;
+	uint8_t r_n, r_i, r_mode, r_split;
+	int8_t r_dir;
 	float r_gap, r_accel, r_t, r_vel, r_hold, r_q, r_semis, r_acc, r_held;
+	/* hits waiting a fraction of a step: off-grid slots, swing, triplets */
+	float q_t[8], q_v[8];
+	uint8_t q_l[8];
 	kit_snare rs;
 } kit_state;
 
@@ -4398,6 +4402,29 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{25, 40, 50, 50, 0, 0, 50, 60, 85}, {35, 45, 60, 50, 40, 60, 40, 30, 64},
 	  {50, 30, 80, 50, 15, 70, 60, 30, 64}, {25, 40, 70, 50, 20, 60, 55, 40, 42}},
 	 {50, 45, 70, 50, 7, 3, 25, 40}, {GR_HALL, GS_OCTAVE, 7}, {3, 1, 1, 0}, 10, {4, 2, 2, 2}, 10, 0, {0, 0, 0, 0}},
+	/* ---- the Kit's grooves (•• + FFWD on its channel), each at the tempo it has in mind ---- */
+	/* UK garage two-step: 65 here, 130 felt; a swung kick that skips the 3, hats shuffling,
+	 * the funk bass's sixteenths as garage eighths, EP chords */
+	{"Two Step", {GV_KIT, GV_FUNK, GV_EP, GV_PAD},
+	 {{55, 55, 35, 50, 0, 0, 50, 30, 95}, {55, 35, 40, 50, 0, 10, 50, 20, 65},
+	  {45, 50, 45, 50, 25, 35, 40, 45, 53}, {35, 40, 60, 50, 10, 50, 60, 35, 36}},
+	 {45, 30, 40, 50, 5, 1, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {4, 0, 0, 0}},
+	/* drill: 70 here, 140 felt; sliding bass (the bass's glide all the way), hats in triplet
+	 * bursts, a snare on the 3, dark strings and low bells */
+	{"Drill Night", {GV_KIT, GV_BASS, GV_STRINGS, GV_BELLS},
+	 {{60, 60, 40, 50, 0, 0, 50, 45, 87}, {40, 25, 80, 50, 0, 5, 50, 85, 65},
+	  {30, 35, 70, 50, 10, 45, 55, 30, 38}, {30, 40, 55, 25, 25, 50, 40, 40, 33}},
+	 {50, 30, 45, 50, 1, 5, 10, 30}, {GR_CHAMBER, GS_OCTAVE, 4}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}},
+	/* jungle: 85 here, 170 felt; a chopped break, a sub an octave down, pads */
+	{"Jungle Pressure", {GV_KIT, GV_BASS, GV_PAD, GV_GLOW},
+	 {{70, 60, 40, 50, 0, 0, 50, 40, 77}, {35, 25, 85, 25, 0, 10, 50, 30, 57},
+	  {40, 35, 75, 50, 15, 65, 50, 40, 33}, {35, 40, 60, 50, 30, 55, 35, 40, 28}},
+	 {65, 40, 50, 50, 9, 5, 20, 45}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 1, 0}, 8, {4, 2, 2, 2}, 8, 0, {12, 0, 0, 0}},
+	/* downtempo: 85 in sixteenths, swung; a lazy kick, the snare on 2 and 4, an EP and Glow */
+	{"Slow Smoke", {GV_KIT, GV_EP, GV_BASS, GV_GLOW},
+	 {{50, 40, 40, 50, 0, 0, 50, 25, 98}, {40, 40, 55, 50, 25, 40, 40, 40, 55},
+	  {35, 30, 80, 50, 0, 10, 50, 35, 62}, {30, 35, 70, 50, 30, 55, 60, 40, 37}},
+	 {65, 35, 45, 50, 2, 1, 15, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {16, 0, 0, 0}},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
 	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},
