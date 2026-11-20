@@ -72,6 +72,11 @@ Shimmer), Deep Water (Shimmer, Tails, Gong, Pad), Lobby 84 (EP, Pizz, Bass, Swel
 | Home (at boot) | F1 F2 F3 F4 | tempo (20-120 BPM), delay, reverb, DJ filter (left low-pass, centre off, right high-pass) |
 | | T1-T4 | open that channel's page |
 | | •• + T1-T4 | the next voice on that channel (all twenty-four, any channel, duplicates allowed; 17-20 show as a double flash, 21-24 a triple) |
+| Playworld (PLAY held 2 s; again, or •• twice, to leave) | T1 | song mode: on (page 1), pages 2-4, off (an outro: two bars down to the held voice, then the piece back over four bars). Page 1: each channel's stagger; 2: each channel's loop (x1/4 to x4 of the song); 3: arrangement (breakdown and build, waves, slow build), length (a cycle of 4x 4 to 32 bars), fills and builds, how full; 4: randomness (settings, the macros' pace, key travel, straying). Changes land on the next bar and glide |
+| | T2 | arp mode (planned) |
+| | T3 | the pump: on (page 1), page 2, off. Page 1: depth, release, bend, drums (down to none: the pump goes on without them; with no Pulse it pumps on the beat). Page 2: master compressor, rhythm (the kick, beats, eighths, half bars), how much the space ducks, how much bass and held voices are spared |
+| | T4 | texture: rain, vinyl, tape hiss, surf, off; F1 level, F2-F4 its own (rain: wander, drops, brightness; vinyl: crackle, warble, surface; tape: breath depth, pace, brightness; surf: pace, wash, brightness) |
+| | lights | bright: on; a dim pulse: the page the faders are on (they follow the last T pressed, with pickup); each press shown for a second. What is on stays on when you leave |
 | Channel page | F1 F2 F3 F4 | character, tone, length, register (5 octave steps) |
 | | FFWD tap | one step more of this channel's macro (4 steps) |
 | | RWD held | the macro's glide slows: twice as long every 1.5 s, from 8 s to 64 s |

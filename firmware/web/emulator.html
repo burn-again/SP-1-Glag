@@ -131,6 +131,7 @@ details summary { cursor: pointer; font-weight: 500; }
             <div><b>Channel</b>: F1 character, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, activity).</div>
             <div><b>Macro</b>, on a channel or extended page: FFWD tap adds a step (four), RWD held slows its glide (8 s up to 64 s), RWD double tap turns it off.</div>
             <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion. •• + T1 to T4 picks the reverb: Hall, Chamber, Shimmer, Bloom; •• + T3 again steps Shimmer's interval (octave, fifth, seventh).</div>
+            <div><b>Playworld</b>: hold PLAY 2 s (again, or •• twice, to leave). T1 song mode: on, its pages 2, 3, 4, then off (an outro). T3 the pump: on, page 2, off. T4 a texture: rain, vinyl, tape hiss, surf, off. A bright light: on; a dim pulsing one: the page. The faders follow the last T pressed; what is on stays on when you leave. (T2, arp mode, is planned.)</div>
             <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
             <div><b>Distortion</b>: •• + VOL− steps the amount (off, 1 to 4), •• + VOL+ the type (Chebyshev, overdrive, fuzz, fold, XOR). Held 3 s: VOL− turns it off and resets it, VOL+ moves it before the delay and reverb, after them, or onto the reverb alone. The track LEDs show the type, the play row the amount, filling from the •• end before the effects and from the PLAY end after, blinking on the reverb alone.</div>
             <div><b>Rocker</b>, on Home and Harmony: FFWD tap freezes (tap again to let go), FFWD held freezes until you let go. RWD held slows the record to 10 BPM over 10 s. Anywhere: •• + FFWD randomizes, •• + RWD undoes, •• + RWD held 2 s saves the piece.</div>
@@ -160,7 +161,7 @@ const CHAR = ["Colour: warm to hollow", "Ratios: harmonic, bell, glass (upper ha
 const CPU_BASE = 37.0, CPU_VOICE = [5.9, 7.8, 3.1, 5.0, 5.0, 4.5, 4.7, 2.5, 6.6,
   5.6, 5.2, 3.9, 6.0, 5.8, 5.8, 5.1, 10.0, 6.8, 10.3, 10.0, 5.2, 3.8, 7.9, 9.4], CPU_SCALE = 1.4;
 const B = { T1: 0, T2: 1, T3: 2, T4: 3, PLAY: 4, VOLUP: 5, VOLDN: 6, FFWD: 7, RWD: 8, FN: 9 };
-const PAGES = ["Home", "Channel", "Extended", "Harmony"];
+const PAGES = ["Home", "Channel", "Extended", "Harmony", "Playworld"];
 const DISTS = ["Chebyshev", "Overdrive", "Fuzz", "XOR"];
 
 let faders = [0, 0, 0, 0], buttons = 0, node = null, ctx = null, state = null, patch = null;
@@ -275,7 +276,7 @@ class GlagCore {
     }
     if (this.frames - this.sent < 1440) return null;
     this.sent = this.frames;
-    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 104).slice();
+    const st = new Uint8Array(w.memory.buffer, w.wg_state(), 112).slice();
     const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), w.wg_patch_size()).slice();
     const msg = { t: "st", st: st.buffer, pt: pt.buffer };
     const slot = st[13];
@@ -360,6 +361,7 @@ function filterText(v) { return v < 0.47 ? "Low-pass " + pct((0.47 - v) / 0.47) 
 function driftText(v) { const s = 10 * Math.pow(24, 1 - v); return s < 60 ? Math.round(s) + " s" : Math.floor(s / 60) + " min " + Math.round(s % 60) + " s"; }
 function panText(v) { return Math.abs(v - 0.5) < 0.01 ? "Centre" : v < 0.5 ? "Left " + pct((0.5 - v) * 2) : "Right " + pct((v - 0.5) * 2); }
 
+const glui_t = (i) => state.getFloat32(28 + i * 4, true);
 function rows() {
   const page = state.getUint8(8), c = state.getUint8(9), shift = (buttons >> B.FN) & 1;
   const voice = (k) => VOICES[patch.getUint8(k)] || "?";
@@ -372,6 +374,23 @@ function rows() {
     ["Register", "", ((steps(ch(c, 3), 5) - 2) > 0 ? "+" : "") + (steps(ch(c, 3), 5) - 2) + " oct"]] }; }
   if (page === 2) return { title: `Channel ${c + 1}: ${voice(c)}, extended` + mac(c), r: [
     ["Echo send", "", pct(ch(c, 4))], ["Reverb send", "", pct(ch(c, 5))], ["Pan", "", panText(ch(c, 6))], ["Activity", "", pct(ch(c, 0))]] };
+  if (page === 4) {
+    const song = state.getUint8(104), pump = state.getUint8(106), tex = state.getUint8(107), focus = state.getInt8(108);
+    const on = [song ? "song p" + song : "", pump ? "pump p" + pump : "", tex ? ["", "rain", "vinyl", "tape hiss", "surf"][tex] : ""].filter(Boolean).join(", ");
+    const t = (i) => glui_t(i);
+    const title = "Playworld" + (on ? "  ·  " + on : "  ·  nothing on: T1 song, T3 pump, T4 texture");
+    const LOOPS = ["×¼", "×½", "×1", "×2", "×4"], KINDS = ["breakdown and build", "waves", "slow build"], BARS = ["4 bars", "8 bars", "16 bars", "24 bars", "32 bars"];
+    const RH = ["the kick", "beats", "eighths", "half bars"];
+    if (focus === 0 && song === 1) return { title, r: [0, 1, 2, 3].map((k) => [`Stagger ${k + 1}`, voice(k), pct(t(k))]) };
+    if (focus === 0 && song === 2) return { title, r: [0, 1, 2, 3].map((k) => [`Loop ${k + 1}`, voice(k), LOOPS[steps(t(k), 5)]]) };
+    if (focus === 0 && song === 3) return { title, r: [["Arrangement", "", KINDS[steps(t(0), 3)]], ["Length", "a cycle is 4×", BARS[steps(t(1), 5)]], ["Fills and builds", "", pct(t(2))], ["How full", "", pct(t(3))]] };
+    if (focus === 0 && song === 4) return { title, r: [["Settings", "randomness", pct(t(0))], ["Macros' pace", "randomness", pct(t(1))], ["Key travel", "", pct(t(2))], ["Straying", "", pct(t(3))]] };
+    if (focus === 2 && pump === 1) return { title, r: [["Depth", "", pct(t(0))], ["Release", "", pct(t(1))], ["Bend", "", pct(t(2))], ["Drums", "down: pump without them", pct(t(3))]] };
+    if (focus === 2 && pump === 2) return { title, r: [["Compressor", "", pct(t(0))], ["Rhythm", "", RH[steps(t(1), 4)]], ["Space ducks", "", pct(t(2))], ["Spare bass, held", "", pct(t(3))]] };
+    const TX = [[], ["Wander", "Drops", "Brightness"], ["Crackle", "Warble", "Surface"], ["Breath depth", "Breath pace", "Brightness"], ["Pace", "Wash", "Brightness"]];
+    if (focus === 3 && tex) return { title, r: [["Level", "", pct(t(0))]].concat(TX[tex].map((n, i) => [n, "", pct(t(i + 1))])) };
+    return { title, r: [0, 1, 2, 3].map((k) => [`F${k + 1}`, "", "—"]) };
+  }
   const rvb = state.getUint8(100);
   return { title: "Harmony  ·  " + REVERBS[rvb & 3] + (rvb === 2 ? ", " + SHIMS[state.getUint8(101) % 3] : ""), r: [
     ["Root", "", NOTES[steps(g(4), 12)]], ["Mode", "", MODES[steps(g(5), 8)]], ["Drift", "", driftText(g(6))], ["Motion", "", pct(g(7))]] };

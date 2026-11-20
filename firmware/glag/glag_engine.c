@@ -226,6 +226,7 @@ static float step_acc;                     /* 16ths */
  * tape's ping-pong, the macros' shape, the key's travel */
 static float w_lvl[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f}, w_act[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
 static float pump_env, pump_tgt, sp_duck = 1.0f;
+static float pump_prev[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};   /* each channel's duck last block */
 static int w_pingpong, key_off, mode_swap, form_fill;
 static float form_space = 1.0f, form_filt = -1.0f;
 /* the master compressor: how much (0 off), its detector, the gain now and per sample */
@@ -390,6 +391,8 @@ void gl_alt(int voice, int method)
 		alt_m[voice] = (uint8_t)method;
 }
 static float mac_depth[GL_NCH], mac_period[GL_NCH] = {8.0f, 8.0f, 8.0f, 8.0f};
+static float mac_user[GL_NCH];                  /* as set; song mode's randomness may add to it */
+static float mac_pmul[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};   /* song mode: each macro's pace varied */
 static float mac_ph[GL_NCH][2], mac_from[GL_NCH][2], mac_to[GL_NCH][2], mac_u[GL_NCH][2];
 static float mac_trem_ph[GL_NCH];
 static gl_patch Pb;                    /* the patch as posted, before the macro moves it */
@@ -397,6 +400,7 @@ void gl_macro(int ch, float depth, float period_s)
 {
 	if ((unsigned)ch < GL_NCH) {
 		mac_depth[ch] = depth;
+		mac_user[ch] = depth;
 		mac_period[ch] = period_s;
 	}
 }
@@ -3404,7 +3408,7 @@ static void macro_tick(float dt)
 		} else if (mac_shape[c] == 2) {
 			/* a long rise: from the bottom to the top over six glides, then back down in one */
 			for (int k = 0; k < 2; k++) {
-				mac_ph[c][k] += dt / (mac_period[c] * 7.0f * (k ? 1.1f : 1.0f));
+				mac_ph[c][k] += dt / (mac_period[c] * mac_pmul[c] * 7.0f * (k ? 1.1f : 1.0f));
 				mac_ph[c][k] -= mac_ph[c][k] >= 1.0f ? 1.0f : 0.0f;
 				float x = mac_ph[c][k] * 7.0f / 6.0f;
 				mac_u[c][k] = x <= 1.0f ? -1.0f + 2.0f * x * x : 1.0f - 2.0f * (x - 1.0f) * 6.0f;
@@ -3412,7 +3416,7 @@ static void macro_tick(float dt)
 		} else
 		for (int k = 0; k < 2; k++) {
 			/* a cosine glide from one random value to the next, once per (slightly uneven) period */
-			mac_ph[c][k] += dt / (mac_period[c] * (k ? 1.37f : 1.0f));
+			mac_ph[c][k] += dt / (mac_period[c] * mac_pmul[c] * (k ? 1.37f : 1.0f));
 			if (mac_ph[c][k] >= 1.0f) {
 				mac_ph[c][k] -= 1.0f;
 				mac_from[c][k] = mac_to[c][k];
@@ -3553,6 +3557,8 @@ static void control(float dt)
 					if (step_n % dv == 0u)
 						chan_step(&CH[c], c, step_n / dv);
 				}
+		if (playing && !frozen)
+			pump_step(step_n);                    /* Playworld's pump on its own clock */
 		step_n++;
 	}
 	for (int c = 0; c < GL_NCH; c++) {
@@ -3598,9 +3604,14 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		const float sk = VOICE_HALF ? 1.0f : 0.5f;
 		int pulses = 0;
 		const float pg = pump_gain(dt, gl_tempo_bpm(P.g[GP_TEMPO]) * speed);   /* Playworld's pump */
-		sp_duck = pg * form_space;
+		sp_duck = (1.0f - W.pspace * (1.0f - pg)) * form_space;
 		for (int c = 0; c < GL_NCH; c++) {
-			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE ? 1.0f : pg);
+			/* the drums may be taken out while the pump goes on; bass and held voices spared */
+			int ro = voice_role(CH[c].voice);
+			float pc = ro == ROLE_BASS || ro == ROLE_HELD ? 1.0f - (1.0f - pg) * (1.0f - W.pspare) : pg;
+			float g = lvl_ch[c] * 0.5f * macro_trem(c) * (CH[c].voice == GV_PULSE ? W.pdr_s : 1.0f);
+			if (CH[c].voice == GV_PULSE)
+				pc = 1.0f;
 			if (g <= 0.0f)
 				continue;                   /* silent: its envelopes still run in control() */
 			int vo = CH[c].voice, st = STEREO[vo];
@@ -3652,8 +3663,22 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			if (st)
 				for (uint32_t i = 0; i < VSUB; i++)
 					cb[i] = 0.0f;
-			if (!chan_render(&CH[c], ca, cb))
+			if (!chan_render(&CH[c], ca, cb)) {
+				pump_prev[c] = pc;
 				continue;
+			}
+			if (pc < 1.0f || pump_prev[c] < 1.0f) {
+				/* the pump's duck, gliding sample by sample from the last block's: a duck in
+				 * steps of a millisecond would click once the drums no longer cover it */
+				float p0 = pump_prev[c], pd = (pc - p0) * (1.0f / VSUB);
+				for (uint32_t i = 0; i < VSUB; i++) {
+					p0 += pd;
+					ca[i] *= p0;
+					if (st)
+						cb[i] *= p0;
+				}
+			}
+			pump_prev[c] = pc;
 			if (vo == GV_PULSE && dist.amt && dist.post == 3) {   /* the drums only: kick and click */
 				dist_block(ca, VSUB, 6);
 				dist_block(cb, VSUB, 7);

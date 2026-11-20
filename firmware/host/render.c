@@ -65,7 +65,9 @@ int main(int argc, char **argv)
 		}
 	}
 	if (getenv("WORLD")) {   /* Playworld: WORLD=form=1,bars=8,key=0.5,kind=0,pump=1,shape=1,pp=1,tex=2,texl=0.6,rev=0.8,autof=1 */
-		static const char *K[] = {"form", "bars", "key", "kind", "pump", "shape", "pp", "tex", "texl", "rev", "autof", "fk", "comp"};
+		static const char *K[] = {"form", "bars", "key", "kind", "pump", "shape", "pp", "tex", "texl", "rev", "autof", "fk", "comp",
+		                          "song", "fills", "full", "rset", "rmac", "rkey", "stray",
+		                          "prel", "pbend", "pdrums", "prhythm", "pspace", "pspare"};
 		char buf[256];
 		snprintf(buf, sizeof buf, "%s", getenv("WORLD"));
 		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
@@ -73,7 +75,7 @@ int main(int argc, char **argv)
 			if (!eq)
 				continue;
 			*eq = 0;
-			for (int k = 0; k < 13; k++)
+			for (int k = 0; k < 26; k++)
 				if (!strcmp(t, K[k]))
 					gl_world(k, (float)atof(eq + 1));
 		}
@@ -111,6 +113,9 @@ int main(int argc, char **argv)
 	if (getenv("DISTSWEEP"))   /* DISTSWEEP=type,post: amounts 1, 2, 3, 4 across the render */
 		sscanf(getenv("DISTSWEEP"), "%d,%d", &sweep_t, &sweep_p);
 	float fz0 = -1.0f, fz1 = -1.0f;
+	float song_on = -1.0f, song_off = -1.0f;   /* SONG=on,off in seconds: song mode switched as the UI does */
+	if (getenv("SONG"))
+		sscanf(getenv("SONG"), "%f,%f", &song_on, &song_off);
 	if (getenv("FREEZE"))      /* FREEZE=from,to in seconds */
 		sscanf(getenv("FREEZE"), "%f,%f", &fz0, &fz1);
 	/* ECHOSEQ=seconds:echo,... : the echo time stepped during the render (Harmony's rocker) */
@@ -129,6 +134,14 @@ int main(int argc, char **argv)
 		}
 		if (fz0 >= 0.0f)
 			gl_freeze((float)n / 48000.0f >= fz0 && (float)n / 48000.0f < fz1);
+		if (song_on >= 0.0f && (float)n / 48000.0f >= song_on) {
+			gl_world(GW_SONG, 1.0f);
+			song_on = -1.0f;
+		}
+		if (song_off >= 0.0f && (float)n / 48000.0f >= song_off) {
+			gl_world(GW_SONG, 0.0f);         /* song mode off: its outro, then the piece back */
+			song_off = -1.0f;
+		}
 		if (sweep_t >= 0)
 			gl_dist(sweep_t, 1 + (int)((uint64_t)n * 4u / frames), sweep_p);
 		gl_render(blk, 96, 0.8f);

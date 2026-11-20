@@ -27,14 +27,29 @@ static struct {
 	float autof;
 	int pp;
 	int key_forced, shape_forced;
-} W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0};
+	/* song mode: its controls as asked and as playing (the asked ones are taken on the bar) */
+	float a_stag[4], stag[4], a_full, full, a_fills, fills, a_bars;
+	int a_loop[4], loop[4], a_kind;
+	float rnd_set, rnd_mac, rnd_key, stray, stray_off[4];
+	int kind_eff, ending, last_bar, song_key;
+	float end_t;
+	/* the pump */
+	float prel, pbend, pdrums, pdr_s, pspace, pspare;
+	int prhythm;
+	/* the textures' controls past their level (rain, vinyl, tape hiss, surf) */
+	float tp[5][3];
+} W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0,
+       {0}, {0}, 0.6f, 0.6f, 0.7f, 0.7f, 16.0f, {2, 2, 2, 2}, {2, 2, 2, 2}, 0,
+       0.0f, 0.0f, 0.0f, 0.0f, {0}, 0, 0, -1, 0, 0.0f,
+       1.0f / 3.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0,
+       {{0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}};
 
 void gl_world(int what, float v)
 {
 	switch (what) {
 	case GW_FORM: W.form = clampf(v, 0.0f, 1.0f); W.form_init = 0; break;
-	case GW_FORM_BARS: W.form_bars = v < 1.0f ? 1.0f : v; break;
-	case GW_FORM_KIND: W.form_kind = (int)v % 3; break;
+	case GW_FORM_BARS: W.a_bars = W.form_bars = v < 1.0f ? 1.0f : v; break;
+	case GW_FORM_KIND: W.a_kind = W.form_kind = W.kind_eff = (int)v % 3; break;
 	case GW_KEY_MIN: W.key_min = v; W.key_t = 0.0f; W.key_forced = 1; break;
 	case GW_KEY_KIND: W.key_kind = (int)v; break;
 	case GW_PUMP: W.pump = clampf(v, 0.0f, 1.0f); break;
@@ -49,8 +64,44 @@ void gl_world(int what, float v)
 	case GW_REVERSE: W.rev = clampf(v, 0.0f, 1.0f); break;
 	case GW_AUTOF: W.autof = clampf(v, 0.0f, 1.0f); break;
 	case GW_COMP: comp_amt = clampf(v, 0.0f, 1.0f); break;
+	case GW_SONG:
+		if (v > 0.5f) {                          /* on (or back on during its ending) */
+			if (W.form <= 0.0f || W.ending) {
+				W.form = 1.0f;
+				W.ending = 0;
+				if (!W.form_init)
+					W.form_bars = W.a_bars;
+			}
+		} else if (W.form > 0.0f && !W.ending) { /* off: an outro first */
+			W.ending = 1;
+			W.end_t = 0.0f;
+		}
+		break;
+	case GW_FILLS: W.a_fills = clampf(v, 0.0f, 1.0f); break;
+	case GW_FULL: W.a_full = clampf(v, 0.0f, 1.0f); break;
+	case GW_RND_SET: W.rnd_set = clampf(v, 0.0f, 1.0f); break;
+	case GW_RND_MAC: W.rnd_mac = clampf(v, 0.0f, 1.0f); break;
+	case GW_RND_KEY: W.rnd_key = clampf(v, 0.0f, 1.0f); break;
+	case GW_RND_STRAY: W.stray = clampf(v, 0.0f, 1.0f); break;
+	case GW_PUMP_REL: W.prel = clampf(v, 0.0f, 1.0f); break;
+	case GW_PUMP_BEND: W.pbend = clampf(v, 0.0f, 1.0f); break;
+	case GW_PUMP_DRUMS: W.pdrums = clampf(v, 0.0f, 1.0f); break;
+	case GW_PUMP_RHYTHM: W.prhythm = (int)v & 3; break;
+	case GW_PUMP_SPACE: W.pspace = clampf(v, 0.0f, 1.0f); break;
+	case GW_PUMP_SPARE: W.pspare = clampf(v, 0.0f, 1.0f); break;
 	default: break;
 	}
+}
+void gl_world_ch(int what, int i, float v)
+{
+	if ((unsigned)i >= 4u)
+		return;
+	if (what == GWC_STAGGER)
+		W.a_stag[i] = clampf(v, 0.0f, 1.0f);
+	else if (what == GWC_LOOP)
+		W.a_loop[i] = (int)v < 0 ? 0 : (int)v > 4 ? 4 : (int)v;
+	else if (what == GWC_TEXP && i < 3 && W.tex > 0 && W.tex <= 4)
+		W.tp[W.tex][i] = clampf(v, 0.0f, 1.0f);
 }
 
 /* ---- song form ----
@@ -101,30 +152,108 @@ static const kf ARC_ACT[] = {{0.0f, 0.65f}, {0.40f, 1.0f}, {0.55f, 1.0f}, {0.63f
 static const kf ARC_FILT[] = {{0.58f, 0.47f}, {0.67f, 0.30f}, {0.72f, 0.30f}, {0.85f, 0.47f}};   /* the DJ filter: open is 0.47 */
 static const kf ARC_SPACE[] = {{0.58f, 1.0f}, {0.66f, 1.2f}, {0.72f, 1.2f}, {0.84f, 1.4f}, {0.90f, 1.0f}};
 #define NK(a) ((int)(sizeof a / sizeof a[0]))
+/* the other two arrangements: waves (in, all together, out; no breakdown) and a slow build
+ * (one long rise, everything in by two thirds, out at the end) */
+static const kf ARC_PLUCK_W[] = {{0.06f, 0.0f}, {0.2f, 1.0f}, {0.9f, 1.0f}, {0.99f, 0.0f}};
+static const kf ARC_BASS_W[] = {{0.15f, 0.0f}, {0.3f, 1.0f}, {0.88f, 1.0f}, {0.97f, 0.0f}};
+static const kf ARC_DRUMS_W[] = {{0.25f, 0.0f}, {0.4f, 1.0f}, {0.85f, 1.0f}, {0.95f, 0.0f}};
+static const kf ARC_PLUCK_B[] = {{0.0f, 0.0f}, {0.25f, 1.0f}, {0.95f, 1.0f}, {1.0f, 0.0f}};
+static const kf ARC_BASS_B[] = {{0.2f, 0.0f}, {0.45f, 1.0f}, {0.95f, 1.0f}, {1.0f, 0.0f}};
+static const kf ARC_DRUMS_B[] = {{0.4f, 0.0f}, {0.65f, 1.0f}, {0.93f, 1.0f}, {0.99f, 0.0f}};
+static inline float tx_noise(void);         /* (the textures' own dice: the notes' stay untouched) */
+static const float LOOP_MUL[5] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f};
+static float song_bars(void) { return ((float)step_n + step_acc) / 16.0f; }
 static float form_pos(void)
 {
 	float cyc = 4.0f * W.form_bars;
-	return fmodf_pos(((float)step_n + step_acc) / 16.0f, cyc) / cyc;
+	return fmodf_pos(song_bars(), cyc) / cyc;
+}
+/* on the bar: the controls asked for are taken; the randomness moves */
+static void song_bar(int bar)
+{
+	for (int c = 0; c < 4; c++) {
+		W.stag[c] = W.a_stag[c];
+		W.loop[c] = W.a_loop[c];
+	}
+	W.full = W.a_full;
+	W.fills = W.a_fills;
+	if (W.form_kind != W.a_kind)
+		W.kind_eff = W.form_kind = W.a_kind;
+	if (W.a_bars != W.form_bars)
+		W.form_bars = W.a_bars;
+	float cyc = 4.0f * W.form_bars;
+	if (fmodf_pos((float)bar, cyc) < 0.5f) {         /* a new cycle: how far it strays */
+		for (int c = 0; c < 4; c++)
+			W.stray_off[c] = W.stray * 0.3f * (0.5f + 0.5f * tx_noise());
+		W.kind_eff = W.stray > 0.0f && 0.5f + 0.5f * tx_noise() < 0.5f * W.stray ? (int)(1.5f + 1.5f * tx_noise()) % 3 : W.form_kind;
+	}
+	if ((bar & 7) == 0)                              /* every 8 bars, each macro's pace */
+		for (int c = 0; c < 4; c++)
+			mac_pmul[c] = fexp2(tx_noise() * 1.5f * W.rnd_mac);
+	if (W.rnd_key > 0.05f) {                         /* key travel, sooner the higher */
+		W.key_forced = W.song_key = 1;
+		float want = 4.0f - 3.0f * W.rnd_key;
+		if (W.key_min != want)
+			W.key_min = want;
+		W.key_kind = W.rnd_key > 0.5f ? (int)(2.0f + 2.0f * tx_noise()) & 3 : 1;
+	} else if (W.song_key) {
+		W.song_key = 0;
+		W.key_forced = 0;                            /* the piece's own key travel again */
+	}
 }
 static void form_tick(float dt)
 {
-	if (W.form <= 0.0f) {
+	int on = W.form > 0.0f;
+	for (int c = 0; c < GL_NCH; c++)                 /* the settings' randomness: macros at least this deep */
+		mac_depth[c] = on && !W.ending && W.rnd_set * 0.8f > mac_user[c] ? W.rnd_set * 0.8f : mac_user[c];
+	if (!on) {
+		/* off (after its outro): the piece comes back over four bars, never with a jump */
 		form_fill = 0;
-		form_space = 1.0f;
-		form_filt = -1.0f;
-		for (int c = 0; c < GL_NCH; c++)
-			w_lvl[c] = w_act[c] = 1.0f;
+		float k = 1.0f - dcoef(4.0f * 16.0f * 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]), dt);
+		if (form_filt >= 0.0f) {                    /* the filter opens the rest of the way, gliding */
+			form_filt += (0.4699f - form_filt) * (1.0f - dcoef(1.0f, dt));
+			if (form_filt > 0.4695f)
+				form_filt = -1.0f;
+		}
+		form_space += (1.0f - form_space) * k;
+		for (int c = 0; c < GL_NCH; c++) {
+			w_lvl[c] += (1.0f - w_lvl[c]) * k;
+			w_act[c] += (1.0f - w_act[c]) * k;
+			if (w_lvl[c] > 0.999f)
+				w_lvl[c] = 1.0f;
+			if (w_act[c] > 0.999f)
+				w_act[c] = 1.0f;
+		}
 		W.form_init = 0;
+		for (int c = 0; c < 4; c++)
+			mac_pmul[c] = 1.0f;
+		if (W.song_key) {
+			W.song_key = 0;
+			W.key_forced = 0;
+		}
 		return;
 	}
-	float x = form_pos(), f = W.form;
+	int bar = (int)(song_bars());
+	if (bar != W.last_bar || !W.form_init) {
+		W.last_bar = bar;
+		song_bar(bar);
+	}
+	float x = form_pos(), f = W.form, bar_s = 16.0f * 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+	if (W.ending) {                                  /* the outro: two bars to the anchor, then off */
+		W.end_t += dt;
+		if (W.end_t >= 2.0f * bar_s) {
+			W.form = 0.0f;
+			W.ending = 0;
+			return;
+		}
+	}
 	/* a second pluck (or bass...) channel comes in a little after the first */
 	int seen[4] = {0, 0, 0, 0};
-	float k = W.form_init ? 1.0f - dcoef(0.6f, dt) : 1.0f;   /* a slew on top of the curves */
+	float k = W.form_init ? 1.0f - dcoef(W.ending ? bar_s : 1.2f, dt) : 1.0f;   /* a slew on top of the curves */
 	W.form_init = 1;
 	float act = kf_at(ARC_ACT, NK(ARC_ACT), x);
-	/* the anchor: a held voice stays throughout; with none (EP, Bass, Pulse, Kalimba...), the
-	 * first pluck does, so the song never starts or ends in silence */
+	act = 1.0f - (1.0f - act) * (1.3f - 0.6f * W.full);      /* how full: the quiet parts fuller */
+	act = act > 1.0f ? 1.0f : act;
 	int anchor = -1;
 	for (int c = 0; c < GL_NCH && anchor < 0; c++)
 		if (P.ch[c][CP_LEVEL] > 0.0f && voice_role(CH[c].want) == ROLE_HELD)
@@ -132,29 +261,44 @@ static void form_tick(float dt)
 	for (int c = 0; c < GL_NCH && anchor < 0; c++)
 		if (P.ch[c][CP_LEVEL] > 0.0f && voice_role(CH[c].want) == ROLE_PLUCK)
 			anchor = c;
+	const int kd = W.kind_eff;
+	const kf *arc[3][4] = {{0, ARC_PLUCK, ARC_BASS, ARC_DRUMS}, {0, ARC_PLUCK_W, ARC_BASS_W, ARC_DRUMS_W},
+	                       {0, ARC_PLUCK_B, ARC_BASS_B, ARC_DRUMS_B}};
+	const int an[3][4] = {{0, NK(ARC_PLUCK), NK(ARC_BASS), NK(ARC_DRUMS)}, {0, NK(ARC_PLUCK_W), NK(ARC_BASS_W), NK(ARC_DRUMS_W)},
+	                      {0, NK(ARC_PLUCK_B), NK(ARC_BASS_B), NK(ARC_DRUMS_B)}};
 	for (int c = 0; c < GL_NCH; c++) {
 		int r = voice_role(CH[c].want), r0 = voice_role(CH[c].voice);
 		if (c == anchor)
 			r = r0 = ROLE_HELD;
-		float lvl = 1.0f, l0 = 1.0f, off = 0.035f * (float)seen[r]++;
-		float xs = fmodf_pos(x - off, 1.0f);
-		const kf *arc[4] = {0, ARC_PLUCK, ARC_BASS, ARC_DRUMS};
-		const int an[4] = {0, NK(ARC_PLUCK), NK(ARC_BASS), NK(ARC_DRUMS)};
+		/* this channel's own loop (a multiple of the song's), its stagger, its stray */
+		float cyc = 4.0f * W.form_bars * LOOP_MUL[W.loop[c]];
+		float xc = fmodf_pos(song_bars(), cyc) / cyc;
+		float lvl = 1.0f, l0 = 1.0f, off = 0.035f * (float)seen[r]++ + 0.3f * W.stag[c] + W.stray_off[c];
+		float xs = fmodf_pos(xc - off, 1.0f);
 		if (r)
-			lvl = kf_at(arc[r], an[r], xs);
+			lvl = kf_at(arc[kd][r], an[kd][r], xs);
 		if (r0 && r0 != r)
-			l0 = kf_at(arc[r0], an[r0], xs);                  /* crossfading: the quieter */
+			l0 = kf_at(arc[kd][r0], an[kd][r0], xs);              /* crossfading: the quieter */
 		float l = 1.0f + f * (fminf_(lvl, l0) - 1.0f);
+		if (W.ending && c != anchor)
+			l = 0.0f;                                            /* the outro: down to the anchor */
 		float a = c == anchor ? 1.0f + f * (0.5f * (act + 1.0f) - 1.0f) : 1.0f + f * (act - 1.0f);
 		w_lvl[c] += (l - w_lvl[c]) * k;
 		w_act[c] += (a - w_act[c]) * k;
 	}
-	float sp = 1.0f + f * (kf_at(ARC_SPACE, NK(ARC_SPACE), x) - 1.0f);
+	/* the breakdown's filter and space, and the fill, belong to the first arrangement; FILLS
+	 * sets how deep they go (and whether the fill plays) */
+	float sp = 1.0f, ft = 0.47f;
+	if (kd == 0 && !W.ending) {                      /* (the outro opens them back up) */
+		sp = 1.0f + W.fills * (kf_at(ARC_SPACE, NK(ARC_SPACE), x) - 1.0f);
+		ft = 0.47f - W.fills * (0.47f - kf_at(ARC_FILT, NK(ARC_FILT), x));
+	}
+	sp = 1.0f + f * (sp - 1.0f);
 	form_space += (sp - form_space) * k;
-	form_filt = 0.47f - f * (0.47f - kf_at(ARC_FILT, NK(ARC_FILT), x));
-	/* the fill: the bar before the build lands (x = 0.85) */
-	float cyc = 4.0f * W.form_bars, bar = x * cyc, land = 0.85f * cyc;
-	form_fill = bar >= land - 1.0f && bar < land;
+	float fwant = 0.47f - f * (0.47f - ft);
+	form_filt = form_filt < 0.0f ? fwant : form_filt + (fwant - form_filt) * k;
+	float cyc = 4.0f * W.form_bars, bx = x * cyc, land = 0.85f * cyc;
+	form_fill = kd == 0 && W.fills > 0.3f && !W.ending && bx >= land - 1.0f && bx < land;
 }
 
 /* ---- key travel: on the bar, once the time is up ---- */
@@ -193,18 +337,36 @@ static float pump_gain(float dt, float bpm)
 {
 	if (W.pump <= 0.0f) {
 		pbend = 1.0f;
+		W.pdr_s += (1.0f - W.pdr_s) * (1.0f - dcoef(0.3f, dt));
 		return 1.0f;
 	}
-	float rel = 0.375f * 60.0f / bpm * (1.0f + W.pump);
+	W.pdr_s += ((W.pump > 0.0f ? W.pdrums : 1.0f) - W.pdr_s) * (1.0f - dcoef(0.3f, dt));   /* drums in or out, smoothly */
+	float rel = 0.375f * 60.0f / bpm * (1.0f + W.pump) * (0.5f + 1.5f * W.prel);
 	if (pump_tgt > pump_env)
-		pump_env += (pump_tgt - pump_env) * 0.35f;             /* ~3 ms in: no click */
+		pump_env += (pump_tgt - pump_env) * 0.25f;             /* ~5 ms in: a chop, not a click */
 	else
 		pump_env = pump_tgt;
 	pump_tgt *= dcoef(rel * 3.0f, dt);                         /* (dcoef: the time to fall 60 dB) */
 	float depth = 0.6f * W.pump + 0.37f * W.pump * W.pump * W.pump;
-	float bend = W.pump > 0.7f ? (W.pump - 0.7f) / 0.3f : 0.0f;
+	float bend = W.pbend >= 0.0f ? W.pbend : W.pump > 0.7f ? (W.pump - 0.7f) / 0.3f : 0.0f;
 	pbend = 1.0f - 0.0561f * bend * pump_env;                  /* 0.0561: a semitone down */
 	return 1.0f - depth * pump_env;
+}
+
+/* the pump's own clock: on the beat, the eighth or the half bar, or (with no Pulse in the
+ * piece) on the beat, so it pumps without drums */
+static void pump_step(uint32_t step)
+{
+	if (W.pump <= 0.0f)
+		return;
+	int r = W.prhythm, has = 0;
+	for (int c = 0; c < GL_NCH; c++)
+		has |= CH[c].voice == GV_PULSE && P.ch[c][CP_LEVEL] > 0.0f;
+	if (r == 0 && has)
+		return;                                       /* the kick does it */
+	uint32_t every = r == 2 ? 2u : r == 3 ? 8u : 4u;
+	if (step % every == 0u)
+		pump_tgt = 1.0f;
 }
 
 /* ---- textures, at 24 kHz into the dry mix ---- */
@@ -226,13 +388,14 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 		return;
 	float g = W.tex_lvl * W.tex_lvl * 0.25f, bt = (float)n / sr;
 	float *s = tx_s;
-	tx_lfo += bt / 20.0f;                                      /* tape hiss: a breath every ~20 s */
+	const float *tp = W.tp[W.tex <= 4 ? W.tex : 0];           /* its three controls past the level */
+	tx_lfo += bt / 20.0f * (W.tex == 3 ? 2.0f * tp[1] + 0.1f : 1.0f);   /* tape hiss: a breath every ~20 s */
 	tx_lfo -= tx_lfo >= 1.0f ? 1.0f : 0.0f;
 	if (W.tex == 1) {   /* rain: the two bands wander, each to a new place every few seconds */
 		for (int k = 0; k < 2; k++) {
-			if (tx_noise() > 0.9993f)
-				rn_ft[k] = 0.12f + 0.5f * (0.5f + 0.5f * tx_noise());
-			rn_f[k] += (rn_ft[k] - rn_f[k]) * bt * 0.4f;
+			if (tx_noise() > 1.0f - 0.0014f * tp[0])
+				rn_ft[k] = (0.12f + 0.5f * (0.5f + 0.5f * tx_noise())) * (0.5f + tp[2]);
+			rn_f[k] += (rn_ft[k] - rn_f[k]) * bt * 0.8f * tp[0];
 		}
 	}
 	if (W.tex == 4) {   /* surf: waves of their own lengths, rising, then a long wash back */
@@ -240,14 +403,14 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			sf_ph[k] += bt / sf_per[k];
 			if (sf_ph[k] >= 1.0f) {
 				sf_ph[k] -= 1.0f;
-				sf_per[k] = 7.0f + 8.0f * (0.5f + 0.5f * tx_noise());
+				sf_per[k] = (7.0f + 8.0f * (0.5f + 0.5f * tx_noise())) * fexp2((0.5f - tp[0]) * 2.0f);
 				sf_pan[k] = 0.5f + 0.45f * tx_noise();
 			}
 			float x = sf_ph[k], tgt = x < 0.3f ? 0.5f - 0.5f * sin_u((uint32_t)(x / 0.3f * 2147483648.0f) + 0x40000000u) : 0.0f;
 			if (tgt > sf_env[k])
 				sf_env[k] = tgt;
 			else
-				sf_env[k] *= dcoef(sf_per[k] * 1.3f, bt);          /* the wash outlasts the wave */
+				sf_env[k] *= dcoef(sf_per[k] * 2.6f * tp[1] + 0.5f, bt);   /* the wash outlasts the wave */
 		}
 	}
 	for (uint32_t i = 0; i < n; i++) {
@@ -265,7 +428,7 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			}
 			l = (s[1] * 0.8f + s[3] * 0.35f) * 0.6f;
 			r = (s[3] * 0.8f + s[1] * 0.35f) * 0.6f;
-			if (tx_drop < 0.01f && (tx_r & 0xFFFu) < 3u) {       /* ~18 drops a second */
+			if (tx_drop < 0.01f && (tx_r & 0xFFFu) < (uint32_t)(6.0f * tp[1] + 0.5f)) {   /* ~18 drops a second */
 				tx_drop = 0.3f + 0.7f * (float)((tx_r >> 12) & 255u) / 255.0f;
 				tx_dk = 0.992f - 0.006f * (float)((tx_r >> 20) & 15u) / 15.0f;
 				tx_dpan = (float)((tx_r >> 24) & 255u) / 255.0f;
@@ -279,12 +442,12 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 		}
 		case 2: {   /* vinyl: crackle, and a quieter surface (the warble is on the whole mix) */
 			float c = 0.0f;
-			if ((tx_r & 0x7FFu) < 1u)                            /* ~12 pops a second */
+			if ((tx_r & 0xFFFu) < (uint32_t)(4.0f * tp[0] + 0.5f))   /* ~12 pops a second */
 				c = (a > 0.0f ? 1.0f : -1.0f) * (0.4f + 0.6f * b * b);
 			s[0] += 0.5f * (c - s[0]);
 			s[1] += 0.25f * (a - s[1]);
 			s[2] += 0.004f * (s[1] - s[2]);
-			float hiss = (s[1] - s[2]) * 0.045f;
+			float hiss = (s[1] - s[2]) * 0.09f * tp[2];
 			l = (c - s[0]) * 1.4f + hiss;
 			r = (c - s[0]) * 1.2f + hiss;
 			break;
@@ -292,18 +455,19 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 		case 3: {   /* tape hiss: soft, rolled off above ~4.5 kHz, breathing slowly */
 			s[0] += 0.08f * (a - s[0]);
 			s[1] += 0.08f * (b - s[1]);
-			s[2] += 0.7f * ((a - s[0]) - s[2]);
-			s[3] += 0.7f * (s[2] - s[3]);
-			s[4] += 0.7f * ((b - s[1]) - s[4]);
-			s[5] += 0.7f * (s[4] - s[5]);
-			float br = 0.8f + 0.2f * sin_u((uint32_t)(tx_lfo * 4294967296.0f));
+			const float tk = 0.3f + 0.8f * tp[2];
+			s[2] += tk * ((a - s[0]) - s[2]);
+			s[3] += tk * (s[2] - s[3]);
+			s[4] += tk * ((b - s[1]) - s[4]);
+			s[5] += tk * (s[4] - s[5]);
+			float br = 1.0f - 0.4f * tp[0] + 0.4f * tp[0] * sin_u((uint32_t)(tx_lfo * 4294967296.0f));
 			l = s[3] * 0.26f * br;
 			r = s[5] * 0.26f * br;
 			break;
 		}
 		default: {  /* surf: low noise for each wave, brighter as it breaks, moving along the shore */
 			for (int k = 0; k < 2; k++) {
-				float e = sf_env[k], kf = 0.02f + 0.13f * e * e, x = k ? b : a;
+				float e = sf_env[k], kf = (0.02f + 0.13f * e * e) * (0.5f + tp[2]), x = k ? b : a;
 				s[2 * k] += kf * (x - s[2 * k]);
 				s[2 * k + 1] += kf * (s[2 * k] - s[2 * k + 1]);
 				float v = s[2 * k + 1] * (0.15f + 1.8f * e);
@@ -326,7 +490,7 @@ static uint32_t wb_w;
 static float wb_wow, wb_flut, wb_drift, wb_dt;
 static void warble_block(float *L, float *R, uint32_t n)
 {
-	float amt = W.tex == 2 ? W.tex_lvl : 0.0f;
+	float amt = W.tex == 2 ? W.tex_lvl * 2.0f * W.tp[2][1] : 0.0f;
 	if (amt <= 0.0f)
 		return;
 	for (uint32_t i = 0; i < n; i++) {
@@ -416,12 +580,18 @@ static void autof_tick(void)
 	 * is a low-pass at 18 kHz when "open", so it glides and never changes kind */
 	if (form_filt >= 0.0f && (centre || base < 0.47f))
 		v = v < 0.0f ? fminf_(form_filt, centre ? 0.47f : base) : fminf_(v, form_filt);
+	if (v >= 0.0f && v > 0.4699f)
+		v = 0.4699f;          /* (0.47 itself would be "through": the filter's states left behind, a click as it closes) */
 	if (v < 0.0f) {
-		if (was >= 0.0f) {
-			filter_setup(base);
-			was = -1.0f;
+		if (was >= 0.0f && centre)
+			v = 0.4699f;      /* once it has moved, it stays a low-pass at 18 kHz: going back to "through" would click */
+		else {
+			if (was >= 0.0f) {
+				filter_setup(base);
+				was = -1.0f;
+			}
+			return;
 		}
-		return;
 	}
 	if (v != was) {
 		filter_setup(v);

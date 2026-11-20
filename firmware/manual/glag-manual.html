@@ -200,7 +200,7 @@ h3.group { margin-top: 18px; }
       <button class="tab" role="tab" aria-selected="false" data-page="ch">Channel</button>
       <button class="tab" role="tab" aria-selected="false" data-page="ext">Extended</button>
       <button class="tab" role="tab" aria-selected="false" data-page="har">Harmony</button>
-      <button class="tab" role="tab" aria-selected="false" data-page="pw">Playworld <small>planned</small></button>
+      <button class="tab" role="tab" aria-selected="false" data-page="pw">Playworld</button>
       <button class="tab" role="tab" aria-selected="false" data-page="shift">•• held</button>
     </div>
     <p class="how" id="cs-how"></p>
@@ -234,7 +234,7 @@ h3.group { margin-top: 18px; }
     <header>
       <div class="eyebrow">2 · Pages</div>
       <h2 id="h-pages">Getting around</h2>
-      <p>Glag starts on Home. Every channel has its own page and an extended page behind it. Harmony is one page for the whole instrument; Playworld (planned) another, behind PLAY. Tap •• twice from anywhere to come back Home.</p>
+      <p>Glag starts on Home. Every channel has its own page and an extended page behind it. Harmony is one page for the whole instrument; Playworld another, behind PLAY held 2 s. Tap •• twice from anywhere to come back Home.</p>
     </header>
     <div class="flow" style="overflow-x:auto">
       <svg viewBox="0 0 900 420" role="img" aria-labelledby="flow-title" style="min-width:640px">
@@ -566,7 +566,7 @@ const PIECES = [
 const VOL = ["VOL− / VOL+", "", ["Output level, 3 dB steps.", "•• + VOL−: distortion amount. •• + VOL+: its type."]];
 const PROW = ["Play row (LEDs by PLAY)", "", ["Each channel's notes. A fader's value while it moves, a voice or piece number, a still glow when frozen, three flashes on a save."]];
 const FN = ["•• (shift)", "", ["Hold: the •• layer (the mixer, the shifted controls).", "Two taps: Home. Hold 3 s alone: power off."]];
-const PLAY = ["PLAY", "plan", ["Tap: grow / rest (no new notes; the tails ring on).", "•• + PLAY once: Harmony; twice: the next piece.", "~Held 2 s: Playworld."]];
+const PLAY = ["PLAY", "plan", ["Tap: grow / rest (no new notes; the tails ring on).", "•• + PLAY once: Harmony; twice: the next piece.", "Held 2 s: Playworld."]];
 const tCh = (n, own, ext) => own
   ? [`T${n} · This channel`, "free", [ext ? "•• + tap: back to its page." : "•• + tap: its extended page.", "!Tap: nothing (you are here).", "!Held: nothing."]]
   : [`T${n} · Channel ${n}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: channel ${n}'s extended page.`, "!Held: nothing."]];
@@ -607,18 +607,20 @@ const PAGES = {
     t: (n) => { const R = ["Hall", "Chamber", "Shimmer", "Bloom"][n - 1];
       return [`T${n} · ${R}`, "free", [`Tap: channel ${n}'s page.`, `•• + tap: the ${R} reverb.`,
         n === 3 ? "•• + tap again: Shimmer's interval (octave, fifth, seventh)." : `•• + tap again: the ${R}'s reverse swells, on / off.`, "!Held: nothing."]]; } },
-  pw: { how: "Planned. Hold PLAY for 2 s on Home to enter; again to leave. What you set here is saved with the piece, and the piece as it plays is saved at power-off and comes back at power-on.", fl: ["FORM", "KEY", "PUMP", "TEX"], tl: ["PING", "REV", "AUTO", "KEY"], led: "outer",
-    f1: ["F1 · Form", "plan", ["~Off (one scene) through the piece moving between a sparse intro, full and a breakdown."]],
-    f2: ["F2 · Key travel", "plan", ["~Off, then a new key every 8 down to 2 minutes."]],
-    f3: ["F3 · Pump", "plan", ["~The kick ducks everything else. Off unless a Pulse plays."]],
-    f4: ["F4 · Texture", "plan", ["~The bed's level. •• + T1–T4 picks which."]],
+  pw: { how: "Hold PLAY for 2 s from anywhere to enter; hold it again, or tap •• twice, to leave. No lights until something is on. A bright light: that section is on. A dim, pulsing light: the page its faders are on. The faders follow the last T pressed (and wait for pickup); everything that is on stays on when you leave, over whatever you change elsewhere. Each press shows itself for a second: a light gliding to the page, or fading out.", fl: ["SECT", "SECT", "SECT", "SECT"], tl: ["SONG", "ARP", "PUMP", "TEX"], led: "outer",
+    f1: ["F1", "", ["Song p1: channel 1's stagger. p2: its loop (×¼ to ×4). p3: the arrangement (breakdown and build, waves, slow build). p4: the settings' randomness.", "Pump p1: depth. p2: the master compressor.", "Texture: its level."]],
+    f2: ["F2", "", ["Song p1: channel 2's stagger. p2: its loop. p3: the length (a cycle of 4× 4 to 32 bars). p4: the macros' pace, varied.", "Pump p1: release. p2: rhythm (the kick, beats, eighths, half bars).", "Texture: rain wander, vinyl crackle, tape breath depth, surf pace."]],
+    f3: ["F3", "", ["Song p1: channel 3's stagger. p2: its loop. p3: fills and builds. p4: key travel.", "Pump p1: bend (the notes dip as it ducks). p2: how much the space ducks.", "Texture: rain drops, vinyl warble, tape breath pace, surf wash."]],
+    f4: ["F4", "", ["Song p1: channel 4's stagger. p2: its loop. p3: how full. p4: straying (each cycle a little different).", "Pump p1: the drums, down to none: the pump goes on without them. p2: how much bass and held voices are spared.", "Texture: brightness (vinyl: its surface)."]],
     vol: VOL,
     ffwd: ["FFWD · rocker up", "free", ["!Tap, held, •• + FFWD: nothing (kept for later)."]],
     rwd: ["RWD · rocker down", "free", ["!Tap, held, •• + RWD: nothing (kept for later)."]],
-    tled: ["Track LEDs", "plan", ["~The outer two breathing."]],
-    play: ["PLAY", "plan", ["Tap: grow / rest.", "~Held 2 s: back to Home.", "•• + PLAY once: Harmony; twice: the next piece."]], prow: PROW, fn: FN,
-    t: (n) => { const A = [["Ping-pong", "the echo bounces left and right", "rain"], ["Reverse", "reverse swells", "vinyl"], ["Auto filter", "the DJ filter sweeps on its own", "tape hiss"], ["Key style", "fifths, lifts or relative", "surf"]][n - 1];
-      return [`T${n} · ${A[0]}`, "plan", [n === 4 ? `~Tap: the key's way: ${A[1]}.` : `~Tap: ${A[1]}, on / off.`, `~•• + tap: the ${A[2]} texture.`, "!Held: nothing."]]; } },
+    tled: ["Track LEDs", "", ["Bright: on. A dim pulse: the page. Nothing on: dark."]],
+    play: ["PLAY", "", ["Tap: grow / rest.", "Held 2 s: back to Home (what is on stays on).", "•• + PLAY once: Harmony; twice: the next piece."]], prow: PROW, fn: FN,
+    t: (n) => [[`T1 · Song mode`, "", ["Tap: on (page 1), page 2, 3, 4, off.", "Off is an outro: two bars down to the held voice, then the piece back over four.", "Changes land on the next bar and glide."]],
+      [`T2 · Arp mode`, "plan", ["~Every channel an arp, at its shortest decay and sustain; the faders: octaves, the arp's pattern, division, spread. Again: off."]],
+      [`T3 · Pump`, "", ["Tap: on (page 1), page 2, off.", "With no Pulse in the piece it pumps on the beat; the drums fader takes them out and leaves the chop."]],
+      [`T4 · Texture`, "", ["Tap: rain, vinyl, tape hiss, surf, off. Each keeps its own fader settings."]]][n - 1] },
   shift: { how: "While •• is held, on any page.", fl: ["LVL1", "LVL2", "LVL3", "LVL4"], tl: ["T1", "T2", "T3", "T4"], led: "breathe", shift: true,
     f1: ["F1 · Level 1", "", ["Channel 1's level."]], f2: ["F2 · Level 2", "", ["Channel 2's level."]], f3: ["F3 · Level 3", "", ["Channel 3's level."]], f4: ["F4 · Level 4", "", ["Channel 4's level."]],
     vol: ["•• + VOL− / VOL+", "", ["VOL−: distortion amount, off to 4. VOL+: its type (Chebyshev, Overdrive, Fuzz, XOR).", "Held 3 s: off and the stack back to default / before, after, on the reverb only, or on the drums only."]],
@@ -628,7 +630,7 @@ const PAGES = {
     play: ["•• + PLAY", "", ["Once: Harmony. Twice: the next piece."]],
     prow: ["Play row", "", ["As •• goes down: the battery, 1.5 s."]],
     fn: ["•• held", "", ["This layer while held; let go: back to the page.", "Held 3 s alone: power off."]],
-    t: (n) => [`•• + T${n}`, "free", [`Home: channel ${n}'s next voice. Channel pages: channel ${n}'s extended page. Harmony: the ${["Hall", "Chamber", "Shimmer", "Bloom"][n - 1]}.`, `~Playworld: the ${["rain", "vinyl", "tape hiss", "surf"][n - 1]} texture.`, "!Held 2 s: nothing."]] },
+    t: (n) => [`•• + T${n}`, "free", [`Home: channel ${n}'s next voice. Channel pages: channel ${n}'s extended page. Harmony: the ${["Hall", "Chamber", "Shimmer", "Bloom"][n - 1]}.`, "!Playworld: nothing.", "!Held 2 s: nothing."]] },
 };
 
 const NS = "http://www.w3.org/2000/svg";

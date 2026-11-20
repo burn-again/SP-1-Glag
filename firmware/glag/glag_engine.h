@@ -141,7 +141,18 @@ void gl_alt(int voice, int method);   /* audition only: another way to make a vo
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */
 enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW_SHAPE, GW_PINGPONG,
-                     GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF, GW_FORM_KIND, GW_COMP };
+                     GW_TEXTURE, GW_TEX_LEVEL, GW_REVERSE, GW_AUTOF, GW_FORM_KIND, GW_COMP,
+                     /* song mode (Playworld's T1): on/off (off ends it gracefully), fills, how full,
+                      * and its randomness: the settings, the macros' pace, key travel, straying */
+                     GW_SONG, GW_FILLS, GW_FULL, GW_RND_SET, GW_RND_MAC, GW_RND_KEY, GW_RND_STRAY,
+                     /* the pump (T3): release, bend, the drums' level (0: pumping without them), its
+                      * rhythm (0 the kick, 1 beats, 2 eighths, 3 half bars), how much the space
+                      * ducks, how much bass and held voices are spared */
+                     GW_PUMP_REL, GW_PUMP_BEND, GW_PUMP_DRUMS, GW_PUMP_RHYTHM, GW_PUMP_SPACE, GW_PUMP_SPARE };
+/* per channel (or per texture control): song mode's stagger and loop length (0..4: x1/4 .. x4),
+ * the chosen texture's three controls past its level */
+enum gl_world_ch_what { GWC_STAGGER, GWC_LOOP, GWC_TEXP };
+void gl_world_ch(int what, int i, float v);
 void gl_world(int what, float v);
 /* echo times in order from shortest to longest (for stepping) */
 extern const uint8_t GL_ECHO_ORDER[GL_NECHO];

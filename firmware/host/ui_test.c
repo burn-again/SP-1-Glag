@@ -221,6 +221,48 @@ int main(void)
 	up(GB_RWD); run(1500);
 	CHECK(gl_speed > 0.99f, "release springs back (speed %.3f)", gl_speed);
 
+	/* ---- Playworld ---- */
+	{
+		int was_playing = gl_playing;
+		down(GB_PLAY); run(2100); up(GB_PLAY); run(50);
+		CHECK(out.page == PG_WORLD, "PLAY held 2 s opens Playworld (page %d)", out.page);
+		CHECK(gl_playing == was_playing, "holding PLAY into Playworld neither rests nor grows");
+		run(1100);
+		CHECK(out.led_t[0] == 0 && out.led_t[1] == 0 && out.led_t[2] == 0 && out.led_t[3] == 0, "Playworld: no lights until something is on");
+		tap(GB_T1); run(300);
+		CHECK(out.world_song == 1 && out.world_focus == 0, "T1: song mode on, page 1 (%d, focus %d)", out.world_song, out.world_focus);
+		run(1100);
+		CHECK(out.led_t[0] == 255 && out.led_t[1] == 0, "song page 1: T1's light bright, the rest dark");
+		tap(GB_T1); run(1100);
+		CHECK(out.world_song == 2 && out.led_t[0] == 255 && out.led_t[1] > 0 && out.led_t[1] < 255, "T1 again: page 2, the second light dim (%d)", out.led_t[1]);
+		/* page 2: F1 sets channel 1's loop; it waits for pickup first */
+		float target = glui_target(0, 0);
+		CHECK(fabsf(target - 0.5f) < 1e-6f, "song page 2 F1 is channel 1's loop (x1 = %.2f)", target);
+		tap(GB_T4); run(1100);
+		CHECK(out.world_tex == 1 && out.world_focus == 3 && out.world_song == 2, "T4: rain on, the faders follow it, song stays on");
+		CHECK(out.led_t[0] == 255 && out.led_t[3] == 255, "both sections' lights bright (%d %d)", out.led_t[0], out.led_t[3]);
+		tap(GB_T4); run(1100);
+		CHECK(out.world_tex == 2 && out.led_t[2] > 0 && out.led_t[2] < 255, "T4 again: vinyl, light 3 dim (%d)", out.led_t[2]);
+		tap(GB_T1); run(300);
+		CHECK(out.world_song == 2 && out.world_focus == 0, "T1 while song is on elsewhere: just the focus back (page %d)", out.world_song);
+		tap(GB_T3); run(300);
+		CHECK(out.world_pump == 1 && out.world_focus == 2, "T3: the pump on");
+		tap(GB_T3); tap(GB_T3); run(1100);
+		CHECK(out.world_pump == 0 && out.world_focus >= 0, "T3 twice more: the pump off, focus to what's still on");
+		tap(GB_T1); tap(GB_T1); tap(GB_T1); run(1100);
+		CHECK(out.world_song == 0, "T1 past page 4: song mode off (%d)", out.world_song);
+		tap(GB_T4); tap(GB_T4); tap(GB_T4); run(1100);
+		CHECK(out.world_tex == 0, "T4 past surf: texture off (%d)", out.world_tex);
+		tap(GB_T1); run(1100);
+		down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(50);
+		CHECK(out.page == PG_HOME && out.world_song == 1, "•• double tap leaves Playworld, song mode stays on");
+		down(GB_PLAY); run(2100); up(GB_PLAY); run(50);
+		CHECK(out.page == PG_WORLD, "PLAY held again: back in Playworld");
+		tap(GB_T1); tap(GB_T1); tap(GB_T1); tap(GB_T1); run(50);
+		down(GB_PLAY); run(2100); up(GB_PLAY); run(50);
+		CHECK(out.page == PG_HOME && out.world_song == 0, "PLAY held in Playworld: back to Home (song off now)");
+	}
+
 	/* PLAY: rest and grow */
 	tap(GB_PLAY); run(50);
 	CHECK(!gl_playing, "PLAY rests");

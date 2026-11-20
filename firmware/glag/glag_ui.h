@@ -20,6 +20,22 @@
  *                        •• + T1..T4: the reverb: Hall, Chamber, Shimmer, Bloom (saved with the
  *                        piece); •• + T3 again on Shimmer: its interval, octave / fifth / seventh
  *                        (the track row shows the reverb, the play row Shimmer's interval)
+ *   PLAYWORLD            PLAY held 2 s (from anywhere; again to leave, or •• double tap):
+ *                        all lights off until something is on. A bright light: that section is
+ *                        on; a dim one, pulsing: the page its faders are on (the last T pressed
+ *                        is the one the faders follow; others stay on). Each press shows itself
+ *                        for a second (a light gliding to the page, or fading out).
+ *                        T1 song mode: on (page 1), page 2, 3, 4, off (an outro, then the piece)
+ *                           1: F1-F4 each channel's stagger    2: each channel's loop (x1/4..x4)
+ *                           3: arrangement, length, fills, how full   4: randomness: settings,
+ *                              the macros' pace, key travel, straying
+ *                        T2 arp mode (planned)
+ *                        T3 pump: on (page 1), page 2, off
+ *                           1: depth, release, bend, drums (down: the pump goes on without them)
+ *                           2: master compressor, rhythm (kick, beats, eighths, half bars),
+ *                              how much the space ducks, how much bass and held voices are spared
+ *                        T4 texture: rain, vinyl, tape hiss, surf, off; F1 level, F2-F4 its own
+ *                        Song changes land on the next bar and glide; leaving keeps all of it on.
  *   anywhere             •• double tap: HOME
  *                        PLAY: grow / rest
  *                        •• + PLAY twice: next piece
@@ -64,7 +80,7 @@ typedef struct {
 	uint16_t buttons;        /* bit (1 << enum gl_btn): held now, debounced */
 } gl_input;
 
-enum gl_page { PG_HOME, PG_CH, PG_EXT, PG_HARMONY };
+enum gl_page { PG_HOME, PG_CH, PG_EXT, PG_HARMONY, PG_WORLD };
 
 typedef struct {
 	uint8_t led_t[4];        /* track LEDs T1..T4, 0..255 */
@@ -77,6 +93,10 @@ typedef struct {
 	uint8_t reverb, shimmer;  /* enum gl_reverb, enum gl_shimmer */
 	uint8_t macro[4];        /* each channel's macro depth, 0 off .. 4 */
 	float macro_period[4];   /* and its glide, in seconds */
+	/* Playworld: song mode (0 off, 1-4 its page), arp (not yet), pump (0 off, 1-2), texture
+	 * (0 off, 1 rain .. 4 surf), and which of the four the faders follow (-1: none) */
+	uint8_t world_song, world_arp, world_pump, world_tex;
+	int8_t world_focus;
 } gl_ui_out;
 
 void glui_init(void);

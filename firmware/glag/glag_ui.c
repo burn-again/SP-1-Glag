@@ -60,6 +60,19 @@ static uint32_t seed = 0x2545F491u;
 
 /* what the play row is showing */
 enum { SH_MUSIC, SH_VALUE, SH_FIND, SH_INDEX, SH_SWEEP, SH_FLASH, SH_DIST, SH_HOLD, SH_REVERB, SH_MACROS };
+
+/* ---- Playworld ---- */
+#define WORLD_HOLD_MS 2000u
+static int w_song, w_arp, w_pump, w_tex, w_focus = -1;
+static float wv_song[4][4] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.5f, 0.5f, 0.5f, 0.5f},
+                              {0.0f, 0.5f, 0.7f, 0.6f}, {0.0f, 0.0f, 0.0f, 0.0f}};
+static float wv_pump[2][4] = {{0.6f, 1.0f / 3.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 0.0f}};
+static float wv_tex[5][4] = {{0}, {0.5f, 0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f, 0.5f},
+                             {0.5f, 0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f, 0.5f}};
+static float w_sink;                            /* the faders' target when nothing is focused */
+static uint32_t w_anim_t0;
+static int w_anim_from, w_anim_to, w_anim_kind;  /* 0 none, 1 glide to a page, 2 fade out, 3 not yet */
+static uint8_t play_world_done;
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -108,8 +121,129 @@ static target map(int f, int shift)
 		t.steps = gl_gp_steps(G[f]);
 		break;
 	}
+	case PG_WORLD:
+		t.val = &w_sink;
+		if (w_focus == 0 && w_song) {
+			t.val = &wv_song[w_song - 1][f];
+			if (w_song == 2)
+				t.steps = 5;                          /* loops: x1/4 .. x4 */
+			else if (w_song == 3 && f < 2)
+				t.steps = f == 0 ? 3 : 5;             /* arrangement; length 4..32 bars */
+		} else if (w_focus == 2 && w_pump) {
+			t.val = &wv_pump[w_pump - 1][f];
+			if (w_pump == 2 && f == 1)
+				t.steps = 4;                          /* the rhythm */
+		} else if (w_focus == 3 && w_tex)
+			t.val = &wv_tex[w_tex][f];
+		break;
 	}
 	return t;
+}
+
+static void uncatch_all(const gl_input *in);
+/* Playworld: one fader's value to the engine */
+static void world_apply(int sec, int pg, int f)
+{
+	if (sec == 0) {
+		float v = wv_song[pg][f];
+		static const float BARS[5] = {1.0f, 2.0f, 4.0f, 6.0f, 8.0f};   /* x4 per cycle: 4..32 bars */
+		if (pg == 0)
+			gl_world_ch(GWC_STAGGER, f, v);
+		else if (pg == 1)
+			gl_world_ch(GWC_LOOP, f, (float)(int)(v * 4.0f + 0.5f));
+		else if (pg == 2) {
+			if (f == 0)
+				gl_world(GW_FORM_KIND, (float)(int)(v * 2.0f + 0.5f));
+			else if (f == 1)
+				gl_world(GW_FORM_BARS, BARS[(int)(v * 4.0f + 0.5f)]);
+			else
+				gl_world(f == 2 ? GW_FILLS : GW_FULL, v);
+		} else {
+			static const int R[4] = {GW_RND_SET, GW_RND_MAC, GW_RND_KEY, GW_RND_STRAY};
+			gl_world(R[f], v);
+		}
+	} else if (sec == 2) {
+		float v = wv_pump[pg][f];
+		static const int P0[4] = {GW_PUMP, GW_PUMP_REL, GW_PUMP_BEND, GW_PUMP_DRUMS};
+		static const int P1[4] = {GW_COMP, GW_PUMP_RHYTHM, GW_PUMP_SPACE, GW_PUMP_SPARE};
+		if (pg == 1 && f == 1)
+			gl_world(GW_PUMP_RHYTHM, (float)(int)(v * 3.0f + 0.5f));
+		else
+			gl_world(pg ? P1[f] : P0[f], v);
+	} else if (sec == 3 && w_tex) {
+		if (f == 0)
+			gl_world(GW_TEX_LEVEL, wv_tex[w_tex][0]);
+		else
+			gl_world_ch(GWC_TEXP, f - 1, wv_tex[w_tex][f]);
+	}
+}
+static void world_apply_all(int sec)
+{
+	if (sec == 0)
+		for (int pg = 0; pg < 4; pg++)
+			for (int f = 0; f < 4; f++)
+				world_apply(0, pg, f);
+	else if (sec == 2)
+		for (int pg = 0; pg < 2; pg++)
+			for (int f = 0; f < 4; f++)
+				world_apply(2, pg, f);
+	else if (sec == 3)
+		for (int f = 0; f < 4; f++)
+			world_apply(3, 0, f);
+}
+/* the light that shows a section's page (its own T on its first page) */
+static int world_page_light(int sec)
+{
+	if (sec == 0)
+		return w_song > 1 ? w_song - 1 : 0;
+	if (sec == 2)
+		return w_pump == 2 ? 1 : 2;
+	if (sec == 3)
+		return w_tex > 1 ? 4 - w_tex : 3;
+	return sec;
+}
+static void world_anim(int kind, int from, int to, uint32_t now)
+{
+	w_anim_kind = kind;
+	w_anim_from = from;
+	w_anim_to = to;
+	w_anim_t0 = now;
+}
+static int world_any_on(void) { return w_song || w_pump || w_tex; }
+/* T1..T4 on Playworld */
+static void world_press(int t, uint32_t now, const gl_input *in)
+{
+	int *st = t == 0 ? &w_song : t == 2 ? &w_pump : &w_tex;
+	int n = t == 0 ? 5 : t == 2 ? 3 : 5;
+	if (t == 1) {                                    /* arp mode: planned */
+		world_anim(3, 1, 1, now);
+		return;
+	}
+	if (*st && w_focus != t) {                       /* on already: just bring the faders here */
+		w_focus = t;
+		world_anim(1, t, world_page_light(t), now);
+		uncatch_all(in);
+		return;
+	}
+	*st = (*st + 1) % n;
+	if (t == 0)
+		gl_world(GW_SONG, w_song ? 1.0f : 0.0f);
+	else if (t == 2 && !w_pump)
+		gl_world(GW_PUMP, 0.0f);
+	else if (t == 3 && !w_tex)
+		gl_world(GW_TEXTURE, 0.0f);
+	if (t == 3 && w_tex)
+		gl_world(GW_TEXTURE, (float)w_tex);
+	if (*st && (*st == 1 || t == 3))
+		world_apply_all(t);                          /* on (or a new texture): its values */
+	if (*st) {
+		w_focus = t;
+		world_anim(1, t, world_page_light(t), now);
+	} else {
+		world_anim(2, t, t, now);
+		w_focus = w_song ? 0 : w_pump ? 2 : w_tex ? 3 : -1;
+	}
+	uncatch_all(in);
 }
 
 static float snap(const target *t, float pos)
@@ -366,6 +500,8 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			} else {
 				go(PG_EXT, t, in);
 			}
+		} else if (page == PG_WORLD) {
+			world_press(t, now, in);
 		} else {
 			go(PG_CH, t, in);
 		}
@@ -385,11 +521,31 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				play_taps = 1;
 				play_tap_at = now;
 			}
-		} else {
-			playing = !playing;
-			gl_play(playing);
+		} else
+			play_world_done = 0;                     /* a tap rests or grows (on release); held 2 s: Playworld */
+	}
+	if (DOWN(GB_PLAY) && !fn && !play_world_done) {
+		uint32_t held = now - down_at[GB_PLAY];
+		if (held >= WORLD_HOLD_MS) {
+			play_world_done = 1;
+			if (page == PG_WORLD)
+				go(PG_HOME, chan, in);
+			else {
+				go(PG_WORLD, chan, in);
+				world_anim(1, 0, 3, now);            /* a sweep across: you are in */
+			}
+		} else if (held >= TAP_MS) {
+			show_val = (float)held / (float)WORLD_HOLD_MS;   /* the hold filling up */
+			say(SH_VALUE, now, 100);
 		}
 	}
+	if (RELEASED(GB_PLAY) && !fn && !play_world_done && now - down_at[GB_PLAY] < WORLD_HOLD_MS &&
+	    !(prev_btn & (1u << GB_FN))) {
+		playing = !playing;
+		gl_play(playing);
+	}
+	if (RELEASED(GB_PLAY))
+		play_world_done = 0;
 	if (play_taps && now - play_tap_at > DOUBLE_MS) {  /* one •• + PLAY: the harmony page */
 		play_taps = 0;
 		go(PG_HARMONY, chan, in);
@@ -646,7 +802,11 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		if (caught[f]) {
 			if (*t.val != p) {
 				*t.val = p;
-				dirty = 1;
+				if (page == PG_WORLD && !layer_shift) {
+					if (t.val != &w_sink)
+						world_apply(w_focus, w_focus == 0 ? w_song - 1 : w_focus == 2 ? w_pump - 1 : 0, f);
+				} else
+					dirty = 1;
 			}
 			show_val = p;
 			say(SH_VALUE, now, SHOW_MS);
@@ -671,9 +831,36 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		case PG_CH: v = t == chan ? 255 : 0; break;
 		case PG_EXT: v = t == chan && ((now / 250u) & 1u) ? 255 : 0; break;
 		case PG_HARMONY: v = (uint8_t)(t == (int)((now / 300u) & 3u) ? 255 : 40); break;
+		case PG_WORLD: {
+			int on = (t == 0 && w_song) || (t == 1 && w_arp) || (t == 2 && w_pump) || (t == 3 && w_tex);
+			v = on ? 255 : 0;
+			if (w_focus >= 0 && t == world_page_light(w_focus) && (w_focus != t || on)) {
+				uint32_t ph = now % 800u, tri2 = ph < 400u ? ph : 800u - ph;
+				if (t != w_focus)                  /* the page: a dim pulse (over a bright one, a deeper one) */
+					v = on ? (uint8_t)(90 + tri2 * 165u / 400u) : (uint8_t)(20 + tri2 * 60u / 400u);
+			}
+			break;
+		}
 		}
 		out->led_t[t] = v;
 	}
+	if (page == PG_WORLD && w_anim_kind && now - w_anim_t0 < 1000u) {
+		/* a second showing what the press did: a light gliding from the T to its page, a light
+		 * fading out, or (arp: not yet) three quick blinks */
+		float x = (float)(now - w_anim_t0) * (1.0f / 1000.0f), sx = x * x * (3.0f - 2.0f * x);
+		for (int t = 0; t < 4; t++) {
+			float v = 0.0f;
+			if (w_anim_kind == 1) {
+				float pos = (float)w_anim_from + (float)(w_anim_to - w_anim_from) * sx, d = (float)t - pos;
+				v = 1.0f - (d < 0.0f ? -d : d) * 1.3f;
+			} else if (w_anim_kind == 2)
+				v = t == w_anim_from ? 1.0f - sx : 0.0f;
+			else
+				v = t == w_anim_from && ((now - w_anim_t0) / 110u) % 2u == 0u && x < 0.66f ? 1.0f : 0.0f;
+			out->led_t[t] = (uint8_t)(v > 0.0f ? (v > 1.0f ? 255.0f : 255.0f * v) : 0.0f);
+		}
+	} else if (w_anim_kind && now - w_anim_t0 >= 1000u)
+		w_anim_kind = 0;
 
 	if (show != SH_MUSIC && now >= show_until)
 		show = SH_MUSIC;
@@ -764,5 +951,11 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		out->macro[c] = (uint8_t)mac_step[c];
 		out->macro_period[c] = mac_period[c];
 	}
+	out->world_song = (uint8_t)w_song;
+	out->world_arp = (uint8_t)w_arp;
+	out->world_pump = (uint8_t)w_pump;
+	out->world_tex = (uint8_t)w_tex;
+	out->world_focus = (int8_t)w_focus;
+	(void)world_any_on;
 	prev_btn = btn;
 }
