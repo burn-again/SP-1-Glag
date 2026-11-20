@@ -67,7 +67,8 @@ int main(int argc, char **argv)
 	if (getenv("WORLD")) {   /* Playworld: WORLD=form=1,bars=8,key=0.5,kind=0,pump=1,shape=1,pp=1,tex=2,texl=0.6,rev=0.8,autof=1 */
 		static const char *K[] = {"form", "bars", "key", "kind", "pump", "shape", "pp", "tex", "texl", "rev", "autof", "fk", "comp",
 		                          "song", "fills", "full", "rset", "rmac", "rkey", "stray",
-		                          "prel", "pbend", "pdrums", "prhythm", "pspace", "pspare"};
+		                          "prel", "pbend", "pdrums", "prhythm", "pspace", "pspare",
+		                          "khold", "arp", "aoct", "apat", "adiv", "aspr"};
 		char buf[256];
 		snprintf(buf, sizeof buf, "%s", getenv("WORLD"));
 		for (char *t = strtok(buf, ","); t; t = strtok(0, ",")) {
@@ -75,7 +76,7 @@ int main(int argc, char **argv)
 			if (!eq)
 				continue;
 			*eq = 0;
-			for (int k = 0; k < 26; k++)
+			for (int k = 0; k < 32; k++)
 				if (!strcmp(t, K[k]))
 					gl_world(k, (float)atof(eq + 1));
 		}

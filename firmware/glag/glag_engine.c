@@ -382,6 +382,11 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{40, 90,  0, 40, 50, 40},   /* harp: plucks, rolled chords, glissandi */
 	{40, 70,  0, 40, 50, 50},   /* harpsichord: the stops, the figures */
 };
+/* arp mode (glag_play.h): whether a channel is being played by it, and the held voices' short
+ * envelope while it is */
+static int arp_live(int ch);
+static int arp_held(int voice);
+static void arp_held_control(chan *c, int ch, float dt, float tone, float len);
 /* audition only: another way to make a voice (0: as it is), to compare methods by ear */
 /* the chosen ways (picked by ear from three each): Juno PWM strings, warm Glow, subtractive
  * Ribbon, the noise-plucked Harp */
@@ -994,7 +999,7 @@ static void harp_pluck(chan *c, int ch, int note, float vel)
 	if (k < 0)
 		return;
 	float n = ivl_note(ch, (float)note), tone = eff_tone(ch);
-	float T = expmap(P.ch[ch][CP_LENGTH], 1.5f, 9.0f) * clampf(1.0f - (n - 60.0f) * 0.025f, 0.35f, 1.3f);
+	float T = expmap(P.ch[ch][CP_LENGTH] * (arp_live(ch) ? 0.12f : 1.0f), 1.5f, 9.0f) * clampf(1.0f - (n - 60.0f) * 0.025f, 0.35f, 1.3f);
 	vel *= clampf(1.0f - (60.0f - n) * 0.035f, 0.45f, 1.0f);   /* low strings carry more: evened out */
 	if (alt_m[GV_HARP] == 3) {                   /* audition: an FM harp (1:1, its index falling fast) */
 		nvoice *v = alloc(c, 4);
@@ -1861,6 +1866,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 static void chan_control(chan *c, int ch, float dt)
 {
 	float tone = eff_tone(ch), len = P.ch[ch][CP_LENGTH];
+	if (arp_live(ch))
+		len *= 0.12f;                          /* arp mode: the shortest decay and sustain */
 	float sdt = dt * speed;                   /* time runs slower while slowing */
 	int base = reg_base(c, ch);
 	if (c->bp_on)                              /* bells waiting for their moment */
@@ -1875,6 +1882,11 @@ static void chan_control(chan *c, int ch, float dt)
 					c->glow = 1.0f;
 				}
 			}
+	if (arp_live(ch) && arp_held(c->voice)) {   /* arp mode: pads, strings... struck, short */
+		arp_held_control(c, ch, dt, tone, len);
+		c->glow *= dcoef(0.4f, dt);
+		return;
+	}
 	switch (c->voice) {
 	case GV_PULSE:
 		if (c->pend) {
@@ -3595,11 +3607,17 @@ static void control(float dt)
 				if (!CH[c].fading) {
 					/* its time division: every step, or one in 2, 3 or 4, its patterns spread out */
 					uint32_t dv = GL_CHX_DIV(P.chx[c]) + 1u;
-					if (step_n % dv == 0u)
-						chan_step(&CH[c], c, step_n / dv);
+					if (step_n % dv == 0u) {
+						if (arp_live(c))
+							arp_step(&CH[c], c, step_n / dv);   /* arp mode plays it */
+						else
+							chan_step(&CH[c], c, step_n / dv);
+					}
 				}
 		if (playing && !frozen)
 			pump_step(step_n);                    /* Playworld's pump on its own clock */
+		if ((step_n & 15u) == 0u)
+			arp_bar();                            /* arp mode on or off: on the bar */
 		step_n++;
 	}
 	for (int c = 0; c < GL_NCH; c++) {

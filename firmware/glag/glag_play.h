@@ -39,11 +39,16 @@ static struct {
 	/* the textures' controls past their level (rain, vinyl, tape hiss, surf) */
 	float tp[5][3];
 	int key_hold;
+	/* arp mode */
+	int arp_want, arp_on;
+	float arp_oct, arp_pat, arp_div, arp_spread;
+	uint32_t arp_pos[4];
 } W = {0.0f, 16.0f, 0, 0, 0.0f, 0, 0, 0.0f, 0.0f, 0, 0.0f, 0.0f, 0.0f, 0, 0, 0,
        {0}, {0}, 0.6f, 0.6f, 0.7f, 0.7f, 16.0f, {2, 2, 2, 2}, {2, 2, 2, 2}, 0,
        0.0f, 0.0f, 0.0f, 0.0f, {0}, 0, 0, -1, 0, 0.0f,
        1.0f / 3.0f, -1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0,
-       {{0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}, 0};
+       {{0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}, 0,
+       0, 0, 1.0f / 3.0f, 0.0f, 1.0f / 3.0f, 0.0f, {0, 0, 0, 0}};
 
 void gl_world(int what, float v)
 {
@@ -91,6 +96,11 @@ void gl_world(int what, float v)
 	case GW_PUMP_SPACE: W.pspace = clampf(v, 0.0f, 1.0f); break;
 	case GW_PUMP_SPARE: W.pspare = clampf(v, 0.0f, 1.0f); break;
 	case GW_KEY_HOLD: W.key_hold = v > 0.5f; break;
+	case GW_ARP: W.arp_want = v > 0.5f; break;
+	case GW_ARP_OCT: W.arp_oct = clampf(v, 0.0f, 1.0f); break;
+	case GW_ARP_PAT: W.arp_pat = clampf(v, 0.0f, 1.0f); break;
+	case GW_ARP_DIV: W.arp_div = clampf(v, 0.0f, 1.0f); break;
+	case GW_ARP_SPREAD: W.arp_spread = clampf(v, 0.0f, 1.0f); break;
 	default: break;
 	}
 }
@@ -369,6 +379,182 @@ static void pump_step(uint32_t step)
 	uint32_t every = r == 2 ? 2u : r == 3 ? 8u : 4u;
 	if (step % every == 0u)
 		pump_tgt = 1.0f;
+}
+
+/* ---- arp mode (T2): every channel but the drums played by one arp ----
+ * Each channel keeps its own sound but gives up its own sequencer: the arp walks the chord over
+ * its octaves in a pattern (up, down, up-down, random) at its division, and plays each note on
+ * every channel through voice_note(), at the shortest decay and sustain (plucks plucked, pads and
+ * strings struck short). SPREAD: 0, every channel on the same note at once (one huge stacked
+ * arp); up, each channel a little further along the pattern, and past two thirds the odd ones
+ * at half speed. Turning it on or off is taken on the next bar. */
+static int arp_live(int ch) { return W.arp_on && CH[ch].voice != GV_PULSE; }
+static int arp_held(int v)
+{
+	return v == GV_PAD || v == GV_SWELL || v == GV_DRONE || v == GV_SUPER || v == GV_STRINGS;
+}
+static void arp_bar(void)
+{
+	if (W.arp_on != W.arp_want) {
+		W.arp_on = W.arp_want;
+		for (int c = 0; c < 4; c++)
+			W.arp_pos[c] = 0;
+	}
+}
+/* one note on a channel, now, in its own voice: what arp mode (and MIDI, later) plays with */
+static void voice_note(chan *c, int ch, int note, float vel, float gate)
+{
+	nvoice *v;
+	float tone = eff_tone(ch), chr = P.ch[ch][CP_CHAR];
+	switch (c->voice) {
+	case GV_PULSE:
+		return;
+	case GV_KALIMBA: {
+		int k = c->ks_next;
+		if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
+			return;
+		c->ks_next = (uint8_t)((k + 1) % 3);
+		ks_pluck(c, k, mtof(ivl_note(ch, (float)note)) * speed * pbend, vel, 0.15f + 0.8f * tone, 0.5f + 0.45f * chr, 0.5f, 0);
+		break;
+	}
+	case GV_HARP:
+		harp_pluck(c, ch, note, vel);
+		break;
+	case GV_HARPSI:
+		harpsi_pluck(c, ch, note, vel, gate);
+		break;
+	case GV_BASS:
+		v = &c->v[0];
+		nv_trigger(v, (float)note, vel, 0.5f, 0);
+		c->target_note = c->glide_note = v->note;      /* no glide: each note its own */
+		break;
+	case GV_FUNK:
+		v = &c->v[0];
+		nv_trigger(v, (float)note, vel, 1.0f, 0);
+		v->hold = gate;
+		v->bend = 0.0f;
+		v->ratio = 1.0f;
+		break;
+	case GV_RIBBON:
+		ribbon_blow(c, ch, note, vel, gate);
+		break;
+	case GV_GLOW:
+		while (note > 79)
+			note -= 12;
+		v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel * 1.35f, 1.0f, 0);
+		break;
+	case GV_FLUTE:
+		v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, 0);
+		v->hold = gate;
+		break;
+	default: {
+		/* the FM voices (and, in arp mode, the held ones struck short): each its own ratio */
+		int n = c->voice == GV_BELLS || c->voice == GV_SHIMMER || c->voice == GV_PAD ? 4 :
+		        c->voice == GV_DRONE || c->voice == GV_GONG ? 2 : 3;
+		float ratio = 1.0f;
+		switch (c->voice) {
+		case GV_BELLS: ratio = BELL_RATIO[stepped(chr > 0.5f ? (chr - 0.5f) * 2.0f : chr * 2.0f, 3)][c->vnext & 3]; break;
+		case GV_PIANO: ratio = (float)(1 + stepped(chr, 3)); break;
+		case GV_MARIMBA: ratio = 2.5f + 2.5f * chr; break;
+		case GV_ARP: ratio = 3.5f; break;
+		case GV_GONG: ratio = 1.4f; break;
+		case GV_PAD: ratio = chr < 0.5f ? 1.0f : 2.0f; break;
+		case GV_DRONE: ratio = 2.0f; break;
+		case GV_TAILS: ratio = 2.0f; break;
+		default: break;
+		}
+		v = alloc(c, n);
+		if (!sounding(v))
+			make_room_w(v, weight(c->voice));
+		nv_trigger(v, (float)note, vel * (c->voice == GV_PIZZ ? 1.5f : 1.2f), ratio, c->vnext++);
+		break;
+	}
+	}
+	c->glow = vel;
+}
+static void arp_step(chan *c, int ch, uint32_t step)
+{
+	const float s = W.arp_spread;
+	int div = 1 + (int)(W.arp_div * 3.0f + 0.5f);
+	if (s > 0.66f && (ch & 1))
+		div *= 2;
+	if (step % (uint32_t)div)
+		return;
+	int oct = 1 + (int)(W.arp_oct * 3.0f + 0.5f), base = reg_base(c, ch) - (voice_role(c->voice) == ROLE_BASS ? 0 : 5);
+	int notes[16], n = 0;
+	for (int o = 0; o < oct; o++)
+		for (int k = 0; k < chord_n && n < 16; k++)
+			notes[n++] = place(chord_pc[k], (float)(base + 12 * o + 3 * k), base - 1 + 12 * o, base + 11 + 12 * o);
+	for (int i = 1; i < n; i++)                      /* low to high */
+		for (int j = i; j > 0 && notes[j] < notes[j - 1]; j--) {
+			int t = notes[j];
+			notes[j] = notes[j - 1];
+			notes[j - 1] = t;
+		}
+	int q = (int)W.arp_pos[ch]++ + (int)(s * (float)ch * (float)n * 0.25f + 0.5f), idx;
+	switch ((int)(W.arp_pat * 3.0f + 0.5f)) {
+	case 0: idx = q % n; break;
+	case 1: idx = n - 1 - q % n; break;
+	case 2: { int per = n > 1 ? 2 * n - 2 : 1, r = q % per; idx = r < n ? r : per - r; break; }
+	default: idx = rndi(n); break;
+	}
+	float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+	voice_note(c, ch, notes[idx], (q % n == 0 ? 0.85f : 0.65f) + 0.1f * rnd(), (float)div * step_s * 0.6f);
+}
+/* the held voices in arp mode: struck, falling away, each in its own render's terms */
+static void arp_held_control(chan *c, int ch, float dt, float tone, float len)
+{
+	(void)ch;
+	int nv = c->voice == GV_DRONE ? 2 : c->voice == GV_PAD ? 4 : 3;
+	float dec = expmap(len, 0.15f, 1.2f);
+	for (int i = 0; i < nv; i++) {
+		nvoice *v = &c->v[i];
+		if (v->stage == ST_IDLE && v->amp == 0.0f) {
+			v->ainc = v->iinc = 0.0f;
+			continue;
+		}
+		nv_perc(v, 0.004f, dec / speed, 0.15f / speed, 0.3f + 1.5f * tone, dt);
+		float hz = mtof(v->note) * speed * pbend;
+		switch (c->voice) {
+		case GV_PAD:
+		case GV_DRONE:
+			nv_pitch(v, v->note);
+			break;
+		case GV_SWELL:
+			nv_pitch(v, v->note);
+			v->ic2 = hz_inc(hz * 1.004f);
+			break;
+		case GV_SUPER: {
+			v->ic = hz_inc(hz * 1.003f);
+			v->ic2 = hz_inc(hz / 1.003f);
+			v->im = hz_inc(hz);
+			v->ic3 = hz_inc(hz * 1.007f);
+			v->ic4 = hz_inc(hz / 1.007f);
+			float fc = clampf((400.0f + 5000.0f * tone * tone * (0.3f + 0.7f * v->menv)) * fexp2((v->note - 60.0f) * (1.0f / 48.0f)), 1.5f * hz, 5200.0f);
+			v->fk = clampf(fc * (6.2832f / VSR), 0.02f, 0.9f);
+			v->amp *= 1.0f;
+			v->ainc *= 0.63f;                  /* (its five saws: a little under the rest) */
+			break;
+		}
+		default: {                             /* strings: as its render (PWM by default) wants */
+			int m = alt_m[GV_STRINGS];
+			v->ic = hz_inc(hz);
+			v->ic2 = m == 1 ? hz_inc(hz * 2.0f) : hz_inc(hz / 1.0035f);
+			v->bend = 0.4f;
+			float fc = clampf((350.0f + 2600.0f * tone * tone * (0.3f + 0.7f * v->menv)) * fexp2((v->note - 60.0f) * (1.0f / 24.0f)), 1.5f * hz, 5000.0f);
+			v->fk = m == 1 ? clampf(fc * (6.2832f / VSR), 0.05f, 0.85f) : clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.01f, 0.8f);
+			v->fq = 0.25f;
+			v->ainc *= 0.5f;
+			break;
+		}
+		}
+	}
 }
 
 /* ---- textures, at 24 kHz into the dry mix ---- */

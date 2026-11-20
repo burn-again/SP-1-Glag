@@ -29,7 +29,11 @@
  *                           1: F1-F4 each channel's stagger    2: each channel's loop (x1/4..x4)
  *                           3: arrangement, length, fills, how full   4: randomness: settings,
  *                              the macros' pace, key travel, straying
- *                        T2 arp mode (planned)
+ *                        T2 arp mode: on, off (each taken on the next bar): every channel but the
+ *                           drums played by one arp in its own voice, at its shortest decay and
+ *                           sustain. F1 octaves (1-4), F2 pattern (up, down, up-down, random),
+ *                           F3 division (16ths, 8ths, dotted 8ths, quarters), F4 spread (0: all on
+ *                           the same note at once; up: each further along; past 2/3 half speed)
  *                        T3 pump: on (page 1), page 2, off
  *                           1: depth, release, bend, drums (down: the pump goes on without them)
  *                           2: master compressor, rhythm (kick, beats, eighths, half bars),
@@ -104,7 +108,7 @@ typedef struct {
 	uint8_t reverb, shimmer;  /* enum gl_reverb, enum gl_shimmer */
 	uint8_t macro[4];        /* each channel's macro depth, 0 off .. 4 */
 	float macro_period[4];   /* and its glide, in seconds */
-	/* Playworld: song mode (0 off, 1-4 its page), arp (not yet), pump (0 off, 1-2), texture
+	/* Playworld: song mode (0 off, 1-4 its page), arp (0/1), pump (0 off, 1-2), texture
 	 * (0 off, 1 rain .. 4 surf), and which of the four the faders follow (-1: none) */
 	uint8_t world_song, world_arp, world_pump, world_tex;
 	int8_t world_focus;

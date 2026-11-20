@@ -245,6 +245,11 @@ int main(void)
 		CHECK(out.world_tex == 2 && out.led_t[2] > 0 && out.led_t[2] < 255, "T4 again: vinyl, light 3 dim (%d)", out.led_t[2]);
 		tap(GB_T1); run(300);
 		CHECK(out.world_song == 2 && out.world_focus == 0, "T1 while song is on elsewhere: just the focus back (page %d)", out.world_song);
+		tap(GB_T2); run(1100);
+		CHECK(out.world_arp == 1 && out.world_focus == 1 && out.led_t[1] == 255, "T2: arp mode on, its light bright");
+		CHECK(fabsf(glui_target(0, 0) - 1.0f / 3.0f) < 1e-6f, "arp F1: octaves (2 of 4)");
+		tap(GB_T2); run(1100);
+		CHECK(out.world_arp == 0, "T2 again: arp mode off");
 		tap(GB_T3); run(300);
 		CHECK(out.world_pump == 1 && out.world_focus == 2, "T3: the pump on");
 		tap(GB_T3); tap(GB_T3); run(1100);

@@ -69,6 +69,7 @@ static float wv_song[4][4] = {{0.0f, 0.0f, 0.0f, 0.0f}, {0.5f, 0.5f, 0.5f, 0.5f}
 static float wv_pump[2][4] = {{0.6f, 1.0f / 3.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 0.0f}};
 static float wv_tex[5][4] = {{0}, {0.5f, 0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f, 0.5f},
                              {0.5f, 0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f, 0.5f}};
+static float wv_arp[4] = {1.0f / 3.0f, 0.0f, 1.0f / 3.0f, 0.0f};   /* octaves, pattern, division, spread */
 static float w_sink;                            /* the faders' target when nothing is focused */
 static uint32_t w_anim_t0;
 static int w_anim_from, w_anim_to, w_anim_kind;  /* 0 none, 1 glide to a page, 2 fade out, 3 not yet */
@@ -140,6 +141,9 @@ static target map(int f, int shift)
 				t.steps = 5;                          /* loops: x1/4 .. x4 */
 			else if (w_song == 3 && f < 2)
 				t.steps = f == 0 ? 3 : 5;             /* arrangement; length 4..32 bars */
+		} else if (w_focus == 1 && w_arp) {
+			t.val = &wv_arp[f];
+			t.steps = f < 3 ? 4 : 0;                  /* 1-4 octaves; up, down, up-down, random; 16th .. quarter */
 		} else if (w_focus == 2 && w_pump) {
 			t.val = &wv_pump[w_pump - 1][f];
 			if (w_pump == 2 && f == 1)
@@ -173,6 +177,9 @@ static void world_apply(int sec, int pg, int f)
 			static const int R[4] = {GW_RND_SET, GW_RND_MAC, GW_RND_KEY, GW_RND_STRAY};
 			gl_world(R[f], v);
 		}
+	} else if (sec == 1) {
+		static const int A[4] = {GW_ARP_OCT, GW_ARP_PAT, GW_ARP_DIV, GW_ARP_SPREAD};
+		gl_world(A[f], wv_arp[f]);
 	} else if (sec == 2) {
 		float v = wv_pump[pg][f];
 		static const int P0[4] = {GW_PUMP, GW_PUMP_REL, GW_PUMP_BEND, GW_PUMP_DRUMS};
@@ -201,6 +208,9 @@ static void world_apply_all(int sec)
 	else if (sec == 3)
 		for (int f = 0; f < 4; f++)
 			world_apply(3, 0, f);
+	else if (sec == 1)
+		for (int f = 0; f < 4; f++)
+			world_apply(1, 0, f);
 }
 /* the light that shows a section's page (its own T on its first page) */
 static int world_page_light(int sec)
@@ -220,16 +230,12 @@ static void world_anim(int kind, int from, int to, uint32_t now)
 	w_anim_to = to;
 	w_anim_t0 = now;
 }
-static int world_any_on(void) { return w_song || w_pump || w_tex; }
+static int world_any_on(void) { return w_song || w_arp || w_pump || w_tex; }
 /* T1..T4 on Playworld */
 static void world_press(int t, uint32_t now, const gl_input *in)
 {
-	int *st = t == 0 ? &w_song : t == 2 ? &w_pump : &w_tex;
-	int n = t == 0 ? 5 : t == 2 ? 3 : 5;
-	if (t == 1) {                                    /* arp mode: planned */
-		world_anim(3, 1, 1, now);
-		return;
-	}
+	int *st = t == 0 ? &w_song : t == 1 ? &w_arp : t == 2 ? &w_pump : &w_tex;
+	int n = t == 0 ? 5 : t == 1 ? 2 : t == 2 ? 3 : 5;
 	if (*st && w_focus != t) {                       /* on already: just bring the faders here */
 		w_focus = t;
 		world_anim(1, t, world_page_light(t), now);
@@ -239,6 +245,8 @@ static void world_press(int t, uint32_t now, const gl_input *in)
 	*st = (*st + 1) % n;
 	if (t == 0)
 		gl_world(GW_SONG, w_song ? 1.0f : 0.0f);
+	else if (t == 1)
+		gl_world(GW_ARP, w_arp ? 1.0f : 0.0f);      /* (taken on the next bar) */
 	else if (t == 2 && !w_pump)
 		gl_world(GW_PUMP, 0.0f);
 	else if (t == 3 && !w_tex)
@@ -252,7 +260,7 @@ static void world_press(int t, uint32_t now, const gl_input *in)
 		world_anim(1, t, world_page_light(t), now);
 	} else {
 		world_anim(2, t, t, now);
-		w_focus = w_song ? 0 : w_pump ? 2 : w_tex ? 3 : -1;
+		w_focus = w_song ? 0 : w_arp ? 1 : w_pump ? 2 : w_tex ? 3 : -1;
 	}
 	uncatch_all(in);
 }
@@ -497,6 +505,19 @@ static void shuffle_settings(void)
 	} else {
 		w_pump = 0;
 		gl_world(GW_PUMP, 0.0f);
+	}
+	/* arp mode, once in a while */
+	if (urand() < 0.15f) {
+		wv_arp[0] = (float)irand(4) / 3.0f;
+		wv_arp[1] = (float)irand(4) / 3.0f;
+		wv_arp[2] = (float)irand(3) / 3.0f;
+		wv_arp[3] = urand();
+		w_arp = 1;
+		gl_world(GW_ARP, 1.0f);
+		world_apply_all(1);
+	} else {
+		w_arp = 0;
+		gl_world(GW_ARP, 0.0f);
 	}
 	/* a texture, now and then */
 	if (urand() < 0.3f) {
@@ -1008,7 +1029,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				*t.val = p;
 				if (page == PG_WORLD && !layer_shift) {
 					if (t.val != &w_sink)
-						world_apply(w_focus, w_focus == 0 ? w_song - 1 : w_focus == 2 ? w_pump - 1 : 0, f);
+						world_apply(w_focus, w_focus == 0 ? w_song - 1 : w_focus == 2 ? w_pump - 1 : 0, f);   /* (arp, textures: one page) */
 				} else
 					dirty = 1;
 			}

@@ -153,7 +153,10 @@ enum gl_world_what { GW_FORM, GW_FORM_BARS, GW_KEY_MIN, GW_KEY_KIND, GW_PUMP, GW
                       * rhythm (0 the kick, 1 beats, 2 eighths, 3 half bars), how much the space
                       * ducks, how much bass and held voices are spared */
                      GW_PUMP_REL, GW_PUMP_BEND, GW_PUMP_DRUMS, GW_PUMP_RHYTHM, GW_PUMP_SPACE, GW_PUMP_SPARE,
-                     GW_KEY_HOLD /* 1: the key stays the piece's own, whatever key travel or song mode say (the album) */ };
+                     GW_KEY_HOLD /* 1: the key stays the piece's own, whatever key travel or song mode say (the album) */,
+                     /* arp mode (T2): on/off (taken on the next bar), octaves, pattern (up, down,
+                      * up-down, random), division (16ths, 8ths, dotted 8ths, quarters), spread */
+                     GW_ARP, GW_ARP_OCT, GW_ARP_PAT, GW_ARP_DIV, GW_ARP_SPREAD };
 /* per channel (or per texture control): song mode's stagger and loop length (0..4: x1/4 .. x4),
  * the chosen texture's three controls past its level */
 enum gl_world_ch_what { GWC_STAGGER, GWC_LOOP, GWC_TEXP };
