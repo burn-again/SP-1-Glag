@@ -114,6 +114,14 @@ int main(int argc, char **argv)
 	if (getenv("DISTSWEEP"))   /* DISTSWEEP=type,post: amounts 1, 2, 3, 4 across the render */
 		sscanf(getenv("DISTSWEEP"), "%d,%d", &sweep_t, &sweep_p);
 	float fz0 = -1.0f, fz1 = -1.0f;
+	float crank[16];                          /* CRANK=t1,t2,...: RWD taps (the crank), in seconds */
+	int ncrank = 0;
+	if (getenv("CRANK")) {
+		char buf[256];
+		snprintf(buf, sizeof buf, "%s", getenv("CRANK"));
+		for (char *t = strtok(buf, ","); t && ncrank < 16; t = strtok(0, ","))
+			crank[ncrank++] = (float)atof(t);
+	}
 	float song_on = -1.0f, song_off = -1.0f;   /* SONG=on,off in seconds: song mode switched as the UI does */
 	if (getenv("SONG"))
 		sscanf(getenv("SONG"), "%f,%f", &song_on, &song_off);
@@ -135,6 +143,11 @@ int main(int argc, char **argv)
 		}
 		if (fz0 >= 0.0f)
 			gl_freeze((float)n / 48000.0f >= fz0 && (float)n / 48000.0f < fz1);
+		for (int k = 0; k < ncrank; k++)
+			if (crank[k] >= 0.0f && (float)n / 48000.0f >= crank[k]) {
+				gl_crank();
+				crank[k] = -1.0f;
+			}
 		if (song_on >= 0.0f && (float)n / 48000.0f >= song_on) {
 			gl_world(GW_SONG, 1.0f);
 			song_on = -1.0f;

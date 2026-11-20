@@ -72,8 +72,21 @@ static inline void tape_tick(float in, float *el, float *er)
 		tp.wow -= tp.wow >= 1.0f ? 1.0f : 0.0f;
 		/* the wow, less on a short loop (on the string, a cycle's length, it would detune it) */
 		float wl = tp.len < 400.0f ? tp.len * (1.0f / 400.0f) : 1.0f;
-		float w = 1.5f * wl * sin_u((uint32_t)(tp.wow * 4294967296.0f));
+		static float wsc = 1.0f;                     /* the wow fades out as the loop is held (~125 ms) */
+		wsc += ((tp_hold ? 0.0f : 1.0f) - wsc) * 0.001f;
+		float w = 1.5f * wl * wsc * sin_u((uint32_t)(tp.wow * 4294967296.0f));
 		float h1 = tape_rd(tp.len + w), h2 = tape_rd((w_pingpong ? 0.5f : 0.75f) * tp.len - w);
+		if (tp_hold) {
+			/* frozen: the loop goes round as it is, nothing in, nothing lost, no wow to smear it */
+			tp.w++;
+			TAPE_PUT(tp.w & (TAPE_N - 1u), h1);
+			tp.acc = 0.0f;
+			tp.l0 = tp.l1;
+			tp.r0 = tp.r1;
+			tp.l1 = h1;
+			tp.r1 = h2;
+			goto out;
+		}
 		/* ping-pong (Playworld) and the string: only the long head feeds back, so each repeat
 		 * crosses sides (the string: one comb, its other head a fourth above) */
 		int one = w_pingpong || tp.string;
@@ -90,6 +103,7 @@ static inline void tape_tick(float in, float *el, float *er)
 		tp.l1 = h1;
 		tp.r1 = h2;
 	}
+out:;
 	float f = (float)tp.ph * (1.0f / 3.0f);
 	*el = tp.l0 + (tp.l1 - tp.l0) * f;
 	*er = tp.r0 + (tp.r1 - tp.r0) * f;

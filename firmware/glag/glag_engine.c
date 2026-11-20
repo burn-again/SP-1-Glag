@@ -241,6 +241,8 @@ static float pbend = 1.0f;                 /* pitch only (Playworld's pump bends
 static uint32_t lfo_vib, lfo_arc1, lfo_arc2, lfo_trem;
 static uint8_t playing = 1, frozen, slowing;
 static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 while frozen */
+static float crank_open;                   /* a crank while frozen: the space open to it a moment */
+static int tp_hold;                        /* frozen: the tape loop holds what it has */
 
 /* ================================================================ harmony */
 
@@ -1987,13 +1989,13 @@ static void chan_control(chan *c, int ch, float dt)
 		float spread = fexp2((4.0f + 14.0f * chr) * (1.0f / 1200.0f));   /* swell's second carrier */
 		for (int i = 0; i < NV; i++) {
 			nvoice *v = &c->v[i];
-			if (!frozen) {
+			{	/* (frozen: the breaths under way finish; no new one starts) */
 				if (v->stage == ST_IDLE) {
 					c->gap[i] -= sdt;
-					if (c->gap[i] <= 0.0f && playing && i < nv &&
+					if (c->gap[i] <= 0.0f && playing && !frozen && i < nv &&
 					    budget_used() + weight(c->voice) > fm_cap) {
 						c->gap[i] = 0.5f;                /* no room: breathe a little later */
-					} else if (c->gap[i] <= 0.0f && playing && i < nv) {
+					} else if (c->gap[i] <= 0.0f && playing && !frozen && i < nv) {
 						/* breathe in on this voice's tone of the chord */
 						int pc = chord_pc[i % chord_n];
 						float from = v->note > 0.0f ? v->note : (float)(base + 3 * i);
@@ -2205,7 +2207,7 @@ static void chan_control(chan *c, int ch, float dt)
 				v->env = 1.0f;
 				v->stage = ST_DEC;
 			}
-		} else if (v->stage == ST_DEC && !frozen) {
+		} else if (v->stage == ST_DEC) {
 			v->hold -= sdt;
 			if (v->hold <= 0.0f) {
 				if (playing && rnd() < 0.25f + 0.3f * eff_activity(ch))
@@ -2317,7 +2319,7 @@ static void chan_control(chan *c, int ch, float dt)
 	case GV_HARPSI:
 		/* the dampers falling on notes whose time is up */
 		for (int k = 0; k < KS_N; k++)
-			if (c->ks_len[k] && c->ks_hold[k] > 0.0f && !frozen) {
+			if (c->ks_len[k] && c->ks_hold[k] > 0.0f) {
 				c->ks_hold[k] -= sdt;
 				if (c->ks_hold[k] <= 0.0f) {
 					c->ks_hold[k] = 0.0f;
@@ -2365,8 +2367,7 @@ static void chan_control(chan *c, int ch, float dt)
 					v->stage = ST_DEC;
 				}
 			} else if (v->stage == ST_DEC) {
-				if (!frozen)
-					v->hold -= sdt;
+				v->hold -= sdt;
 				if (v->hold <= 0.0f)
 					v->stage = ST_REL;
 			} else if (v->stage == ST_REL) {
@@ -2400,8 +2401,8 @@ static void chan_control(chan *c, int ch, float dt)
 				v->env = 1.0f;
 				v->stage = ST_DEC;
 			}
-		} else if (v->stage == ST_DEC && !frozen) {
-			v->env *= dcoef(playing ? dec : 2.0f, sdt);
+		} else if (v->stage == ST_DEC) {
+			v->env *= dcoef(playing && !frozen ? dec : 2.0f, sdt);
 			if (v->env < 0.0005f) {
 				v->env = 0.0f;
 				v->stage = ST_IDLE;
@@ -2497,7 +2498,7 @@ static void chan_control(chan *c, int ch, float dt)
 		}
 		break;
 	case GV_SHIMMER: {
-		if (c->echo_at > 0.0f && !frozen) {
+		if (c->echo_at > 0.0f) {
 			c->echo_at -= sdt;
 			if (c->echo_at <= 0.0f && playing) {
 				nvoice *v = alloc_from(c, 2, 2);
@@ -3644,6 +3645,7 @@ static void control(float dt)
 	 * plays, a bar at most, played now */
 	while (cmd_crank != seen_crank) {
 		seen_crank++;
+		crank_open = 0.5f;                    /* frozen: the space takes this note in, then holds again */
 		uint32_t before = notes_fired;
 		for (int k = 0; k < 16 && notes_fired == before; k++)
 			clock_step(1);
@@ -3657,7 +3659,10 @@ static void control(float dt)
 
 	/* the space (the patch-dependent parts are in derive()) */
 	space_control(dt, freeze_changed);
-	freeze_in += ((frozen ? 0.0f : 1.0f) - freeze_in) * k_freeze;
+	if (crank_open > 0.0f)
+		crank_open -= dt;
+	tp_hold = frozen && crank_open <= 0.0f;      /* the echo's loop held, as the reverb is */
+	freeze_in += ((frozen && crank_open <= 0.0f ? 0.0f : 1.0f) - freeze_in) * k_freeze;
 	gl_playing = playing;
 	gl_frozen = frozen;
 }
