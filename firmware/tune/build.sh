@@ -25,7 +25,7 @@ page = open('tuner.html').read()
 page = page.replace('@@WASM@@', json.dumps({k: base64.b64encode(open('build/kit%s.wasm' % k, 'rb').read()).decode() for k in ('12', '16', '24')}))
 page = page.replace('@@PARAMS@@', json.dumps([list(p) for p in P]))
 page = page.replace('@@PIECES@@', json.dumps(pieces))
-page = page.replace('@@TUNINGS@@', json.dumps([['Firmware', 'GK1']] + [[n, c] for n, c in TUNINGS]))
+page = page.replace('@@TUNINGS@@', json.dumps([['Glag (the firmware\'s)', 'GK1']] + [[t[0], t[1]] for t in TUNINGS]))
 open('build/glag-kit-tuner.html', 'w').write(page)
 print('pieces', pieces)
 PY

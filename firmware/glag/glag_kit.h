@@ -151,7 +151,7 @@ static int kit_deg(int d)
 static float kit_hz(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
 
 /* ---- the tuning: every number the Kit tuning page reaches (gl_kit_tune), at the firmware's
- * defaults (generated from the page's table, tune/params.py: keep the two in step) ---- */
+ * defaults (written by tune/gen_tunings.py from tune/params.py: edit that) ---- */
 enum {
 	KT_L_KICK,
 	KT_L_SNARE,
@@ -261,56 +261,56 @@ enum {
 	KT_COUNT
 };
 static float KT[KT_COUNT] = {
-	1.0f,   /* L_KICK: Levels Kick */
-	1.0f,   /* L_SNARE: Levels Snare */
+	1.5f,   /* L_KICK: Levels Kick */
+	0.35f,   /* L_SNARE: Levels Snare */
 	1.0f,   /* L_HAT: Levels Hats */
-	1.0f,   /* L_CLANK: Levels Clank */
-	1.0f,   /* L_TISSUE: Levels Tissue */
-	1.0f,   /* L_NORD: Levels Nord */
-	1.0f,   /* L_ROLL: Levels Roll */
-	1.0f,   /* L_TOMS: Levels Toms */
-	1.0f,   /* OUT: Levels Whole kit */
-	0.0f,   /* K_PITCH: Kick Pitch */
+	0.8f,   /* L_CLANK: Levels Clank */
+	0.65f,   /* L_TISSUE: Levels Tissue */
+	0.7f,   /* L_NORD: Levels Nord */
+	0.35f,   /* L_ROLL: Levels Roll */
+	1.2f,   /* L_TOMS: Levels Toms */
+	0.7f,   /* OUT: Levels Whole kit */
+	-2.5f,   /* K_PITCH: Kick Pitch */
 	1.0f,   /* K_TUNED: Kick Follow the chord */
-	1.0f,   /* K_DECAY: Kick Decay */
+	3.0f,   /* K_DECAY: Kick Decay */
 	1.0f,   /* K_SLACK: Kick Slack (pitch bend) */
-	1.0f,   /* K_CLICK: Kick Click */
-	0.0f,   /* S_PITCH: Snare Pitch */
+	0.9f,   /* K_CLICK: Kick Click */
+	-15.0f,   /* S_PITCH: Snare Pitch */
 	1.0f,   /* S_TUNED: Snare Follow the chord */
 	1.0f,   /* S_DECAY: Snare Decay */
-	1.0f,   /* S_NOISE: Snare Noise (wires) */
-	1.0f,   /* S_CRUNCH: Snare Crunch */
-	1.0f,   /* S_GHOSTS: Snare Ghost notes */
-	1.0f,   /* S_SQUASH: Snare Squash chance */
+	1.1f,   /* S_NOISE: Snare Noise (wires) */
+	0.6f,   /* S_CRUNCH: Snare Crunch */
+	2.5f,   /* S_GHOSTS: Snare Ghost notes */
+	2.0f,   /* S_SQUASH: Snare Squash chance */
 	1.0f,   /* H_DECAY: Hats Decay */
-	1.0f,   /* H_BAND: Hats Band */
+	1.5f,   /* H_BAND: Hats Band */
 	1.0f,   /* H_SHIFT: Hats Frequency shift */
-	1.0f,   /* H_DARK: Hats Long hat darkening */
+	0.9f,   /* H_DARK: Hats Long hat darkening */
 	0.25f,   /* H_OPEN: Hats Open hat chance */
-	1.0f,   /* C_DECAY: Clank Decay */
-	1.0f,   /* C_INDEX: Clank FM index */
+	2.5f,   /* C_DECAY: Clank Decay */
+	0.8f,   /* C_INDEX: Clank FM index */
 	0.0f,   /* C_OCT: Clank Octave */
 	1.0f,   /* C_RATE: Clank How often */
 	1.0f,   /* T_LEN: Tissue Stroke length */
-	1.0f,   /* T_DENS: Tissue Crackle density */
-	1.0f,   /* N_DECAY: Nord Decay */
-	1.0f,   /* N_SWEEP: Nord Sync sweep */
+	1.5f,   /* T_DENS: Tissue Crackle density */
+	1.5f,   /* N_DECAY: Nord Decay */
+	2.0f,   /* N_SWEEP: Nord Sync sweep */
 	0.0f,   /* N_OCT: Nord Octave */
-	1.0f,   /* N_CUT: Nord Cutoff */
-	1.0f,   /* R_SPEED: Roll Speed */
-	1.0f,   /* R_HITS: Roll Hits */
-	1.0f,   /* R_CRUSH: Roll Crush */
+	0.9f,   /* N_CUT: Nord Cutoff */
+	1.3f,   /* R_SPEED: Roll Speed */
+	1.3f,   /* R_HITS: Roll Hits */
+	1.2f,   /* R_CRUSH: Roll Crush */
 	1.0f,   /* TOM_DECAY: Toms Decay */
-	1.0f,   /* TOM_FILL: Toms Fill chance */
+	3.0f,   /* TOM_FILL: Toms Fill chance */
 	3.0f,   /* F_PRESS: Feel Press every */
 	3.0f,   /* F_LONG: Feel Long snare every */
 	3.0f,   /* F_HATACC: Feel Hat accent every */
 	1.0f,   /* F_THREES: Feel Bar-4 kick in threes */
-	0.6f,   /* F_SHORT: Feel Normal hit length */
+	0.5f,   /* F_SHORT: Feel Normal hit length */
 	1.1f,   /* F_LONGX: Feel Long hit length */
 	1.5f,   /* F_ACCX: Feel Accent length */
-	1.0f,   /* F_DYN: Feel Macro dynamics */
-	6.0f,   /* COL: Colour Colour */
+	2.0f,   /* F_DYN: Feel Macro dynamics */
+	2.0f,   /* COL: Colour Colour */
 	250.0f,   /* SOG_BASE: Colour Soggy: resting cutoff */
 	4.5f,   /* SOG_REACH: Colour Soggy: how far it opens */
 	30.0f,   /* SOG_CLOSE: Colour Soggy: close time */
@@ -324,29 +324,29 @@ static float KT[KT_COUNT] = {
 	0.62f,   /* COMB_FB: Colour Comb-soggy: feedback */
 	0.35f,   /* COMB_DAMP: Colour Comb-soggy: brightness */
 	250.0f,   /* LOW_HZ: Colour Comb-soggy: low split */
-	0.35f,   /* K_MODES: Kick Skin modes */
+	0.33f,   /* K_MODES: Kick Skin modes */
 	1.0f,   /* K_SPREAD: Kick Mode spread */
 	0.0f,   /* E_KICK_A: Kick Env attack */
 	0.0f,   /* E_KICK_D: Kick Env decay */
 	1.0f,   /* E_KICK_S: Kick Env sustain */
 	2000.0f,   /* E_KICK_G: Kick Env gate */
 	20.0f,   /* E_KICK_R: Kick Env release */
-	0.0f,   /* E_SNARE_A: Snare Env attack */
-	0.0f,   /* E_SNARE_D: Snare Env decay */
-	1.0f,   /* E_SNARE_S: Snare Env sustain */
-	2000.0f,   /* E_SNARE_G: Snare Env gate */
-	20.0f,   /* E_SNARE_R: Snare Env release */
-	0.0f,   /* E_HAT_A: Hats Env attack */
+	17.0f,   /* E_SNARE_A: Snare Env attack */
+	220.0f,   /* E_SNARE_D: Snare Env decay */
+	0.5f,   /* E_SNARE_S: Snare Env sustain */
+	1100.0f,   /* E_SNARE_G: Snare Env gate */
+	1200.0f,   /* E_SNARE_R: Snare Env release */
+	100.0f,   /* E_HAT_A: Hats Env attack */
 	0.0f,   /* E_HAT_D: Hats Env decay */
 	1.0f,   /* E_HAT_S: Hats Env sustain */
 	2000.0f,   /* E_HAT_G: Hats Env gate */
 	20.0f,   /* E_HAT_R: Hats Env release */
-	0.0f,   /* E_CLANK_A: Clank Env attack */
+	150.0f,   /* E_CLANK_A: Clank Env attack */
 	0.0f,   /* E_CLANK_D: Clank Env decay */
 	1.0f,   /* E_CLANK_S: Clank Env sustain */
 	2000.0f,   /* E_CLANK_G: Clank Env gate */
 	20.0f,   /* E_CLANK_R: Clank Env release */
-	0.0f,   /* E_TISSUE_A: Tissue Env attack */
+	100.0f,   /* E_TISSUE_A: Tissue Env attack */
 	0.0f,   /* E_TISSUE_D: Tissue Env decay */
 	1.0f,   /* E_TISSUE_S: Tissue Env sustain */
 	2000.0f,   /* E_TISSUE_G: Tissue Env gate */
@@ -356,10 +356,10 @@ static float KT[KT_COUNT] = {
 	1.0f,   /* E_NORD_S: Nord Env sustain */
 	2000.0f,   /* E_NORD_G: Nord Env gate */
 	20.0f,   /* E_NORD_R: Nord Env release */
-	0.0f,   /* E_ROLL_A: Roll Env attack */
+	100.0f,   /* E_ROLL_A: Roll Env attack */
 	0.0f,   /* E_ROLL_D: Roll Env decay */
 	1.0f,   /* E_ROLL_S: Roll Env sustain */
-	2000.0f,   /* E_ROLL_G: Roll Env gate */
+	440.0f,   /* E_ROLL_G: Roll Env gate */
 	20.0f,   /* E_ROLL_R: Roll Env release */
 	0.0f,   /* E_TOMS_A: Toms Env attack */
 	0.0f,   /* E_TOMS_D: Toms Env decay */
@@ -368,11 +368,11 @@ static float KT[KT_COUNT] = {
 	20.0f,   /* E_TOMS_R: Toms Env release */
 };
 /* @@KIT_TUNINGS (written by tune/gen_tunings.py from tune/tunings.py: edit those) */
-#define KIT_NTUNE 6
-static const char *const KIT_TUNE_NAME[KIT_NTUNE] = {"Firmware", "Cumbia Bell", "Brush Boom", "Brush Comb", "Brush Comb Wet", "Drill Shimmer"};
+#define KIT_NTUNE 7
+static const char *const KIT_TUNE_NAME[KIT_NTUNE] = {"Glag", "Cumbia Bell", "Brush Boom", "Brush Comb", "Brush Comb Wet", "Drill Shimmer", "Soggy"};
 static const float KIT_TUNE[KIT_NTUNE][KT_COUNT] = {
-	{ /* Firmware */
-		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.6f, 1.1f, 1.5f, 1.0f, 6.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
+	{ /* Glag */
+		1.5f, 0.35f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 2.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
 	{ /* Cumbia Bell */
 		2.81f, 0.22f, 0.68f, 1.11f, 0.78f, 1.26f, 1.0f, 0.72f, 0.73f, -9.1f, 1.0f, 2.08f, 1.27f, 1.0f, -16.0f, 1.0f, 1.0f, 1.0f, 1.0f, 10.0f, 4.15f, 2.43f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 0.72f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 2.0f, 3.0f, 1.0f, 1.0f, 0.3f, 5.0f, 0.57f, 5.73f, 2.0f, 426.0f, 3.4f, 134.0f, 0.15f, 5.74f, 0.49f, 1.87f, 0.08f, 0.64f, 16.86f, 0.06f, 1.0f, 189.0f, 0.37f, 1.02f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.99f, 2000.0f, 221.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 16.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 20.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f},
 	{ /* Brush Boom */
@@ -383,21 +383,66 @@ static const float KIT_TUNE[KIT_NTUNE][KT_COUNT] = {
 		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 443.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 20.0f, 0.85f, 0.19f, 745.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
 	{ /* Drill Shimmer */
 		1.28f, 0.32f, 1.08f, 0.76f, 0.62f, 0.56f, 0.36f, 1.77f, 0.32f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.9f, 1.0f, 0.57f, 1.27f, 0.39f, 2.69f, 1.2f, 0.66f, 1.89f, 1.1f, 0.9f, 0.25f, 4.67f, 0.65f, -1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 2.0f, 1191.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 0.28f, 0.21f, 1.0f, 745.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 426.0f, 17.0f, 219.0f, 0.48f, 1138.0f, 1228.0f, 127.0f, 1444.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 1580.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+	{ /* Soggy */
+		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.6f, 1.1f, 1.5f, 1.0f, 6.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
 };
+/* where the macro takes the Kit channel at each tuning: activity, tone, length, register,
+ * character (-1: busier, darker, longer, fuller than the piece has it) */
+static const float KIT_TUNE_TO[KIT_NTUNE][5] = {{1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}};
 /* @@END_KIT_TUNINGS */
 static int kit_tune_cur, kit_tune_lock;          /* (KT starts at tuning 0's values) */
+/* KT as the tuning has it (KTB); KT itself is that with the macro's morph on a few numbers */
+static float KTB[KT_COUNT];
+static uint8_t ktb_ok;
+static void ktb_init(void)
+{
+	if (!ktb_ok) {
+		for (int i = 0; i < KT_COUNT; i++)
+			KTB[i] = KT[i];
+		ktb_ok = 1;
+	}
+}
 static void kit_tuning(int t)
 {
 	if (t < 0 || t >= KIT_NTUNE)
 		t = 0;
 	for (int i = 0; i < KT_COUNT; i++)
-		KT[i] = KIT_TUNE[t][i];
+		KT[i] = KTB[i] = KIT_TUNE[t][i];
+	ktb_ok = 1;
 	kit_tune_cur = t;
+}
+/* the macro's morph (0 the tuning as it is, 1 its far end): the numbers that move with it, all
+ * together with the Kit channel's controls (kit_macro): the kick, the hats, the clank and the Nord
+ * ring longer, more ghosts and tom fills, the hats darker and swelling in */
+static const struct { uint8_t id; float mul, add; } KMORPH[] = {
+	{KT_K_DECAY, 0.5f, 0.0f}, {KT_H_DECAY, 1.0f, 0.0f}, {KT_C_DECAY, 1.0f, 0.0f}, {KT_N_DECAY, 0.6f, 0.0f},
+	{KT_S_GHOSTS, 1.0f, 0.0f}, {KT_TOM_FILL, 1.5f, 0.0f}, {KT_H_BAND, -0.25f, 0.0f}, {KT_E_HAT_A, 0.0f, 120.0f},
+};
+static void kit_morph(float m)
+{
+	ktb_init();
+	for (unsigned i = 0; i < sizeof KMORPH / sizeof KMORPH[0]; i++)
+		KT[KMORPH[i].id] = KTB[KMORPH[i].id] * (1.0f + KMORPH[i].mul * m) + KMORPH[i].add * m;
+}
+/* the macro on a Kit channel (from macro_tick): one movement, not several. Its glide (u, -1..1) at
+ * its depth d gives the morph m; the channel's activity, tone, length, register and character move
+ * together toward the tuning's far end (KIT_TUNE_TO), and the numbers above with them */
+static void kit_macro(int c, float d, float u)
+{
+	const float m = d * (0.5f + 0.5f * u);
+	const float *to = KIT_TUNE_TO[kit_tune_cur];
+	static const uint8_t CPS[5] = {CP_ACTIVITY, CP_TONE, CP_LENGTH, CP_REGISTER, CP_CHAR};
+	static const float REL[5] = {0.35f, -0.35f, 0.45f, 0.0f, 0.5f};
+	for (int i = 0; i < 5; i++) {
+		const float b = Pb.ch[c][CPS[i]], t = to[i] >= 0.0f ? to[i] : clampf(b + REL[i], 0.0f, 1.0f);
+		P.ch[c][CPS[i]] = b + (t - b) * m;
+	}
+	CH[c].kt.morph = m;
 }
 int gl_kit_ntunings(void) { return KIT_NTUNE; }
 const char *gl_kit_tuning_name(int t) { return KIT_TUNE_NAME[(unsigned)t < KIT_NTUNE ? t : 0]; }
 void gl_kit_tuning_lock(int on) { kit_tune_lock = on; }
-void gl_kit_tune(int id, float v) { if ((unsigned)id < KT_COUNT) KT[id] = v; }
+void gl_kit_tune(int id, float v) { if ((unsigned)id < KT_COUNT) { ktb_init(); KTB[id] = KT[id] = v; } }
 int gl_kit_tunes(void) { return KT_COUNT; }
 
 /* audition: only these lanes sound (and each one's own pattern runs whatever CHARACTER is) */
@@ -949,16 +994,45 @@ static void kit_color(chan *c, float *A)
 		}
 		k->c_d1 = d; k->c_lp1 = lp; k->c_w = w;
 	} else if (m == 2) {
-		ksvf f[3];
+		/* three two-pole resonators (y = a y1 - b y2 + g x) on the chord's tones in the C5 octave,
+		 * each ringing a bandwidth of f/167 (as the state-variable band-passes they replace), its peak
+		 * gain 6; set again only when the chord changes */
+		const uint16_t key = (uint16_t)(chord_pc[0] | chord_pc[1] << 4 | chord_pc[2] << 8);
+		if (key != k->c_rmask || k->c_rg[0] == 0.0f) {
+			k->c_rmask = key;
+			for (int j = 0; j < 3; j++) {
+				const float f = kit_hz(72 + chord_pc[j]), w = 6.2832f * f / KSR;
+				const float r = fexp2(-1.4427f * 3.1416f * f * 0.006f / KSR);       /* e^(-pi bw / sr) */
+				const float cw = sin_u((uint32_t)(w * (1.0f / 6.2832f) * 4294967296.0f) + 0x40000000u);
+				k->c_ra[j] = 2.0f * r * cw;
+				k->c_rb[j] = r * r;
+				/* |H| at the tone: 1 / ((1 - r) sqrt(1 - 2 r cos 2w + r^2)) */
+				const float c2 = 2.0f * cw * cw - 1.0f, q = 1.0f - 2.0f * r * c2 + r * r;
+				float sq = q > 0.0f ? q : 0.0f, y = 1.0f;
+				for (int it = 0; it < 6; it++)
+					y = 0.5f * (y + sq / y);                 /* (its square root) */
+				k->c_rg[j] = 6.0f * (1.0f - r) * y;
+			}
+		}
+		float y1[3], y2[3];
 		for (int j = 0; j < 3; j++)
-			f[j] = ksvf_set(ktan(kit_hz(72 + chord_pc[j]) / KSR), 0.006f);
+			y1[j] = k->c_r1[j], y2[j] = k->c_r2[j];
+		const float a0 = k->c_ra[0], a1 = k->c_ra[1], a2 = k->c_ra[2], b0 = k->c_rb[0], b1 = k->c_rb[1], b2 = k->c_rb[2];
+		const float g0 = k->c_rg[0], g1 = k->c_rg[1], g2 = k->c_rg[2];
 		for (uint32_t i = 0; i < KSUB; i++) {
-			float x = A[i] * 0.006f * 6.0f, sum = 0.0f, lp;
-			for (int j = 0; j < 3; j++)
-				sum += ksvf_run(&f[j], &k->c_r1[j], &k->c_r2[j], x, &lp);
-			A[i] = A[i] * 0.75f + sum * 0.9f;
+			const float x = A[i];
+			float n0 = a0 * y1[0] - b0 * y2[0] + g0 * x;
+			float n1 = a1 * y1[1] - b1 * y2[1] + g1 * x;
+			float n2 = a2 * y1[2] - b2 * y2[2] + g2 * x;
+			y2[0] = y1[0]; y1[0] = n0;
+			y2[1] = y1[1]; y1[1] = n1;
+			y2[2] = y1[2]; y1[2] = n2;
+			const float sum = n0 + n1 + n2;
+			A[i] = x * 0.75f + sum * 0.9f;
 			tail = tail > kabs(sum) ? tail : kabs(sum);
 		}
+		for (int j = 0; j < 3; j++)
+			k->c_r1[j] = y1[j], k->c_r2[j] = y2[j];
 	} else if (m == 3) {
 		const float inc0 = kit_hz(60 + chord_pc[0]) / KSR;
 		float ph = k->c_ph, e = k->c_env;
@@ -1074,22 +1148,25 @@ static int kit_env(kit_state *k, int s, float *eg)
 	const float A = e[0] * 0.001f, D = e[1] * 0.001f, S = e[2], G = e[3] * 0.001f, Rr = e[4] * 0.001f;
 	if (A <= 0.0f && S >= 0.999f && G >= 1.999f)
 		return 0;
+	/* its stages move once a millisecond; the level in between is a straight line */
 	float lvl = k->e_lvl[s], t = k->e_t[s];
 	uint8_t st = k->e_st[s];
-	const float dt = 1.0f / KSR;
-	const float ai = A > 0.0005f ? dt / A : 2.0f, di = D > 0.0005f ? (1.0f - S) * dt / D : 2.0f, ri = dt / (Rr > 0.0005f ? Rr : 0.0005f);
+	const float dt = 0.001f, l0 = lvl;
+	if (st >= 1 && st <= 3 && t >= G)
+		st = 4;                                           /* the gate shuts: release */
+	switch (st) {
+	case 1: lvl += A > 0.0005f ? dt / A : 2.0f; if (lvl >= 1.0f) { lvl = 1.0f; st = 2; } break;
+	case 2: lvl -= D > 0.0005f ? (1.0f - S) * dt / D : 2.0f; if (lvl <= S) { lvl = S; st = 3; } break;
+	case 3: lvl = S; break;
+	case 4: lvl -= dt / (Rr > 0.0005f ? Rr : 0.0005f); if (lvl <= 0.0f) { lvl = 0.0f; st = 5; } break;
+	default: break;
+	}
+	t += dt;
+	const float step = (lvl - l0) * (1.0f / (float)KSUB);
+	float v = l0;
 	for (uint32_t i = 0; i < KSUB; i++) {
-		if (st >= 1 && st <= 3 && t >= G)
-			st = 4;                                       /* the gate shuts: release */
-		switch (st) {
-		case 1: lvl += ai; if (lvl >= 1.0f) { lvl = 1.0f; st = 2; } break;
-		case 2: lvl -= di; if (lvl <= S) { lvl = S; st = 3; } break;
-		case 3: lvl = S; break;
-		case 4: lvl -= ri; if (lvl <= 0.0f) { lvl = 0.0f; st = 5; } break;
-		default: break;
-		}
-		t += dt;
-		eg[i] = lvl;
+		v += step;
+		eg[i] = v;
 	}
 	k->e_lvl[s] = lvl; k->e_t[s] = t; k->e_st[s] = st;
 	return 1;
@@ -1103,6 +1180,7 @@ static int kit_render12(chan *c, float *A)
 	int any = 0;
 	float eg[8][KSUB];
 	unsigned ea = 0;
+	kit_morph(k->morph);                                 /* (the macro's morph, this channel's) */
 	for (int s = 0; s < 8; s++)
 		ea |= (unsigned)kit_env(k, s, eg[s]) << s;
 	/* the hits waiting off the grid */
@@ -1382,6 +1460,21 @@ static int kit_render(chan *c, float *A)
 		lp += 0.62f * (b[i] - lp);
 		A[2 * i + 1] += lp;
 		p = b[i];
+	}
+	c->kt.up_prev = p;
+	c->kt.up_lp = lp;
+#elif KIT_KSUB * 3 == 48
+	/* 16 to 24 kHz: three out for every two in (at 2/3 and 1/3 of the way, then on the sample) */
+	float p = c->kt.up_prev, lp = c->kt.up_lp;
+	for (uint32_t i = 0, j = 0; i < KSUB; i += 2, j += 3) {
+		const float b0 = b[i], b1 = b[i + 1];
+		lp += 0.62f * (p + 0.6667f * (b0 - p) - lp);
+		A[j] += lp;
+		lp += 0.62f * (b0 + 0.3333f * (b1 - b0) - lp);
+		A[j + 1] += lp;
+		lp += 0.62f * (b1 - lp);
+		A[j + 2] += lp;
+		p = b1;
 	}
 	c->kt.up_prev = p;
 	c->kt.up_lp = lp;

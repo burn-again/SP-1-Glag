@@ -107,6 +107,8 @@ int main(int argc, char **argv)
 				p.chx[c] = (uint8_t)((d & 3) | ((v & 15) << 2));   /* (on a Kit: its groove, 0-10) */
 		}
 	}
+	if (getenv("KTUNE"))     /* KTUNE=n: the Kit's tuning (0 Glag, then the tuned ones; glag_kit.h) */
+		p.space[GL_SP_KIT] = (uint8_t)atoi(getenv("KTUNE"));
 	gl_post_patch(&p);
 	if (getenv("REVERB")) {   /* REVERB=type[,shimmer]: 0 Hall, 1 Chamber, 2 Shimmer, 3 Bloom */
 		int t = 0, sh = 0;
