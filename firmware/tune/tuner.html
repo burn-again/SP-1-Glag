@@ -1,0 +1,274 @@
+<title>Glag Kit Tuner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@600;700&display=swap">
+<style>
+/* Layout: a sticky transport (what plays) over a grid of parameter cards (what you tune), the code
+   at the foot of the transport so it is always one tap away. Same tokens as the Glag emulator. */
+:root { --bg:#e9ebee; --fg:#1f2329; --muted:#5e646e; --line:#cdd1d7; --panel:#f6f6f4; --led:#ff8a2a; --led-ink:#a8500f;
+  --changed:#2f6fb3; --track:#d7dadf;
+  --display:"Syne",system-ui,sans-serif; --text:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#15171a; --fg:#e6e7e9; --muted:#9aa0a8; --line:#30343a; --panel:#1f2226; --led:#ff9a45; --led-ink:#ffb06b; --changed:#7fb2ec; --track:#2b2f35; color-scheme:dark } }
+:root[data-theme="dark"] { --bg:#15171a; --fg:#e6e7e9; --muted:#9aa0a8; --line:#30343a; --panel:#1f2226; --led:#ff9a45; --led-ink:#ffb06b; --changed:#7fb2ec; --track:#2b2f35; color-scheme:dark }
+body { background:var(--bg); color:var(--fg); font-family:var(--text); font-size:14px; line-height:1.5; margin:0; }
+body::before { content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top, 0px); z-index:10; background:var(--panel); }
+.wrap { max-width:1180px; margin:0 auto; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+header.top { position:sticky; top:env(safe-area-inset-top, 0px); z-index:5; background:var(--panel); border-bottom:1px solid var(--line); }
+header.top .wrap { padding-block:12px; display:grid; gap:10px; }
+.row1 { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+h1 { font-family:var(--display); font-size:1.5rem; margin:0; line-height:1; }
+.eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--led-ink); }
+button, select { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:6px 11px; cursor:pointer; min-height:36px; }
+button.primary { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+button.on { border-color:var(--led); background:color-mix(in srgb, var(--led) 18%, var(--bg)); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid var(--led); outline-offset:2px; }
+.meter { width:70px; height:8px; border-radius:4px; background:var(--track); overflow:hidden; }
+.meter i { display:block; height:100%; width:0; background:var(--led); transition:width .08s; }
+.spacer { flex:1; }
+.ctl-strip { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap:6px 14px; }
+.mini { display:grid; gap:2px; min-width:0; }
+.mini label { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--muted); }
+.mini label b { font-family:var(--mono); font-weight:500; color:var(--fg); font-variant-numeric:tabular-nums; }
+input[type=range] { width:100%; accent-color:var(--led); margin:0; }
+.lanes { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.lanes span.l { font-size:12px; color:var(--muted); margin-right:4px; }
+.lanes button { min-height:30px; padding:3px 9px; font-size:12.5px; }
+.code { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:start; }
+.code output { font-family:var(--mono); font-size:12.5px; background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:7px 10px; overflow-wrap:anywhere; min-height:36px; user-select:all; }
+.code .btns { display:flex; gap:6px; flex-wrap:wrap; }
+main.wrap { padding-block:18px 64px; display:grid; gap:16px; }
+.intro { color:var(--muted); max-width:78ch; margin:0; }
+.groups { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap:12px; align-items:start; }
+.group { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px 14px; display:grid; gap:9px; min-width:0; }
+.group h2 { font-family:var(--display); font-size:1.05rem; margin:0; display:flex; align-items:baseline; gap:8px; }
+.group h2 small { font-family:var(--text); font-size:12px; color:var(--muted); font-weight:400; }
+.group h2 button { margin-left:auto; min-height:26px; padding:2px 8px; font-size:12px; }
+.p { display:grid; gap:1px; min-width:0; }
+.p .lab { display:flex; gap:8px; align-items:baseline; font-size:13px; }
+.p .lab .id { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.p .lab .v { margin-left:auto; font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums; }
+.p .hint { font-size:11.5px; color:var(--muted); line-height:1.3; }
+.p.changed .lab .v { color:var(--changed); font-weight:500; }
+.p.changed .lab .id { color:var(--changed); }
+.p .lab button { min-height:22px; padding:0 6px; font-size:11px; border-radius:6px; visibility:hidden; }
+.p.changed .lab button { visibility:visible; }
+.paste { display:grid; gap:6px; }
+.paste textarea { font-family:var(--mono); font-size:12.5px; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:9px; padding:8px; min-height:56px; resize:vertical; }
+.paste .msg { font-size:12.5px; color:var(--muted); min-height:1.2em; }
+details.foot { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 14px; }
+details.foot summary { cursor:pointer; font-family:var(--display); font-weight:600; }
+details.foot pre { font-family:var(--mono); font-size:12px; overflow-x:auto; margin:8px 0 0; }
+@media (max-width:640px) { header.top { position:static; } .code { grid-template-columns:1fr; } }
+@media (prefers-reduced-motion: reduce) { .meter i { transition:none; } }
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="row1">
+    <div><p class="eyebrow">Glag · SP-1 · the Kit</p><h1>Kit Tuner</h1></div>
+    <button id="start" class="primary">Start sound</button>
+    <select id="piece" aria-label="Piece"></select>
+    <button id="solo" class="on" aria-pressed="true">Kit alone</button>
+    <select id="groove" aria-label="Groove"></select>
+    <select id="dist" aria-label="Distortion">
+      <option value="-1">No distortion</option><option value="0">Cheby (drums)</option><option value="1">Drive (drums)</option><option value="2">Fuzz (drums)</option><option value="3">XOR (drums)</option>
+    </select>
+    <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+  </div>
+  <div class="ctl-strip" id="chan"></div>
+  <div class="lanes" id="lanes"><span class="l">Sounds</span></div>
+  <div class="code">
+    <output id="code" aria-label="Your tuning code">GK1</output>
+    <div class="btns"><button id="copy">Copy code</button><button id="resetall">Reset all</button></div>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <p class="intro">Every slider changes the Kit as it plays, in the firmware's own engine. When it sounds right, copy the code and send it to me: it lists only what you changed (<code>GK1;K_DECAY=1.4;…</code>), plus what you were listening to, and I'll write those values into the firmware. Blue values differ from the firmware's. The channel controls above (Activity, Tone, Length, Register, Character, Macro) are the piece's own, here for listening. They go into the code as context, not as changes.</p>
+  <div class="groups" id="groups"></div>
+  <div class="group paste">
+    <h2>Load a code</h2>
+    <textarea id="pastebox" aria-label="Paste a code" placeholder="GK1;K_DECAY=1.4;H_BAND=0.8"></textarea>
+    <div><button id="load">Load</button></div>
+    <p class="msg" id="msg"></p>
+  </div>
+  <details class="foot"><summary>The same values as C (for the firmware)</summary><pre id="cview"></pre></details>
+</main>
+
+<script>
+const WASM_B64 = "@@WASM@@";
+const PARAMS = @@PARAMS@@;   /* [id, group, label, default, min, max, step, help] */
+const PIECES = @@PIECES@@;   /* [index, name] */
+const GROOVES = ["Euclidean", "Two-step", "Drill", "Jungle", "Downtempo", "House", "Thrash", "Reggaeton", "Cumbia", "Jazz", "IDM"];
+const CHAN = [[0, "Activity"], [1, "Tone"], [2, "Length"], [3, "Register"], [7, "Character"]];
+const LANES = [["Kick", 1], ["Snare", 2 | 128 | 512], ["Hats", 4 | 64], ["Clank", 8], ["Tissue", 16], ["Nord", 32], ["Roll", 256], ["Toms", 1024 | 2048 | 4096 | 8192]];
+const $ = id => document.getElementById(id);
+
+let W = null, ctx = null, node = null;
+const val = PARAMS.map(p => p[3]);
+const chan = {0: 0.5, 1: 0.5, 2: 0.5, 3: 0.5, 7: 0.5}; let macro = 0, lanes = 0, soloOn = true, pieceIdx = PIECES[0][0], groove = 0, dist = -1;
+
+/* ---- the engine ---- */
+async function boot() {
+  const bin = Uint8Array.from(atob(WASM_B64), c => c.charCodeAt(0));
+  const { instance } = await WebAssembly.instantiate(bin, {});
+  W = instance.exports;
+  W.kt_init(1234);
+  if (W.kt_tunes() !== PARAMS.length) console.warn("parameter count differs", W.kt_tunes(), PARAMS.length);
+  PARAMS.forEach((p, i) => W.kt_set(i, val[i]));
+  W.kt_solo(soloOn ? 1 : 0);
+  loadPiece(pieceIdx);
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+  const ratio = 48000 / ctx.sampleRate;
+  let fifo = new Float32Array(0), pos = 0;
+  node = ctx.createScriptProcessor(1024, 0, 2);
+  node.onaudioprocess = e => {
+    const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1), n = L.length;
+    const need = Math.ceil(n * ratio) + 2;
+    while ((fifo.length >> 1) - Math.floor(pos) < need) {
+      const ptr = W.kt_render(1024);
+      const blk = new Float32Array(W.memory.buffer, ptr, 2048);
+      const keep = fifo.subarray(Math.floor(pos) * 2);
+      const nf = new Float32Array(keep.length + 2048); nf.set(keep); nf.set(blk, keep.length);
+      pos -= Math.floor(pos); fifo = nf;
+    }
+    for (let i = 0; i < n; i++) {
+      const k = Math.floor(pos), f = pos - k;
+      L[i] = fifo[2 * k] + f * (fifo[2 * k + 2] - fifo[2 * k]);
+      R[i] = fifo[2 * k + 1] + f * (fifo[2 * k + 3] - fifo[2 * k + 1]);
+      pos += ratio;
+    }
+  };
+  node.connect(ctx.destination);
+  await ctx.resume();
+  const b = $("start"); b.textContent = "Stop sound"; b.classList.remove("primary");
+  meterLoop();
+}
+function loadPiece(i) {
+  pieceIdx = i;
+  if (!W) return;
+  W.kt_piece(i);
+  W.kt_solo(soloOn ? 1 : 0);
+  groove = W.kt_get_groove(); $("groove").value = groove;
+  for (const [cp] of CHAN) { chan[cp] = W.kt_get_ch(cp); syncChan(cp); }
+  W.kt_macro(macro);
+  applyDist();
+  updateCode();
+}
+function applyDist() { if (W) { if (dist < 0) W.kt_dist(0, 0, 0); else W.kt_dist(dist, 2, 3); } }
+function meterLoop() {
+  if (W) { $("meter").style.width = Math.min(100, W.kt_peak() * 100) + "%"; }
+  requestAnimationFrame(meterLoop);
+}
+
+/* ---- the transport ---- */
+PIECES.forEach(([i, name]) => { const o = document.createElement("option"); o.value = i; o.textContent = `${i} · ${name}`; $("piece").appendChild(o); });
+GROOVES.forEach((g, i) => { const o = document.createElement("option"); o.value = i; o.textContent = `Groove: ${g}`; $("groove").appendChild(o); });
+$("piece").onchange = e => loadPiece(+e.target.value);
+$("groove").onchange = e => { groove = +e.target.value; if (W) W.kt_groove(groove); updateCode(); };
+$("dist").onchange = e => { dist = +e.target.value; applyDist(); updateCode(); };
+$("solo").onclick = () => { soloOn = !soloOn; $("solo").classList.toggle("on", soloOn); $("solo").setAttribute("aria-pressed", soloOn); if (W) W.kt_solo(soloOn ? 1 : 0); };
+$("start").onclick = async () => {
+  if (!ctx) { $("start").textContent = "Starting…"; try { await boot(); } catch (err) { $("start").textContent = "Couldn't start: " + err.message; } return; }
+  if (ctx.state === "running") { await ctx.suspend(); $("start").textContent = "Start sound"; $("start").classList.add("primary"); }
+  else { await ctx.resume(); $("start").textContent = "Stop sound"; $("start").classList.remove("primary"); }
+};
+function mini(id, label, min, max, step, v, fmt, on) {
+  const d = document.createElement("div"); d.className = "mini";
+  d.innerHTML = `<label for="${id}"><span>${label}</span><b></b></label><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${v}">`;
+  const inp = d.querySelector("input"), out = d.querySelector("b");
+  const show = () => out.textContent = fmt(+inp.value);
+  inp.addEventListener("input", () => { show(); on(+inp.value); });
+  show(); $("chan").appendChild(d);
+  return { inp, show };
+}
+const chanCtl = {};
+for (const [cp, name] of CHAN) {
+  chanCtl[cp] = mini("ch" + cp, name, 0, 1, 0.01, 0.5, cp === 3 ? v => ["-2", "-1", "0", "+1", "+2"][Math.round(v * 4)] : v => v.toFixed(2),
+    v => { chan[cp] = v; if (W) W.kt_ch(cp, v); updateCode(); });
+}
+function syncChan(cp) { chanCtl[cp].inp.value = chan[cp]; chanCtl[cp].show(); }
+mini("macro", "Macro", 0, 1, 0.25, 0, v => v ? `${v * 4} of 4` : "off", v => { macro = v; if (W) W.kt_macro(v); updateCode(); });
+LANES.forEach(([name, mask]) => {
+  const b = document.createElement("button"); b.textContent = name; b.setAttribute("aria-pressed", "false");
+  b.onclick = () => { lanes ^= mask; b.classList.toggle("on", !!(lanes & mask)); b.setAttribute("aria-pressed", !!(lanes & mask)); if (W) W.kt_lanes(lanes); };
+  $("lanes").appendChild(b);
+});
+{ const s = document.createElement("span"); s.className = "l"; s.textContent = "(none lit: all of them)"; $("lanes").appendChild(s); }
+
+/* ---- the parameters ---- */
+const COLOURS = ["none", "comb", "shimmer", "TZFM", "soggy", "metal", "soggy + Cheby", "comb-soggy + low Cheby"];
+const decimals = step => step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+const fmtv = (p, v) => p[0] === "COL" ? `${v} · ${COLOURS[v]}` : (p[6] >= 1 ? String(Math.round(v)) : v.toFixed(decimals(p[6])));
+const rows = [];
+const groups = {};
+PARAMS.forEach((p, i) => {
+  const [id, g, label, def, min, max, step, help] = p;
+  if (!groups[g]) {
+    const card = document.createElement("section"); card.className = "group";
+    card.innerHTML = `<h2>${g}<button type="button">Reset</button></h2>`;
+    card.querySelector("button").onclick = () => PARAMS.forEach((q, j) => { if (q[1] === g) setVal(j, q[3]); });
+    $("groups").appendChild(card); groups[g] = card;
+  }
+  const d = document.createElement("div"); d.className = "p";
+  d.innerHTML = `<div class="lab"><label for="p_${id}">${label}</label><span class="id">${id}</span><button type="button" title="Back to ${def}">reset</button><span class="v"></span></div>
+    <input id="p_${id}" type="range" min="${min}" max="${max}" step="${step}" value="${def}"><div class="hint"></div>`;
+  d.querySelector(".hint").textContent = help + ` (firmware: ${p[0] === "COL" ? COLOURS[def] : def})`;
+  const inp = d.querySelector("input");
+  inp.addEventListener("input", () => setVal(i, +inp.value, true));
+  d.querySelector("button").onclick = () => setVal(i, def);
+  groups[g].appendChild(d);
+  rows[i] = { d, inp, v: d.querySelector(".v") };
+  showVal(i);
+});
+function showVal(i) {
+  const p = PARAMS[i], r = rows[i];
+  r.v.textContent = fmtv(p, val[i]);
+  r.d.classList.toggle("changed", Math.abs(val[i] - p[3]) > 1e-9);
+}
+function setVal(i, v, fromSlider) {
+  const p = PARAMS[i];
+  v = Math.min(p[5], Math.max(p[4], v));
+  val[i] = v;
+  if (!fromSlider) rows[i].inp.value = v;
+  if (W) W.kt_set(i, v);
+  showVal(i); updateCode();
+}
+$("resetall").onclick = () => PARAMS.forEach((p, i) => setVal(i, p[3]));
+
+/* ---- the code ---- */
+function codeString() {
+  const parts = ["GK1"];
+  PARAMS.forEach((p, i) => { if (Math.abs(val[i] - p[3]) > 1e-9) parts.push(`${p[0]}=${+val[i].toFixed(decimals(p[6]))}`); });
+  const pn = (PIECES.find(x => x[0] === pieceIdx) || [0, "?"])[1];
+  const ctxs = `@${pn.replace(/[;=@]/g, "")}|g${groove}|a${chan[0]?.toFixed(2)}|t${chan[1]?.toFixed(2)}|l${chan[2]?.toFixed(2)}|r${chan[3]?.toFixed(2)}|c${chan[7]?.toFixed(2)}|m${macro}${dist >= 0 ? "|d" + dist : ""}`;
+  parts.push(ctxs);
+  return parts.join(";");
+}
+function updateCode() {
+  $("code").textContent = codeString();
+  $("cview").textContent = "static float KT[KT_COUNT] = {\n" + PARAMS.map((p, i) => {
+    const s = (p[6] >= 1 ? Math.round(val[i]).toFixed(1) : (+val[i].toFixed(decimals(p[6]))).toString());
+    return `\t${s.includes(".") ? s : s + ".0"}f,   /* ${p[0]}${Math.abs(val[i] - p[3]) > 1e-9 ? " (was " + p[3] + ")" : ""} */`;
+  }).join("\n") + "\n};";
+}
+$("copy").onclick = async () => {
+  const t = codeString();
+  try { await navigator.clipboard.writeText(t); $("copy").textContent = "Copied"; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($("code")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copy").textContent = "Selected: press copy"; }
+  setTimeout(() => $("copy").textContent = "Copy code", 1600);
+};
+$("load").onclick = () => {
+  const t = $("pastebox").value.trim();
+  if (!t.startsWith("GK1")) { $("msg").textContent = "That isn't a Kit code: it should start with GK1."; return; }
+  let n = 0, bad = [];
+  PARAMS.forEach((p, i) => setVal(i, p[3]));
+  for (const part of t.split(";").slice(1)) {
+    if (part.startsWith("@")) continue;
+    const [k, v] = part.split("=");
+    const i = PARAMS.findIndex(p => p[0] === k);
+    if (i < 0 || isNaN(+v)) { bad.push(part); continue; }
+    setVal(i, +v); n++;
+  }
+  $("msg").textContent = `Loaded ${n} value${n === 1 ? "" : "s"}` + (bad.length ? `; skipped ${bad.join(", ")}` : "") + ".";
+};
+updateCode();
+</script>

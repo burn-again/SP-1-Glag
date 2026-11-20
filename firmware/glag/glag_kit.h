@@ -143,6 +143,142 @@ static int kit_deg(int d)
 }
 static float kit_hz(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
 
+/* ---- the tuning: every number the Kit tuning page reaches (gl_kit_tune), at the firmware's
+ * defaults (generated from the page's table: keep the two in step) ---- */
+enum {
+	KT_L_KICK,
+	KT_L_SNARE,
+	KT_L_HAT,
+	KT_L_CLANK,
+	KT_L_TISSUE,
+	KT_L_NORD,
+	KT_L_ROLL,
+	KT_L_TOMS,
+	KT_OUT,
+	KT_K_PITCH,
+	KT_K_TUNED,
+	KT_K_DECAY,
+	KT_K_SLACK,
+	KT_K_CLICK,
+	KT_S_PITCH,
+	KT_S_TUNED,
+	KT_S_DECAY,
+	KT_S_NOISE,
+	KT_S_CRUNCH,
+	KT_S_GHOSTS,
+	KT_S_SQUASH,
+	KT_H_DECAY,
+	KT_H_BAND,
+	KT_H_SHIFT,
+	KT_H_DARK,
+	KT_H_OPEN,
+	KT_C_DECAY,
+	KT_C_INDEX,
+	KT_C_OCT,
+	KT_C_RATE,
+	KT_T_LEN,
+	KT_T_DENS,
+	KT_N_DECAY,
+	KT_N_SWEEP,
+	KT_N_OCT,
+	KT_N_CUT,
+	KT_R_SPEED,
+	KT_R_HITS,
+	KT_R_CRUSH,
+	KT_TOM_DECAY,
+	KT_TOM_FILL,
+	KT_F_PRESS,
+	KT_F_LONG,
+	KT_F_HATACC,
+	KT_F_THREES,
+	KT_F_SHORT,
+	KT_F_LONGX,
+	KT_F_ACCX,
+	KT_F_DYN,
+	KT_COL,
+	KT_SOG_BASE,
+	KT_SOG_REACH,
+	KT_SOG_CLOSE,
+	KT_SOG_RES,
+	KT_SAG,
+	KT_CH_DRIVE,
+	KT_CH_T2,
+	KT_CH_T3,
+	KT_LFO_DEPTH,
+	KT_LFO_RATE,
+	KT_COMB_FB,
+	KT_COMB_DAMP,
+	KT_LOW_HZ,
+	KT_COUNT
+};
+static float KT[KT_COUNT] = {
+	1.0f,   /* L_KICK: Levels Kick */
+	1.0f,   /* L_SNARE: Levels Snare */
+	1.0f,   /* L_HAT: Levels Hats */
+	1.0f,   /* L_CLANK: Levels Clank */
+	1.0f,   /* L_TISSUE: Levels Tissue */
+	1.0f,   /* L_NORD: Levels Nord */
+	1.0f,   /* L_ROLL: Levels Roll */
+	1.0f,   /* L_TOMS: Levels Toms */
+	1.0f,   /* OUT: Levels Whole kit */
+	0.0f,   /* K_PITCH: Kick Pitch */
+	1.0f,   /* K_TUNED: Kick Follow the chord */
+	1.0f,   /* K_DECAY: Kick Decay */
+	1.0f,   /* K_SLACK: Kick Slack (pitch bend) */
+	1.0f,   /* K_CLICK: Kick Click */
+	0.0f,   /* S_PITCH: Snare Pitch */
+	1.0f,   /* S_TUNED: Snare Follow the chord */
+	1.0f,   /* S_DECAY: Snare Decay */
+	1.0f,   /* S_NOISE: Snare Noise (wires) */
+	1.0f,   /* S_CRUNCH: Snare Crunch */
+	1.0f,   /* S_GHOSTS: Snare Ghost notes */
+	1.0f,   /* S_SQUASH: Snare Squash chance */
+	1.0f,   /* H_DECAY: Hats Decay */
+	1.0f,   /* H_BAND: Hats Band */
+	1.0f,   /* H_SHIFT: Hats Frequency shift */
+	1.0f,   /* H_DARK: Hats Long hat darkening */
+	0.25f,   /* H_OPEN: Hats Open hat chance */
+	1.0f,   /* C_DECAY: Clank Decay */
+	1.0f,   /* C_INDEX: Clank FM index */
+	0.0f,   /* C_OCT: Clank Octave */
+	1.0f,   /* C_RATE: Clank How often */
+	1.0f,   /* T_LEN: Tissue Stroke length */
+	1.0f,   /* T_DENS: Tissue Crackle density */
+	1.0f,   /* N_DECAY: Nord Decay */
+	1.0f,   /* N_SWEEP: Nord Sync sweep */
+	0.0f,   /* N_OCT: Nord Octave */
+	1.0f,   /* N_CUT: Nord Cutoff */
+	1.0f,   /* R_SPEED: Roll Speed */
+	1.0f,   /* R_HITS: Roll Hits */
+	1.0f,   /* R_CRUSH: Roll Crush */
+	1.0f,   /* TOM_DECAY: Toms Decay */
+	1.0f,   /* TOM_FILL: Toms Fill chance */
+	3.0f,   /* F_PRESS: Feel Press every */
+	3.0f,   /* F_LONG: Feel Long snare every */
+	3.0f,   /* F_HATACC: Feel Hat accent every */
+	1.0f,   /* F_THREES: Feel Bar-4 kick in threes */
+	0.6f,   /* F_SHORT: Feel Normal hit length */
+	1.1f,   /* F_LONGX: Feel Long hit length */
+	1.5f,   /* F_ACCX: Feel Accent length */
+	1.0f,   /* F_DYN: Feel Macro dynamics */
+	6.0f,   /* COL: Colour Colour */
+	250.0f,   /* SOG_BASE: Colour Soggy: resting cutoff */
+	4.5f,   /* SOG_REACH: Colour Soggy: how far it opens */
+	30.0f,   /* SOG_CLOSE: Colour Soggy: close time */
+	0.6f,   /* SOG_RES: Colour Soggy: damping */
+	1.0f,   /* SAG: Colour Soggy: pitch sag */
+	1.6f,   /* CH_DRIVE: Colour Cheby: drive */
+	0.3f,   /* CH_T2: Colour Cheby: 2nd harmonic */
+	0.22f,   /* CH_T3: Colour Cheby: 3rd harmonic */
+	1.0f,   /* LFO_DEPTH: Colour Filter LFO depth */
+	1.0f,   /* LFO_RATE: Colour Filter LFO speed */
+	0.62f,   /* COMB_FB: Colour Comb-soggy: feedback */
+	0.35f,   /* COMB_DAMP: Colour Comb-soggy: brightness */
+	250.0f,   /* LOW_HZ: Colour Comb-soggy: low split */
+};
+void gl_kit_tune(int id, float v) { if ((unsigned)id < KT_COUNT) KT[id] = v; }
+int gl_kit_tunes(void) { return KT_COUNT; }
+
 /* audition: only these lanes sound (and each one's own pattern runs whatever CHARACTER is) */
 static uint32_t kit_solo;
 void gl_kit_solo(int lanes) { kit_solo = (uint32_t)lanes; }
@@ -169,7 +305,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		return;
 	/* the macro's dynamics: the deeper it goes, the more each hit's velocity spreads into its level,
 	 * its brightness and its length (hard hits louder, brighter, longer; soft ones duller, shorter) */
-	const float dyn = mac_depth[ch], dv = vel - 0.75f;
+	const float dyn = mac_depth[ch] * KT[KT_F_DYN], dv = vel - 0.75f;
 	const float t = clampf(eff_tone(ch) + dyn * 1.6f * dv, 0.0f, 1.0f), l = P.ch[ch][CP_LENGTH], x = P.ch[ch][CP_CHAR];
 	const float dyn_d = clampf(1.0f + dyn * 3.0f * dv, 0.35f, 2.0f);
 	if (vel < 0.99f)
@@ -186,42 +322,42 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	int press = 0, lng = big;
 	if (lane == 0) {
 		k->n_k++;
-		press = k->n_k % 3u == 0u || ku() < 0.1f;
+		press = (KT[KT_F_PRESS] >= 1.0f && k->n_k % (unsigned)KT[KT_F_PRESS] == 0u) || ku() < 0.1f;
 	} else if (lane == 1) {
 		k->n_s++;
-		lng |= k->n_s % 3u == 0u;
+		lng |= KT[KT_F_LONG] >= 1.0f && k->n_s % (unsigned)KT[KT_F_LONG] == 0u;
 		press = !lng && ku() < 0.12f;
 	} else if (lane == 2) {
 		k->n_h++;
-		if (k->n_h % 3u == 0u && vel < 0.95f)
+		if (KT[KT_F_HATACC] >= 1.0f && k->n_h % (unsigned)KT[KT_F_HATACC] == 0u && vel < 0.95f)
 			vel = 0.95f;
 	}
 	if (lane == 0 || lane == 1 || lane == 9) {
-		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.0014f;   /* the soggy filter: shut in 10, 120 or 30 ms */
-		k->c_ceil = press ? 3.0f : lng ? 4.8f : 4.5f;             /* how far it opens */
+		k->c_relk = press ? 0.005f : lng ? 0.00035f : 0.042f / (KT[KT_SOG_CLOSE] < 5.0f ? 5.0f : KT[KT_SOG_CLOSE]);   /* the soggy filter: shut in 10, 120 or 30 ms */
+		k->c_ceil = KT[KT_SOG_REACH] * (press ? 0.667f : lng ? 1.067f : 1.0f);             /* how far it opens */
 	}
-	const float dm = (big ? 1.5f : lng ? 1.1f : 0.6f) * dyn_d;
+	const float dm = (big ? KT[KT_F_ACCX] : lng ? KT[KT_F_LONGX] : KT[KT_F_SHORT]) * dyn_d;
 	const float root = (float)chord_pc[0];              /* the clank plays the chord's root */
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
 		/* tuned: the chord's root, the one nearest D2 (73 Hz) */
-		float f0 = clampf(kit_hz(38 + ((chord_pc[0] - 38 + 66) % 12) - 6) * oct, 40.0f, 140.0f) * (1.0f + 0.004f * kn());
+		float f0 = clampf((KT[KT_K_TUNED] >= 0.5f ? kit_hz(38 + ((chord_pc[0] - 38 + 66) % 12) - 6) : 73.4f) * oct * fexp2(KT[KT_K_PITCH] * (1.0f / 12.0f)), 30.0f, 200.0f) * (1.0f + 0.004f * kn());
 		float damp = 0.8f - 0.6f * l, firm = 0.2f + 0.6f * t, slack = 0.1f + 0.7f * x;
-		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f) * (press ? 0.55f : 1.0f);
+		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f) * (press ? 0.55f : 1.0f) * KT[KT_K_DECAY];
 		if (press)
 			f0 *= 1.15f;
 		for (int m = 0; m < 5; m++) {
 			k->k_e[m] = f0 * K_MEM[m] * (6.2832f / KSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
 				k->k_x[m] = 0.0f, k->k_y[m] = 1.0f;
-			k->k_amp[m] = vel * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
+			k->k_amp[m] = vel * KT[KT_L_KICK] * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
 			k->k_dec[m] = kexp(tau1 / fexp2(0.8f * flog2(K_MEM[m])));
 		}
-		k->k_glide = press ? -0.18f : slack * 0.25f;   /* (pressed: from below, rising) */
+		k->k_glide = press ? -0.18f : slack * 0.25f * KT[KT_K_SLACK];   /* (pressed: from below, rising) */
 		k->k_gk = fexp2(-1.4427f / (0.03f * 1000.0f));    /* (once a millisecond) */
 		k->k_att = 0.0f;
 		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * KSR);
-		k->k_nz = vel * (press ? 0.35f : 0.75f);
+		k->k_nz = vel * (press ? 0.35f : 0.75f) * KT[KT_K_CLICK] * KT[KT_L_KICK];
 		k->k_nzk = kexp(0.014f - firm * 0.011f);
 		k->k_lpk = clampf((1500.0f + firm * 4000.0f) * (6.2832f / KSR), 0.05f, 0.9f);
 		pump_tgt = 1.0f;                                   /* Playworld's pump follows the kick */
@@ -233,12 +369,14 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		float feel = 2.0f + 4.0f * x;
 		/* tuned: its body on the chord's third or fifth, the one nearest F#3 (185 Hz) */
 		int tn = chord_pc[ku() < 0.5f ? 1 : 2];
-		float semis = (float)(54 + ((tn - 54 + 66) % 12) - 6 - 54) + reg * 12.0f * 0.25f + kn() * feel * 0.02f, dec = clampf((0.1f + 0.6f * l) * dm * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
+		float semis = (KT[KT_S_TUNED] >= 0.5f ? (float)(54 + ((tn - 54 + 66) % 12) - 6 - 54) : 0.0f) + KT[KT_S_PITCH] + reg * 12.0f * 0.25f + kn() * feel * 0.02f;
+		float dec = clampf((0.1f + 0.6f * l) * dm * KT[KT_S_DECAY] * (1.0f + kn() * feel * 0.03f), 0.0f, 1.0f);
 		float nu = clampf(4.0f + 11.0f * t + kn() * feel * 0.4f, 0.0f, 15.0f);
 		if (lane == 9)
-			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, 1.0f, vel);
+			kit_snare_hit(&k->sn, semis - 4.0f - 3.0f * ku(), clampf(dec * 1.4f, 0.0f, 1.0f), nu * 0.6f, clampf(KT[KT_S_CRUNCH], 0.0f, 2.0f), vel);
 		else
-			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : press ? dec * 0.5f : dec, nu, 0.8f * x, lane == 7 ? vel * 0.35f : vel);
+			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : press ? dec * 0.5f : dec, nu, 0.8f * x * KT[KT_S_CRUNCH], lane == 7 ? vel * 0.35f : vel);
+		k->sn.nl *= KT[KT_S_NOISE];
 		if (press && lane == 1) {                         /* pressed: rising from below, muffled */
 			k->sn.drop = -0.2f;
 			k->sn.dk = fexp2(-1.4427f / 25.0f);
@@ -250,21 +388,21 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	case 6: {   /* (6: open) */
 		/* (CHARACTER reaches only half the shift it had: past that it turned sour) */
 		const float xs = x * 0.5f, open = lane == 6 ? 1.0f : 0.0f;
-		float dec = expmap(l, 0.025f, 0.3f) * dm * (lane == 6 ? 3.0f : 1.0f);
+		float dec = expmap(l, 0.025f, 0.3f) * dm * KT[KT_H_DECAY] * (lane == 6 ? 3.0f : 1.0f);
 		dec = dec > 1.2f ? 1.2f : dec;
 		/* the longer it rings, the darker and quieter: a long hat sits back, muted */
-		float dark = clampf((dec - 0.05f) * 5.0f, 0.0f, 1.0f);
-		k->h_a = vel * (1.0f - 0.35f * dark);
+		float dark = clampf((dec - 0.05f) * 5.0f * KT[KT_H_DARK], 0.0f, 1.0f);
+		k->h_a = vel * (1.0f - 0.35f * dark) * KT[KT_L_HAT];
 		k->h_k = kexp(dec);
 		/* every hit its own: the squares' phases scattered, the band placed anew and swept down
 		 * from above it in the first 15 ms (as a struck cymbal's top falls away), the shift's start
 		 * moved a little */
 		for (int m = 0; m < 6; m++)
 			k->h_ph[m] += (uint32_t)(int32_t)(kn() * 2147483647.0f);
-		k->h_fc0 = (4000.0f + 6000.0f * t) * (0.8f + 0.45f * ku());
+		k->h_fc0 = (4000.0f + 6000.0f * t) * (0.8f + 0.45f * ku()) * KT[KT_H_BAND];
 		k->h_fenv = 0.5f + 0.7f * ku();
-		k->h_s0 = (60.0f + 240.0f * xs) * (0.8f + 0.4f * ku());
-		k->h_s1 = -60.0f * xs + 20.0f * kn();
+		k->h_s0 = (60.0f + 240.0f * xs) * (0.8f + 0.4f * ku()) * KT[KT_H_SHIFT];
+		k->h_s1 = (-60.0f * xs + 20.0f * kn()) * KT[KT_H_SHIFT];
 		if (dark > 0.0f) {
 			/* a long hat: bright at first, then darker; its shift slides onto a note of the key
 			 * (between 65 and 123 Hz, up or down) */
@@ -281,22 +419,22 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		break;
 	}
 	case 3: {   /* DX100 clank: ratio (CHARACTER), carrier (REGISTER), index (TONE), decay (LENGTH) */
-		float fc = 440.0f * fexp2((36.0f + root - 69.0f) / 12.0f) * oct * (1.0f + 0.002f * kn());   /* C2-B2 */
+		float fc = 440.0f * fexp2((36.0f + 12.0f * KT[KT_C_OCT] + root - 69.0f) / 12.0f) * oct * (1.0f + 0.002f * kn());   /* C2-B2 */
 		k->d_ic = kinc(fc);
 		k->d_im = kinc(fc * K_RAT[stepped(x, 4)]);
-		k->d_index = (1.5f + 5.0f * t) * IDX_SCALE;
-		k->d_ik = kexp((0.05f + 0.3f * l) * dm * 0.35f);
-		k->d_a = vel;
-		k->d_k = kexp((0.06f + 0.35f * l) * dm);
+		k->d_index = (1.5f + 5.0f * t) * IDX_SCALE * KT[KT_C_INDEX];
+		k->d_ik = kexp((0.05f + 0.3f * l) * dm * 0.35f * KT[KT_C_DECAY]);
+		k->d_a = vel * KT[KT_L_CLANK];
+		k->d_k = kexp((0.06f + 0.35f * l) * dm * KT[KT_C_DECAY]);
 		k->d_fb = (0.05f + 0.25f * x) * 3.1416f;
 		k->d_grit = x > 0.5f;
 		break;
 	}
 	case 4: {   /* tissue: stroke length (LENGTH), crackle density (CHARACTER), brightness (TONE), rumble */
-		k->t_len = big ? 0.25f + 0.6f * l : 0.04f + 0.12f * l;   /* (held over MIDI: until let go) */
+		k->t_len = (big ? 0.25f + 0.6f * l : 0.04f + 0.12f * l) * KT[KT_T_LEN];   /* (held over MIDI: until let go) */
 		k->t_t = 0.0f;
-		k->t_a = vel;
-		k->t_prob = (300.0f + 1200.0f * x) / KSR;
+		k->t_a = vel * KT[KT_L_TISSUE];
+		k->t_prob = (300.0f + 1200.0f * x) * KT[KT_T_DENS] / KSR;
 		k->t_fc = 1500.0f + 5500.0f * t;
 		k->t_prox = 0.2f + 0.4f * x;
 		k->t_w0 = 2.0f + 3.0f * ku();
@@ -315,17 +453,17 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 				if (scale_pc[i] == chord_pc[0])
 					at = i;
 			/* the C1 octave (33-62 Hz), now and then the C2 */
-			k->n_f1 = kit_hz((ku() < 0.3f ? 36 : 24) + root_pc + kit_deg(at + d)) * oct;
-			if (k->n_f1 > 125.0f * oct)
+			k->n_f1 = kit_hz((ku() < 0.3f ? 36 : 24) + 12 * (int)KT[KT_N_OCT] + root_pc + kit_deg(at + d)) * oct;
+			if (k->n_f1 > 125.0f * oct * fexp2(KT[KT_N_OCT]))
 				k->n_f1 *= 0.5f;
 		}
-		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f);
+		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f) * KT[KT_N_SWEEP];
 		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
 		k->n_md = fexp2(-1.4427f / (0.16f * 1000.0f));   /* a slow sweep, 160 ms (once a millisecond) */
 		k->n_menv = 1.0f;
-		k->n_cut = 350.0f * fexp2(3.0f * t);
+		k->n_cut = 350.0f * fexp2(3.0f * t) * KT[KT_N_CUT];
 		k->n_a = vel;
-		k->n_ak = kexp((0.4f + 1.0f * l) * dm);
+		k->n_ak = kexp((0.4f + 1.0f * l) * dm * KT[KT_N_DECAY]);
 		k->n_att = 0.0f;
 		k->n_p1 = k->n_p2 = 0.0f;
 		break;
@@ -341,21 +479,23 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		kit_snare_hit(&k->rs, semis, clampf(0.6f * dm, 0.2f, 1.0f), 1.0f, 0.0f, vel);
 		k->rs.n *= 0.1f;
 		k->rs.drop = 0.25f;                               /* (a tom's bend) */
-		k->rs.bk = kexp(0.25f + 0.4f * l);
+		k->rs.bk = kexp((0.25f + 0.4f * l) * KT[KT_TOM_DECAY]);
+		k->r_tom = 1;
 		k->r_hold = 1.0f;
 		k->r_q = 32768.0f;                                /* (the sampler out of the way) */
 		break;
 	}
 	case 8: {   /* EPS crunch roll: retriggers, acceleration, pitch step; rate and bits from CHARACTER */
 		float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
-		k->r_n = (uint8_t)(4 + (int)(8.0f * x));
+		k->r_n = (uint8_t)clampf((4.0f + 8.0f * x) * KT[KT_R_HITS], 2.0f, 24.0f);
+		k->r_tom = 0;
 		k->r_i = 0;
-		k->r_gap = step_s * 0.5f;
+		k->r_gap = step_s * 0.5f / KT[KT_R_SPEED];
 		k->r_accel = 0.3f + 0.5f * x;
 		k->r_t = 0.0f;
 		k->r_vel = vel;
-		k->r_hold = clampf(KSR / (14000.0f - 10000.0f * x), 1.0f, 4.0f);
-		k->r_q = fexp2(12.0f - 6.0f * x);
+		k->r_hold = clampf(KSR / (14000.0f - 10000.0f * clampf(x * KT[KT_R_CRUSH], 0.0f, 1.3f)), 1.0f, 4.0f);
+		k->r_q = fexp2(12.0f - 6.0f * clampf(x * KT[KT_R_CRUSH], 0.0f, 1.6f));
 		/* tuned: the snare's body on the key's root (near 185 Hz), each hit a step of the scale */
 		k->r_semis = (float)(((root_pc - 6 + 18) % 12) - 6);
 		/* four kinds: a fall (as it was), a build that swells into the beat (a rush in reverse),
@@ -528,7 +668,7 @@ static void kit_step(chan *c, int ch, uint32_t step)
 			if (ek == 'x' && phrase == 0 && j == 0)
 				ek = 'X';
 			kit_slot(c, ch, ek, 0, 0.8f * (0.85f + 0.12f * ku()), t_s, h, lean);
-			if (es == 'x' && phrase >= 56 && ku() < 0.35f)
+			if (es == 'x' && phrase >= 56 && ku() < 0.35f * KT[KT_S_SQUASH])
 				es = 's';                                 /* the phrase's end: now and then squashed */
 			kit_slot(c, ch, es, 1, 0.85f, t_s, h, lean);
 			if (eh == 't')
@@ -542,27 +682,27 @@ static void kit_step(chan *c, int ch, uint32_t step)
 		int kk = 1 + (int)(h * 3.0f + 0.5f), sk = 1 + (int)(h * 2.0f + 0.5f), hk = 3 + (int)(h * 6.0f + 0.5f);
 		/* the phrase's fourth bar: the kick in threes across it (0, 3, 6, 9, 12, 15) */
 		int ek = (s16 + k->eo_k) % 16, es = (s16 + 12 + k->eo_s) % 16, eh = (int)((step + k->eo_h) % 12u);
-		int kick = phrase >= 48 && !lean ? s16 % 3 == 0 : euclid_hit(kk, 16, ek);
+		int kick = phrase >= 48 && !lean && KT[KT_F_THREES] >= 0.5f ? s16 % 3 == 0 : euclid_hit(kk, 16, ek);
 		if (kick)
 			kit_fire(c, ch, 0, phrase == 0 ? 1.0f : acc * (0.85f + 0.12f * ku()));
 		if (euclid_hit(sk, 16, es)) {
 			/* the phrase's last snare an accent, often squashed; now and then one on the 4 */
-			int sq = (phrase == 60 && ku() < 0.5f) || (s16 == 12 && ku() < 0.12f);
+			int sq = (phrase == 60 && ku() < 0.5f * KT[KT_S_SQUASH]) || (s16 == 12 && ku() < 0.12f * KT[KT_S_SQUASH]);
 			kit_fire(c, ch, sq ? 9 : 1, sq ? 0.95f : phrase == 60 ? 1.0f : 0.82f + 0.13f * ku());
-		} else if (!lean && h > 0.25f && (s16 & 1) && ku() < 0.22f * h)
+		} else if (!lean && h > 0.25f && (s16 & 1) && ku() < 0.22f * h * KT[KT_S_GHOSTS])
 			kit_fire(c, ch, 7, 0.8f);                    /* a ghost note */
 		int s12 = eh;
 		if (!lean && s16 == 12 && ((step >> 4) & 1u) && ku() < 0.35f * h)
 			kit_trip(c, ch, 6, step_s, 0.6f);            /* the bar's last beat in triplets */
 		else if (euclid_hit(hk, 12, s12)) {
 			/* the open hat: past 0.55, once in a while, on the off-beat */
-			int op = s12 == 6 && (KSOLO(6) || (x > 0.55f && ku() < 0.25f));
+			int op = s12 == 6 && (KSOLO(6) || (x > 0.55f && ku() < KT[KT_H_OPEN]));
 			kit_fire(c, ch, op ? 6 : 2, op ? 0.9f : (s12 & 1 ? 0.55f : 0.8f) * (0.85f + 0.12f * ku()));
 		}
 	}
 	/* a tom fill down the chord into the next phrase (now and then; always on Playworld's fill):
 	 * the root up high, the fifth, the third, the root */
-	if ((KSOLO(10) && s16 == 12) || (!lean && phrase == 60 && (form_fill || ku() < 0.3f + 0.3f * h))) {
+	if ((KSOLO(10) && s16 == 12) || (!lean && phrase == 60 && (form_fill || ku() < (0.3f + 0.3f * h) * KT[KT_TOM_FILL]))) {
 		static const uint8_t TL[4] = {13, 12, 11, 10};
 		for (int i = 0; i < 4; i++)
 			kit_later(c, ch, TL[i], 0.85f - 0.05f * (float)i, (float)i * step_s);
@@ -571,7 +711,7 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	if (lean)
 		return;
 	int ck = 1 + (int)(h * 3.0f + 0.5f);
-	if (euclid_hit(ck, 7, (int)((step + 2u) % 7u)))
+	if (KT[KT_C_RATE] > 0.0f && euclid_hit((int)((float)ck * KT[KT_C_RATE] + 0.5f), 7, (int)((step + 2u) % 7u)))
 		kit_fire(c, ch, 3, 0.6f + 0.3f * ku());
 	if ((x > 0.33f || KSOLO(4)) && euclid_hit(h > 0.5f ? 2 : 1, 10, (int)((step + 5u) % 10u)))
 		kit_fire(c, ch, 4, ku() < 0.15f ? 1.0f : 0.7f + 0.25f * ku());   /* now and then a long stroke */
@@ -599,8 +739,7 @@ static void kit_step(chan *c, int ch, uint32_t step)
  *               a long one lets it close slowly
  * The combs live in the channel's string buffer (the Kit has no strings). */
 static inline float kabs(float x) { return x < 0.0f ? -x : x; }
-static uint8_t kit_col_m = 6;                        /* (the default: soggy, then Chebyshev) */
-void gl_kit_color(int method) { kit_col_m = (uint8_t)(method < 0 ? 0 : method > 7 ? 7 : method); }
+void gl_kit_color(int method) { KT[KT_COL] = (float)(method < 0 ? 0 : method > 7 ? 7 : method); }
 #define KC_N 1536                                     /* each comb's line: 128 ms at 12 kHz */
 static inline float kc_read(const int16_t *b, uint16_t w, float d)
 {
@@ -618,7 +757,7 @@ static inline int16_t kc_w(float x)
 static void kit_color(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
-	const int m = kit_col_m;
+	const int m = (int)(KT[KT_COL] + 0.5f);
 	int16_t *b1 = c->ks, *b2 = c->ks + KC_N;
 	const float dt = (float)KSUB / KSR;
 	float tail = 0.0f;
@@ -676,19 +815,19 @@ static void kit_color(chan *c, float *A)
 		k->c_ph = ph; k->c_env = e;
 	} else if (m == 4 || m == 6) {
 		float e = k->c_env, fa = k->c_fast, s1 = k->c_s1, s2 = k->c_s2, d = k->c_d1, dc = k->c_dc;
-		const float relk = k->c_relk > 0.0f ? k->c_relk : 0.0014f, ceil = k->c_ceil > 0.0f ? k->c_ceil : 4.5f;
+		const float relk = k->c_relk > 0.0f ? k->c_relk : 0.0014f, ceil = k->c_ceil > 0.0f ? k->c_ceil : KT[KT_SOG_REACH];
 		/* three slow LFOs (14, 8 and 5 s round, deeper with the macro) move where it rests, how far
 		 * it opens and how much it rings: the texture shifts over the phrase */
 		const int ch = (int)(c - CH);
-		const float lw = 0.6f + 0.4f * mac_depth[ch];
-		k->c_lfo += dt * 0.07f; k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
-		k->c_l2 += dt * 0.125f; k->c_l2 -= k->c_l2 >= 1.0f ? 1.0f : 0.0f;
-		k->c_l3 += dt * 0.2f; k->c_l3 -= k->c_l3 >= 1.0f ? 1.0f : 0.0f;
+		const float lw = (0.6f + 0.4f * mac_depth[ch]) * KT[KT_LFO_DEPTH], lr = KT[KT_LFO_RATE];
+		k->c_lfo += dt * 0.07f * lr; k->c_lfo -= k->c_lfo >= 1.0f ? 1.0f : 0.0f;
+		k->c_l2 += dt * 0.125f * lr; k->c_l2 -= k->c_l2 >= 1.0f ? 1.0f : 0.0f;
+		k->c_l3 += dt * 0.2f * lr; k->c_l3 -= k->c_l3 >= 1.0f ? 1.0f : 0.0f;
 		const float o1 = sin_u((uint32_t)(k->c_lfo * 4294967296.0f)) * lw, o2 = sin_u((uint32_t)(k->c_l2 * 4294967296.0f)) * lw;
 		const float o3 = sin_u((uint32_t)(k->c_l3 * 4294967296.0f)) * lw;
 		/* the low-pass's place, once a block: ~250 Hz shut (110-570 as the LFO goes), up to ~5 kHz on the hit */
-		const float base = 250.0f * fexp2(1.2f * o1), cl = ceil + 0.8f * o2;
-		const ksvf lpf = ksvf_set(ktan(clampf(base * fexp2(cl * clampf(fa * 3.0f, 0.0f, 1.0f)), 60.0f, 0.45f * KSR) / KSR), 0.6f - 0.25f * o3);
+		const float base = KT[KT_SOG_BASE] * fexp2(1.2f * o1), cl = ceil + 0.8f * o2;
+		const ksvf lpf = ksvf_set(ktan(clampf(base * fexp2(cl * clampf(fa * 3.0f, 0.0f, 1.0f)), 60.0f, 0.45f * KSR) / KSR), clampf(KT[KT_SOG_RES] - 0.25f * o3, 0.05f, 2.0f));
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			float x = A[i], ax = kabs(x);
@@ -699,12 +838,12 @@ static void kit_color(chan *c, float *A)
 			float u = clampf(lp * 1.8f, -1.5f, 1.5f);
 			b1[w] = kc_w(u - 0.148148f * u * u * u);
 			/* the read point drifts back as the hit dies: its pitch sags */
-			float tgt = (48.0f + 140.0f * clampf(1.0f - e * 4.0f, 0.0f, 1.0f)) / KRAT;
+			float tgt = (48.0f + 140.0f * KT[KT_SAG] * clampf(1.0f - e * 4.0f, 0.0f, 1.0f)) / KRAT;
 			d += (tgt - d) * 0.004f;
 			float o = kc_read(b1, w, d < 2.0f ? 2.0f : d) * 0.75f;
 			if (m == 6) {                                  /* Chebyshev: T2 and T3 on top */
-				float v = clampf(o * 1.6f, -1.0f, 1.0f);
-				float y = v + 0.3f * (2.0f * v * v) + 0.22f * (4.0f * v * v * v - 3.0f * v);
+				float v = clampf(o * KT[KT_CH_DRIVE], -1.0f, 1.0f);
+				float y = v + KT[KT_CH_T2] * (2.0f * v * v) + KT[KT_CH_T3] * (4.0f * v * v * v - 3.0f * v);
 				dc += KP(0.002f) * (y - dc);
 				o = (y - dc) * 0.62f;
 			}
@@ -726,7 +865,7 @@ static void kit_color(chan *c, float *A)
 		tgt *= 1.0f + 0.03f * lw * sin_u((uint32_t)(k->c_lfo * 4294967296.0f));
 		if (k->c_d1 < 2.0f)
 			k->c_d1 = tgt;
-		const float fb = -(0.62f + 0.2f * lng), damp = KP(0.35f), dull = KP(0.25f), lowk = KP(0.065f);
+		const float fb = -clampf(KT[KT_COMB_FB] + 0.2f * lng, 0.0f, 0.97f), damp = KP(KT[KT_COMB_DAMP]), dull = KP(0.25f), lowk = KP(clampf(KT[KT_LOW_HZ] * (6.2832f / 24000.0f), 0.005f, 0.5f));
 		float d = k->c_d1, l1 = k->c_lp1, l2 = k->c_lp2, lo = k->c_s1, dc = k->c_dc;
 		uint16_t w = k->c_w;
 		for (uint32_t i = 0; i < KSUB; i++) {
@@ -739,8 +878,8 @@ static void kit_color(chan *c, float *A)
 			float o = l2 * 0.7f + l1 * 0.8f;
 			/* Chebyshev below ~250 Hz: the low band shaped, the rest as it was */
 			lo += lowk * (o - lo);
-			float v = clampf(lo * 1.8f, -1.0f, 1.0f);
-			float sh = v + 0.35f * (2.0f * v * v) + 0.25f * (4.0f * v * v * v - 3.0f * v);
+			float v = clampf(lo * KT[KT_CH_DRIVE] * 1.125f, -1.0f, 1.0f);
+			float sh = v + KT[KT_CH_T2] * 1.17f * (2.0f * v * v) + KT[KT_CH_T3] * 1.14f * (4.0f * v * v * v - 3.0f * v);
 			dc += KP(0.002f) * (sh - dc);
 			A[i] = (o - lo) + (sh - dc) * 0.62f;
 			tail = tail > kabs(l1) + kabs(lo) ? tail : kabs(l1) + kabs(lo);
@@ -815,7 +954,7 @@ static int kit_render12(chan *c, float *A)
 	/* R-8 snare (and its ghosts) */
 	if (k->sn.b > 1e-3f || k->sn.n > 1e-3f) {
 		any = 1;
-		kit_snare_block(&k->sn, A, 0.9f);
+		kit_snare_block(&k->sn, A, 0.9f * KT[KT_L_SNARE]);
 	}
 	/* metal hat, frequency-shifted */
 	if (k->h_a > 1e-3f) {
@@ -968,7 +1107,7 @@ static int kit_render12(chan *c, float *A)
 				acc += l1;
 			}
 			att = att < 1.0f ? att + 0.004f * KRAT : 1.0f;          /* (a 10 ms attack) */
-			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f);
+			float y = acc * na * att * (os == 2 ? 0.4f : 0.8f) * KT[KT_L_NORD];
 			dc += KP(0.008f) * (y - dc);                      /* its offset (the FM runs it backwards) */
 			A[i] += y - dc;
 			na *= k->n_ak;
@@ -1014,11 +1153,11 @@ static int kit_render12(chan *c, float *A)
 				acc -= hold;
 				held = (float)(int32_t)(buf[i] * q) * iq;
 			}
-			A[i] += held * 0.6f;
+			A[i] += held * 0.6f * (k->r_tom ? KT[KT_L_TOMS] : KT[KT_L_ROLL]);
 		}
 		k->r_acc = acc; k->r_held = held;
 	}
-	if (kit_col_m && (any || k->c_tail > 1e-4f)) {
+	if (KT[KT_COL] >= 0.5f && (any || k->c_tail > 1e-4f)) {
 		kit_color(c, A);
 		any = 1;
 	}
@@ -1036,6 +1175,8 @@ static int kit_render(chan *c, float *A)
 		c->kt.up_prev = 0.0f;
 		return 0;
 	}
+	for (uint32_t i = 0; i < KSUB; i++)
+		b[i] *= KT[KT_OUT];
 #if KIT_KSUB == 24
 	for (uint32_t i = 0; i < VSUB; i++)
 		A[i] += b[i];

@@ -1,0 +1,76 @@
+/* SPDX-License-Identifier: MIT
+ * The Kit tuning page's glue: the real engine compiled to WebAssembly, a piece playing, the Kit's
+ * numbers (gl_kit_tune) and its channel's controls reachable from the page. */
+#include <stdint.h>
+#include <string.h>
+#include "glag_engine.h"
+
+#define EXPORT __attribute__((visibility("default")))
+
+void *memset(void *d, int c, size_t n) { unsigned char *p = d; while (n--) *p++ = (unsigned char)c; return d; }
+void *memcpy(void *d, const void *s, size_t n) { unsigned char *p = d; const unsigned char *q = s; while (n--) *p++ = *q++; return d; }
+int memcmp(const void *a, const void *b, size_t n)
+{
+	const unsigned char *p = a, *q = b;
+	for (; n; n--, p++, q++)
+		if (*p != *q)
+			return *p - *q;
+	return 0;
+}
+
+static gl_patch patch;
+static uint8_t lvl_saved[GL_NCH];
+static int solo, piece;
+static int16_t pcm[2 * 1024];
+static float out[2 * 1024];
+
+static void post(void) { gl_post_patch(&patch); }
+
+EXPORT void kt_init(uint32_t seed) { gl_init(seed); }
+EXPORT int kt_tunes(void) { return gl_kit_tunes(); }
+EXPORT void kt_set(int id, float v) { gl_kit_tune(id, v); }
+/* a piece (its macros as written), the Kit on channel 1 */
+EXPORT void kt_piece(int i)
+{
+	piece = i;
+	gl_piece(i, &patch);
+	for (int c = 0; c < GL_NCH; c++)
+		lvl_saved[c] = (uint8_t)(patch.ch[c][CP_LEVEL] * 255.0f);
+	if (solo)
+		for (int c = 1; c < GL_NCH; c++)
+			patch.ch[c][CP_LEVEL] = 0.0f;
+	post();
+	uint8_t st[GL_NCH];
+	float per;
+	gl_piece_macro(i, st, &per);
+	for (int c = 0; c < GL_NCH; c++)
+		gl_macro(c, (float)st[c] / 4.0f, per);
+}
+EXPORT void kt_solo(int on)
+{
+	solo = on;
+	for (int c = 1; c < GL_NCH; c++)
+		patch.ch[c][CP_LEVEL] = on ? 0.0f : (float)lvl_saved[c] / 255.0f;
+	post();
+}
+/* the Kit channel's controls: 0 activity, 1 tone, 2 length, 3 register, 7 character, 8 level */
+EXPORT void kt_ch(int cp, float v) { if (cp >= 0 && cp < GL_NCP) { patch.ch[0][cp] = v; post(); } }
+EXPORT float kt_get_ch(int cp) { return cp >= 0 && cp < GL_NCP ? patch.ch[0][cp] : 0.0f; }
+EXPORT void kt_groove(int g) { patch.chx[0] = (uint8_t)((patch.chx[0] & 3u) | ((unsigned)(g & 15) << 2)); post(); }
+EXPORT int kt_get_groove(void) { return (int)GL_CHX_GRV(patch.chx[0]); }
+EXPORT void kt_tempo(float v) { patch.g[GP_TEMPO] = v; post(); }
+EXPORT float kt_get_tempo(void) { return patch.g[GP_TEMPO]; }
+EXPORT void kt_macro(float depth) { gl_macro(0, depth, 8.0f); }
+EXPORT void kt_dist(int type, int amt, int post_) { gl_dist(type, amt, post_); }
+EXPORT void kt_lanes(int mask) { gl_kit_solo(mask); }
+/* n frames (up to 1024) at 48 kHz, interleaved floats */
+EXPORT float *kt_render(int n)
+{
+	if (n > 1024)
+		n = 1024;
+	gl_render(pcm, (uint32_t)n, 0.9f);
+	for (int i = 0; i < 2 * n; i++)
+		out[i] = (float)pcm[i] * (1.0f / 32768.0f);
+	return out;
+}
+EXPORT float kt_peak(void) { return gl_peak; }

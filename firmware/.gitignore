@@ -5,3 +5,4 @@ host/cpu/*.elf
 *.wav
 !release/*.bin
 web/build/
+tune/build/
