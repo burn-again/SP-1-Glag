@@ -538,7 +538,9 @@ static void midi_drum(chan *c, int ch, int note, float vel)
 	if (c->voice == GV_KIT) {
 		/* the kit: C kick, C# clank, D / E snare (E the Nord hit), D# tissue, F# / G# hat,
 		 * G roll, A ghost, A# open hat, the rest the hat */
+		kit_from_midi = 1;
 		kit_fire(c, ch, KIT_LANE[note % 12], vel >= 0.99f ? 1.0f : vel * 0.95f);
+		kit_from_midi = 0;
 		kit_hold(c, KIT_LANE[note % 12], 1);
 		return;
 	}
