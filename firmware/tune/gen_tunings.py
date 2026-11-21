@@ -37,7 +37,7 @@ c += '/* the Kit map\'s corners (tunings): (0,0) (1,0) (0,1) (1,1), and each one
 c += 'static const uint8_t KIT_MAP[4] = {%s};\n' % ', '.join(str(idx[n]) for n in MAP)
 c += 'static const float KIT_MAP_GAIN[4] = {%s};\n' % ', '.join('%gf' % g if '.' in '%g' % g else '%g.0f' % g for g in MAP_GAIN)
 c += '/* which numbers the map blends (not the evolving, velocity and arc ones), which it switches */\n'
-c += 'static const uint8_t KT_MAPPED[KT_COUNT] = {%s};\n' % ', '.join('0' if p[1] in ('Evolve', 'Velocity', 'Arc') else ('2' if p[6] >= 1 else '1') for p in P)
+c += 'static const uint8_t KT_MAPPED[KT_COUNT] = {%s};\n' % ', '.join('0' if p[1] in ('Evolve', 'Velocity', 'Arc', 'Restraint') else ('2' if p[6] >= 1 else '1') for p in P)
 c += '/* @@END_KIT_TUNINGS */\n'
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../glag/glag_kit.h')
 s = open(path).read()

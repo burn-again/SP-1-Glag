@@ -8,7 +8,7 @@ P = [
  ('L_NORD','Levels','Nord',0.7,0,4,0.01,'level'),
  ('L_ROLL','Levels','Roll',0.35,0,4,0.01,'level'),
  ('L_TOMS','Levels','Toms',1.2,0,4,0.01,'level'),
- ('OUT','Levels','Whole kit',0.7,0,4,0.01,'after the colour'),
+ ('OUT','Levels','Whole kit',0.9,0,4,0.01,'after the colour'),
  ('K_PITCH','Kick','Pitch',-2.5,-24,24,0.1,'semitones'),
  ('K_TUNED','Kick','Follow the chord',1,0,1,1,"1: the chord's root; 0: a fixed 73 Hz"),
  ('K_DECAY','Kick','Decay',3.0,0.1,8,0.01,'x'),
@@ -139,4 +139,8 @@ P = [
  ('RING_MIX','Colour','Ring mod: amount',0.4,0,1,0.01,'(colour 8) how much of the drums is ring-modulated by a chord tone'),
  ('RING_SEMI','Colour','Ring mod: note',12,0,36,1,'(colour 8) semitones above the chord root at C4: 12 an octave up; it alternates root and fifth'),
  ('SPICE_MAC','Arc','Macro follows the spice',0.75,0,1,0.01,"how much of the macro's morph waits for the phrase's build (0: all of it, all the time)"),
+ ('K_FIT','Kick','Fit the gap',0.7,0,1,0.01,'the kick rings no longer than the time to the next one (1), or as long as it likes (0)'),
+ ('WET_AMT','Restraint','Colour amount',0.6,0,2,0.01,'how loud the chord resonators, the metal and the ring mod ring, over what the tuning says'),
+ ('WET_OCT','Restraint','Colour octave',-12,-24,0,12,'the resonators and the ring mod an octave or two down'),
+ ('WET_LP','Restraint','Colour cutoff',4000,300,8000,10,'Hz: a low-pass on the resonators and the ring mod (8000: open)'),
 ]
