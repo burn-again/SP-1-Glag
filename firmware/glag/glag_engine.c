@@ -194,6 +194,12 @@ typedef struct {
 	float e_lvl[8], e_t[8];        /* each sound's envelope (the tuning page's ADSR) */
 	uint8_t e_st[8];
 	float morph;                   /* the macro's morph (kit_macro) */
+	/* the Lich models (after TINY): which are on for the hit sounding, and their states */
+	uint8_t k_lich, h_lich, d_lich, t_lich, n_lich, ksd_on, rg_reg;
+	uint16_t lf_reg, ksd_n, ksd_i;
+	uint32_t kl_ph;
+	float lf_cnt, lf_per, kl_f0, kl_fall, ksd_g, ksd_rough, ksd_env;
+	float sh_e, sh_lvl, sh_p, rg_pa, rg_pb, rg_fa, rg_fb, rg_depth, rg_lp, lh_hp;
 	kit_snare rs;
 } kit_state;
 
@@ -4511,6 +4517,38 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{60, 60, 40, 50, 0, 0, 50, 45, 99}, {40, 25, 80, 50, 0, 5, 50, 85, 74},
 	  {30, 35, 70, 50, 10, 45, 55, 30, 43}, {30, 40, 55, 25, 25, 50, 40, 40, 37}},
 	 {50, 30, 45, 50, 1, 5, 10, 30}, {GR_CHAMBER, GS_OCTAVE, 4}, {1, 1, 0, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}, 5},
+	/* ---- the Lich suite: the Kit through TINY's models (an NES triangle kick, a Karplus-Strong drum,
+	 * the NES noise register, 1-bit pulses, a PhISEM shaker, a rungler), each piece on its tuning ---- */
+	/* chip: a triangle kick, 7-bit noise hats, a 1-bit clank, IDM; the macro at full */
+	{"Chip Vespers", {GV_KIT, GV_SEQ, GV_BELLS, GV_DRONE},
+	 {{65, 60, 40, 50, 0, 0, 50, 70, 76}, {55, 55, 35, 50, 30, 35, 40, 55, 43},
+	  {35, 45, 60, 75, 40, 60, 60, 30, 38}, {30, 30, 90, 50, 0, 40, 50, 30, 29}},
+	 {70, 40, 50, 50, 4, 2, 25, 45}, {GR_BLOOM, GS_OCTAVE, 4}, {4, 1, 1, 0}, 8, {4, 3, 2, 2}, 8, 0, {40, 0, 0, 0}, 7},
+	/* a Karplus-Strong drum (toms and snare from one string) and a shaker, a harpsichord, strings */
+	{"String Drum Mass", {GV_KIT, GV_HARPSI, GV_STRINGS, GV_DRONE},
+	 {{50, 45, 55, 50, 0, 0, 50, 40, 100}, {50, 45, 45, 50, 20, 45, 40, 45, 65},
+	  {30, 35, 75, 50, 15, 60, 60, 30, 45}, {25, 30, 90, 25, 0, 45, 50, 30, 39}},
+	 {50, 35, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {0, 0, 0, 0}, 8},
+	/* the rungler in the Nord's place, long 15-bit hats swelling, a comb; downtempo, Lydian */
+	{"Rungler Rain", {GV_KIT, GV_GLOW, GV_PAD, GV_SHIMMER},
+	 {{45, 50, 50, 50, 0, 0, 50, 60, 86}, {35, 40, 60, 50, 30, 55, 35, 40, 38},
+	  {45, 30, 80, 50, 15, 70, 60, 30, 43}, {25, 40, 70, 50, 20, 60, 55, 40, 32}},
+	 {45, 45, 65, 50, 7, 3, 25, 40}, {GR_SHIMMER, GS_OCTAVE, 7}, {3, 1, 1, 0}, 8, {4, 2, 2, 2}, 8, 0, {16, 0, 0, 0}, 9},
+	/* the shaker up front, a rough Karplus-Strong snare, soggy; cumbia */
+	{"Bead Machine", {GV_KIT, GV_FUNK, GV_MARIMBA, GV_PAD},
+	 {{60, 55, 40, 50, 0, 0, 50, 45, 92}, {50, 40, 40, 50, 0, 10, 50, 30, 64},
+	  {45, 50, 50, 50, 25, 40, 40, 45, 52}, {35, 40, 70, 50, 10, 55, 60, 35, 35}},
+	 {75, 30, 40, 50, 7, 4, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {32, 0, 0, 0}, 10},
+	/* every Lich model at once, soggy and driven, a slow drill */
+	{"1-bit Funeral", {GV_KIT, GV_BASS, GV_GONG, GV_DRONE},
+	 {{55, 40, 50, 50, 0, 0, 50, 55, 73}, {40, 25, 80, 25, 0, 5, 50, 60, 55},
+	  {25, 40, 70, 50, 20, 60, 40, 40, 32}, {25, 25, 90, 50, 0, 45, 50, 30, 27}},
+	 {40, 30, 55, 50, 9, 5, 10, 30}, {GR_HALL, GS_OCTAVE, 6}, {2, 0, 1, 0}, 8, {3, 2, 2, 2}, 8, 0, {8, 0, 0, 0}, 11},
+	/* 7-bit hats, the rungler, everything in threes, a shifting comb; the macro at full */
+	{"Rule of Three", {GV_KIT, GV_ARP, GV_PIZZ, GV_TAILS},
+	 {{70, 55, 40, 50, 0, 0, 50, 65, 100}, {50, 55, 40, 50, 30, 35, 40, 55, 51},
+	  {50, 50, 35, 50, 20, 30, 60, 45, 51}, {25, 40, 70, 50, 20, 60, 55, 40, 38}},
+	 {80, 40, 45, 50, 1, 7, 20, 45}, {GR_CHAMBER, GS_OCTAVE, 4}, {4, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}, 12},
 	/* ---- lab pieces: a plain bed with one voice in front, to compare its methods ---- */
 	{"Lab Strings", {GV_STRINGS, GV_BASS, GV_PULSE, GV_EP},
 	 {{50, 45, 50, 50, 15, 60, 50, 50, 70}, {60, 30, 60, 50, 0, 15, 50, 30, 55},

@@ -89,6 +89,9 @@ static const float K_RAT[4] = {1.41f, 3.5f, 7.07f, 0.5f};
 static const float K_HA[2] = {0.4111137f, 0.9009403f};
 static const float K_HB[2] = {0.1288429f, 0.6854797f};
 
+/* the Lich snare's delay line: the end of the channel's string buffer */
+#define KSD_OFF 2816
+#define KSD_MAX 255
 static void kit_snare_hit(kit_snare *s, float semis, float dec, float nu, float drive, float vel)
 {
 	float k = fexp2(semis * (1.0f / 12.0f));
@@ -258,6 +261,18 @@ enum {
 	KT_E_TOMS_S,
 	KT_E_TOMS_G,
 	KT_E_TOMS_R,
+	KT_LICH_KICK,
+	KT_LICH_SNARE,
+	KT_LICH_HAT,
+	KT_LICH_CLANK,
+	KT_LICH_TISSUE,
+	KT_LICH_NORD,
+	KT_LICH_RATE,
+	KT_LICH_ROUGH,
+	KT_LICH_STRETCH,
+	KT_LICH_BEADS,
+	KT_LICH_RUNG,
+	KT_LICH_FALL,
 	KT_COUNT
 };
 static float KT[KT_COUNT] = {
@@ -366,29 +381,53 @@ static float KT[KT_COUNT] = {
 	1.0f,   /* E_TOMS_S: Toms Env sustain */
 	2000.0f,   /* E_TOMS_G: Toms Env gate */
 	20.0f,   /* E_TOMS_R: Toms Env release */
+	0.0f,   /* LICH_KICK: Lich Kick: NES triangle */
+	0.0f,   /* LICH_SNARE: Lich Snare: Karplus-Strong drum */
+	0.0f,   /* LICH_HAT: Lich Hats: LFSR noise */
+	0.0f,   /* LICH_CLANK: Lich Clank: 1-bit */
+	0.0f,   /* LICH_TISSUE: Lich Tissue: PhISEM shaker */
+	0.0f,   /* LICH_NORD: Lich Nord: rungler */
+	1.0f,   /* LICH_RATE: Lich LFSR clock */
+	0.5f,   /* LICH_ROUGH: Lich KS drum roughness */
+	1.0f,   /* LICH_STRETCH: Lich KS drum ring */
+	1.0f,   /* LICH_BEADS: Lich Shaker beads */
+	1.0f,   /* LICH_RUNG: Lich Rungler depth */
+	1.0f,   /* LICH_FALL: Lich Triangle kick fall */
 };
 /* @@KIT_TUNINGS (written by tune/gen_tunings.py from tune/tunings.py: edit those) */
-#define KIT_NTUNE 7
-static const char *const KIT_TUNE_NAME[KIT_NTUNE] = {"Glag", "Cumbia Bell", "Brush Boom", "Brush Comb", "Brush Comb Wet", "Drill Shimmer", "Soggy"};
+#define KIT_NTUNE 13
+static const char *const KIT_TUNE_NAME[KIT_NTUNE] = {"Glag", "Cumbia Bell", "Brush Boom", "Brush Comb", "Brush Comb Wet", "Drill Shimmer", "Soggy", "Chip Vespers", "String Drum Mass", "Rungler Rain", "Bead Machine", "1-bit Funeral", "Rule of Three"};
 static const float KIT_TUNE[KIT_NTUNE][KT_COUNT] = {
 	{ /* Glag */
-		1.5f, 0.35f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 2.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
+		1.5f, 0.35f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 2.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Cumbia Bell */
-		2.81f, 0.22f, 0.68f, 1.11f, 0.78f, 1.26f, 1.0f, 0.72f, 0.73f, -9.1f, 1.0f, 2.08f, 1.27f, 1.0f, -16.0f, 1.0f, 1.0f, 1.0f, 1.0f, 10.0f, 4.15f, 2.43f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 0.72f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 2.0f, 3.0f, 1.0f, 1.0f, 0.3f, 5.0f, 0.57f, 5.73f, 2.0f, 426.0f, 3.4f, 134.0f, 0.15f, 5.74f, 0.49f, 1.87f, 0.08f, 0.64f, 16.86f, 0.06f, 1.0f, 189.0f, 0.37f, 1.02f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.99f, 2000.0f, 221.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 16.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 20.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f},
+		2.81f, 0.22f, 0.68f, 1.11f, 0.78f, 1.26f, 1.0f, 0.72f, 0.73f, -9.1f, 1.0f, 2.08f, 1.27f, 1.0f, -16.0f, 1.0f, 1.0f, 1.0f, 1.0f, 10.0f, 4.15f, 2.43f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 0.72f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 2.0f, 3.0f, 1.0f, 1.0f, 0.3f, 5.0f, 0.57f, 5.73f, 2.0f, 426.0f, 3.4f, 134.0f, 0.15f, 5.74f, 0.49f, 1.87f, 0.08f, 0.64f, 16.86f, 0.06f, 1.0f, 189.0f, 0.37f, 1.02f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.99f, 2000.0f, 221.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 16.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 20.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Brush Boom */
-		4.0f, 0.17f, 0.68f, 1.11f, 0.78f, 1.26f, 0.09f, 0.72f, 0.73f, -2.6f, 1.0f, 6.8f, 1.36f, 0.0f, -12.5f, 1.0f, 5.23f, 0.04f, 2.56f, 9.61f, 8.56f, 7.89f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 7.2f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 1.0f, 9.0f, 7.0f, 1.0f, 0.46f, 3.19f, 1.11f, 3.74f, 0.0f, 255.0f, 0.95f, 892.0f, 2.0f, 5.74f, 6.44f, 0.28f, 1.74f, 4.99f, 2.59f, 0.94f, 0.19f, 1560.0f, 0.22f, 1.07f, 58.0f, 1697.0f, 0.79f, 191.0f, 1031.0f, 336.0f, 1000.0f, 0.31f, 365.0f, 1471.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 1475.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 1816.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 1372.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 1479.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f},
+		4.0f, 0.17f, 0.68f, 1.11f, 0.78f, 1.26f, 0.09f, 0.72f, 0.73f, -2.6f, 1.0f, 6.8f, 1.36f, 0.0f, -12.5f, 1.0f, 5.23f, 0.04f, 2.56f, 9.61f, 8.56f, 7.89f, 1.41f, 0.74f, 1.0f, 0.25f, 2.13f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.48f, 5.02f, 3.0f, 7.2f, 1.36f, 2.29f, 2.13f, 1.07f, 7.61f, 1.0f, 9.0f, 7.0f, 1.0f, 0.46f, 3.19f, 1.11f, 3.74f, 0.0f, 255.0f, 0.95f, 892.0f, 2.0f, 5.74f, 6.44f, 0.28f, 1.74f, 4.99f, 2.59f, 0.94f, 0.19f, 1560.0f, 0.22f, 1.07f, 58.0f, 1697.0f, 0.79f, 191.0f, 1031.0f, 336.0f, 1000.0f, 0.31f, 365.0f, 1471.0f, 75.0f, 1795.0f, 1.0f, 2000.0f, 1475.0f, 0.0f, 0.0f, 0.4f, 2000.0f, 1816.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 1372.0f, 14.0f, 0.0f, 0.08f, 540.0f, 1261.0f, 137.0f, 186.0f, 1.0f, 2000.0f, 1479.0f, 310.0f, 1693.0f, 0.93f, 2000.0f, 1487.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Brush Comb */
-		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 3000.0f, 1.85f, 1000.0f, 0.69f, 3.55f, 0.38f, 0.07f, 0.24f, 6.0f, 6.72f, 0.31f, 0.85f, 672.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 3000.0f, 1.85f, 1000.0f, 0.69f, 3.55f, 0.38f, 0.07f, 0.24f, 6.0f, 6.72f, 0.31f, 0.85f, 672.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Brush Comb Wet */
-		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 443.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 20.0f, 0.85f, 0.19f, 745.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+		3.34f, 0.19f, 0.23f, 0.09f, 0.41f, 0.35f, 0.2f, 0.33f, 0.87f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.2f, 1.0f, 4.93f, 1.0f, 0.98f, 2.41f, 2.78f, 1.0f, 1.09f, 1.0f, 0.9f, 0.25f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 7.0f, 443.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 20.0f, 0.85f, 0.19f, 745.0f, 0.33f, 1.0f, 32.0f, 0.0f, 1.0f, 2000.0f, 205.0f, 0.0f, 0.0f, 0.94f, 2000.0f, 16.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Drill Shimmer */
-		1.28f, 0.32f, 1.08f, 0.76f, 0.62f, 0.56f, 0.36f, 1.77f, 0.32f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.9f, 1.0f, 0.57f, 1.27f, 0.39f, 2.69f, 1.2f, 0.66f, 1.89f, 1.1f, 0.9f, 0.25f, 4.67f, 0.65f, -1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 2.0f, 1191.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 0.28f, 0.21f, 1.0f, 745.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 426.0f, 17.0f, 219.0f, 0.48f, 1138.0f, 1228.0f, 127.0f, 1444.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 1580.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f},
+		1.28f, 0.32f, 1.08f, 0.76f, 0.62f, 0.56f, 0.36f, 1.77f, 0.32f, -2.1f, 1.0f, 6.67f, 0.83f, 0.93f, -18.9f, 1.0f, 0.57f, 1.27f, 0.39f, 2.69f, 1.2f, 0.66f, 1.89f, 1.1f, 0.9f, 0.25f, 4.67f, 0.65f, -1.0f, 1.0f, 1.0f, 1.7f, 1.26f, 1.0f, 0.0f, 0.89f, 1.25f, 1.0f, 0.8f, 0.91f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 1.72f, 2.0f, 1191.0f, 6.8f, 766.0f, 0.34f, 6.0f, 0.43f, 0.52f, 0.27f, 6.0f, 0.28f, 0.21f, 1.0f, 745.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 426.0f, 17.0f, 219.0f, 0.48f, 1138.0f, 1228.0f, 127.0f, 1444.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 1580.0f, 1.0f, 2000.0f, 20.0f, 106.0f, 268.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.92f, 2000.0f, 320.0f, 99.0f, 0.0f, 1.0f, 436.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 18.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
 	{ /* Soggy */
-		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.6f, 1.1f, 1.5f, 1.0f, 6.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f},
+		1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.6f, 1.1f, 1.5f, 1.0f, 6.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.35f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f},
+	{ /* Chip Vespers */
+		1.2f, 0.35f, 1.0f, 0.6f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 2.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.5f, 0.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 0.0f, 1.3f, 0.5f, 1.0f, 1.0f, 1.0f, 1.5f},
+	{ /* String Drum Mass */
+		1.5f, 0.6f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.5f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 5.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 2.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.25f, 2.5f, 1.5f, 1.0f, 1.0f},
+	{ /* Rungler Rain */
+		1.5f, 0.35f, 1.0f, 0.8f, 0.65f, 1.4f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 3.0f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 7.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 2.0f, 1.0f, 0.75f, 0.25f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 180.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.7f, 0.5f, 1.0f, 1.0f, 2.2f, 1.0f},
+	{ /* Bead Machine */
+		1.5f, 0.35f, 1.0f, 0.8f, 1.6f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.5f, 2.0f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 4.0f, 600.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.7f, 1.0f, 2.5f, 1.0f, 1.0f},
+	{ /* 1-bit Funeral */
+		1.8f, 0.35f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -5.0f, 1.0f, 4.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.25f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 2.0f, 6.0f, 300.0f, 4.5f, 30.0f, 0.6f, 1.0f, 2.5f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 1.0f, 1.0f, 2.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.45f, 1.0f, 1.0f, 1.5f, 1.0f},
+	{ /* Rule of Three */
+		1.5f, 0.35f, 1.0f, 0.8f, 0.65f, 0.7f, 0.35f, 1.2f, 0.7f, -2.5f, 1.0f, 3.0f, 1.0f, 0.9f, -15.0f, 1.0f, 1.0f, 1.1f, 0.6f, 2.5f, 2.0f, 1.0f, 1.5f, 1.0f, 0.9f, 0.6f, 2.5f, 0.8f, 0.0f, 1.0f, 1.0f, 1.5f, 1.5f, 2.0f, 0.0f, 0.9f, 1.3f, 1.3f, 1.2f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f, 0.5f, 1.1f, 1.5f, 3.0f, 1.0f, 250.0f, 4.5f, 30.0f, 0.6f, 1.0f, 1.6f, 0.3f, 0.22f, 1.0f, 1.0f, 0.62f, 0.35f, 250.0f, 0.33f, 1.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 17.0f, 220.0f, 0.5f, 1100.0f, 1200.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 150.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 100.0f, 0.0f, 1.0f, 440.0f, 20.0f, 0.0f, 0.0f, 1.0f, 2000.0f, 20.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.5f, 1.0f, 1.0f, 0.8f, 1.0f},
 };
 /* where the macro takes the Kit channel at each tuning: activity, tone, length, register,
  * character (-1: busier, darker, longer, fuller than the piece has it) */
-static const float KIT_TUNE_TO[KIT_NTUNE][5] = {{1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}};
+static const float KIT_TUNE_TO[KIT_NTUNE][5] = {{1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 1.0f, 0.83f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {0.8f, 0.2f, 1.0f, 0.75f, 1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f, -1.0f, -1.0f}};
 /* @@END_KIT_TUNINGS */
 static int kit_tune_cur, kit_tune_lock;          /* (KT starts at tuning 0's values) */
 /* KT as the tuning has it (KTB); KT itself is that with the macro's morph on a few numbers */
@@ -534,6 +573,12 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->k_nzk = kexp(0.014f - firm * 0.011f);
 		k->k_lpk = clampf((1500.0f + firm * 4000.0f) * (6.2832f / KSR), 0.05f, 0.9f);
 		pump_tgt = 1.0f;                                   /* Playworld's pump follows the kick */
+		/* the Lich: a 4-bit triangle (the NES's), its pitch falling from far above onto the kick's */
+		k->k_lich = KT[KT_LICH_KICK] >= 0.5f;
+		if (k->k_lich) {
+			k->kl_f0 = f0;
+			k->kl_fall = 5.0f * KT[KT_LICH_FALL];
+		}
 		break;
 	}
 	case 1:     /* R-8 snare: pitch, decay, nuance, feel; crunch rising with CHARACTER */
@@ -550,6 +595,25 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		else
 			kit_snare_hit(&k->sn, semis, lane == 7 ? dec * 0.4f : press ? dec * 0.5f : dec, nu, 0.8f * x * KT[KT_S_CRUNCH], lane == 7 ? vel * 0.35f : vel);
 		k->sn.nl *= KT[KT_S_NOISE];
+		/* the Lich: a Karplus-Strong drum in its place (a burst of noise round a delay line a period
+		 * of the snare's pitch long, its sign flipped at random: none a tom, half the time a snare) */
+		if (KT[KT_LICH_SNARE] >= 0.5f) {
+			k->sn.b = k->sn.n = 0.0f;
+			int16_t *kb = c->ks + KSD_OFF;
+			const float f = 185.0f * fexp2(semis * (1.0f / 12.0f)) * (lane == 9 ? 0.75f : 1.0f);
+			uint16_t n = (uint16_t)clampf(KSR / f, 8.0f, (float)KSD_MAX);
+			const float a = (lane == 7 ? 0.35f : 1.0f) * vel * 9000.0f;
+			for (uint16_t i = 0; i < n; i++)
+				kb[i] = (int16_t)(kn() * a);
+			k->ksd_n = n;
+			k->ksd_i = 0;
+			k->ksd_on = 1;
+			k->ksd_env = 1.0f;
+			k->ksd_rough = KT[KT_LICH_ROUGH];
+			/* the loop's loss: the ring (LENGTH, the decay, the stretch) as time to -40 dB */
+			const float ring = clampf((0.05f + 0.4f * dec) * KT[KT_LICH_STRETCH] * (lane == 7 ? 0.4f : 1.0f), 0.01f, 6.0f);
+			k->ksd_g = fexp2(-6.644f * (float)n / (ring * KSR));
+		}
 		if (press && lane == 1) {                         /* pressed: rising from below, muffled */
 			k->sn.drop = -0.2f;
 			k->sn.dk = fexp2(-1.4427f / 25.0f);
@@ -589,6 +653,16 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->h_grit = (0.2f + 0.5f * xs) * (1.0f - 0.6f * open);
 		k->h_lpk = 1.0f;                                  /* the low-pass after the shift: open at first */
 		k->h_lpe = 1.0f - 0.75f * dark;                   /* and where it closes to */
+		/* the Lich: the NES's noise register (15 bits, or its short 7-bit loop: metallic), clocked
+		 * higher with TONE */
+		k->h_lich = (uint8_t)(KT[KT_LICH_HAT] + 0.5f);
+		if (k->h_lich) {
+			if (!k->lf_reg)
+				k->lf_reg = 1;
+			k->lf_per = KSR / ((1500.0f + 9000.0f * t) * KT[KT_LICH_RATE] * (lane == 6 ? 0.7f : 1.0f));
+			if (k->lf_per < 1.0f)
+				k->lf_per = 1.0f;
+		}
 		break;
 	}
 	case 3: {   /* DX100 clank: ratio (CHARACTER), carrier (REGISTER), index (TONE), decay (LENGTH) */
@@ -601,6 +675,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->d_k = kexp((0.06f + 0.35f * l) * dm * KT[KT_C_DECAY]);
 		k->d_fb = (0.05f + 0.25f * x) * 3.1416f;
 		k->d_grit = x > 0.5f;
+		k->d_lich = KT[KT_LICH_CLANK] >= 0.5f;               /* the Lich: the two as 1-bit pulses, XORed */
 		break;
 	}
 	case 4: {   /* tissue: stroke length (LENGTH), crackle density (CHARACTER), brightness (TONE), rumble */
@@ -613,6 +688,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->t_w0 = 2.0f + 3.0f * ku();
 		k->t_w1 = 0.7f + ku();
 		k->t_ph0 = ku();
+		/* the Lich: a PhISEM shaker (beads in a gourd: the shake's energy decays, collisions come
+		 * as often as it allows, each rings the gourd's band) */
+		k->t_lich = KT[KT_LICH_TISSUE] >= 0.5f;
+		if (k->t_lich) {
+			k->sh_e = vel;
+			k->sh_p = 64.0f * KT[KT_LICH_BEADS] * (1.0f / KSR) * 40.0f;
+		}
 		break;
 	}
 	case 5: {   /* Nord sync hit: pitch (REGISTER), sync sweep and FM (CHARACTER), cutoff (TONE), decay (LENGTH) */
@@ -639,6 +721,16 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		k->n_ak = kexp((0.4f + 1.0f * l) * dm * KT[KT_N_DECAY]);
 		k->n_att = 0.0f;
 		k->n_p1 = k->n_p2 = 0.0f;
+		/* the Lich: a rungler (two oscillators: B clocks an 8-bit register that A's state feeds; the
+		 * register's low three bits bend both); a few octaves above the Nord's note */
+		k->n_lich = KT[KT_LICH_NORD] >= 0.5f;
+		if (k->n_lich) {
+			k->rg_fa = k->n_f1 * 4.0f;
+			k->rg_fb = k->n_f1 * 4.0f * 1.37f;
+			k->rg_depth = KT[KT_LICH_RUNG];
+			if (!k->rg_reg)
+				k->rg_reg = (uint8_t)(1u + (kit_r >> 24));
+		}
 		break;
 	}
 	case 10:    /* toms: the roll's snare tuned to the chord, its body ringing, little noise: */
@@ -1192,8 +1284,30 @@ static int kit_render12(chan *c, float *A)
 				kit_fire(c, (int)(c - CH), k->q_l[i], k->q_v[i]);
 			}
 		}
+	/* the Lich kick: the 4-bit triangle, its pitch falling */
+	if (k->k_lich && (k->k_amp[0] > 1e-3f || k->k_nz > 1e-3f)) {
+		any = 1;
+		const float f = k->kl_f0 * (1.0f + k->kl_fall);
+		k->kl_fall *= 0.94f;                               /* (16 ms a fall of e) */
+		const uint32_t inc = kinc(f);
+		uint32_t ph = k->kl_ph;
+		float a = k->k_amp[0] * 1.6f;
+		const float dk = k->k_dec[0];
+		for (uint32_t i = 0; i < KSUB; i++) {
+			ph += inc;
+			int v = (int)(ph >> 28);                       /* 16 steps */
+			v = v < 8 ? v : 15 - v;
+			A[i] += a * ((float)v - 3.5f) * (1.0f / 3.5f) * KE(0);
+			a *= dk;
+		}
+		k->kl_ph = ph;
+		k->k_amp[0] = a * (1.0f / 1.6f);
+		for (int m = 1; m < 5; m++)
+			k->k_amp[m] = 0.0f;
+		k->k_nz *= 0.5f;
+	}
 	/* canvas kick */
-	if (k->k_amp[0] > 1e-3f || k->k_nz > 1e-3f) {
+	if (!k->k_lich && (k->k_amp[0] > 1e-3f || k->k_nz > 1e-3f)) {
 		any = 1;
 		/* the five modes, recursive sines (the slack's glide once a block), into A */
 		const float g = 1.0f + k->k_glide;
@@ -1223,13 +1337,56 @@ static int kit_render12(chan *c, float *A)
 			k->k_lp = lp; k->k_nz = nz;
 		}
 	}
+	/* the Lich snare: the Karplus-Strong drum */
+	if (k->ksd_on) {
+		any = 1;
+		int16_t *kb = c->ks + KSD_OFF;
+		const uint16_t n = k->ksd_n;
+		uint16_t j = k->ksd_i;
+		const float g = 0.5f * k->ksd_g, rough = k->ksd_rough, out = 5.4f * KT[KT_L_SNARE] / 9000.0f;   /* (its averaging loses level: made up) */
+		float peak = 0.0f;
+		for (uint32_t i = 0; i < KSUB; i++) {
+			const uint16_t j2 = (uint16_t)(j + 1u >= n ? 0 : j + 1u);
+			float v = ((float)kb[j] + (float)kb[j2]) * g;
+			if (ku() < rough)
+				v = -v;                                    /* (the drum's roughness) */
+			kb[j] = (int16_t)v;
+			A[i] += v * out * KE(1);
+			peak = peak > kabs(v) ? peak : kabs(v);
+			j = j2;
+		}
+		k->ksd_i = j;
+		if (peak < 4.0f)
+			k->ksd_on = 0;
+	}
 	/* R-8 snare (and its ghosts) */
 	if (k->sn.b > 1e-3f || k->sn.n > 1e-3f) {
 		any = 1;
 		kit_snare_block(&k->sn, A, 0.9f * KT[KT_L_SNARE], ea >> 1 & 1u ? eg[1] : 0);
 	}
+	/* the Lich hats: the noise register */
+	if (k->h_lich && k->h_a > 1e-3f) {
+		any = 1;
+		const int sh = k->h_lich == 2 ? 6 : 1;               /* (the short loop taps bit 6) */
+		const float per = k->lf_per, hk = k->h_k, g = 1.4f;
+		float cnt = k->lf_cnt, ha = k->h_a, hp = k->lh_hp;
+		uint16_t reg = k->lf_reg;
+		for (uint32_t i = 0; i < KSUB; i++) {
+			cnt += 1.0f;
+			while (cnt >= per) {
+				cnt -= per;
+				uint16_t bit = (uint16_t)((reg ^ (reg >> sh)) & 1u);
+				reg = (uint16_t)((reg >> 1) | (bit << 14));
+			}
+			const float y = (reg & 1u ? 1.0f : -1.0f) * ha;
+			hp += 0.3f * (y - hp);                         /* (its bottom taken off) */
+			A[i] += (y - hp) * g * KE(2);
+			ha *= hk;
+		}
+		k->lf_cnt = cnt; k->lf_reg = reg; k->h_a = ha; k->lh_hp = hp;
+	}
 	/* metal hat, frequency-shifted */
-	if (k->h_a > 1e-3f) {
+	if (!k->h_lich && k->h_a > 1e-3f) {
 		any = 1;
 		const float dt = 1.0f / KSR;
 		/* the band: placed per hit, swept down from above in the first ms, settling lower on a
@@ -1290,8 +1447,23 @@ static int kit_render12(chan *c, float *A)
 		k->h_bp = bp1; k->h_lo = lo; k->h_hp = hh; k->h_l2 = l2; k->h_l3 = l3; k->h_a = ha; k->h_ad = ad;
 		k->h_c = pc; k->h_s = ps; k->h_lp = hl;
 	}
+	/* the Lich clank: two pulses, XORed, 1-bit */
+	if (k->d_lich && k->d_a > 1e-3f) {
+		any = 1;
+		uint32_t pc = k->d_pc, pm = k->d_pm;
+		float a = k->d_a;
+		const uint32_t ic = k->d_ic, im = k->d_im;
+		const float dk = k->d_k;
+		for (uint32_t i = 0; i < KSUB; i++) {
+			pc += ic;
+			pm += im;
+			A[i] += ((pc ^ pm) >> 31 ? 0.35f : -0.35f) * a * KE(3);
+			a *= dk;
+		}
+		k->d_pc = pc; k->d_pm = pm; k->d_a = a;
+	}
 	/* DX100 clank */
-	if (k->d_a > 1e-3f) {
+	if (!k->d_lich && k->d_a > 1e-3f) {
 		any = 1;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			float mo = sin_u(k->d_pm + (uint32_t)(int32_t)(k->d_fb * (k->d_m1 + k->d_m2) * 0.5f * 683565275.6f));
@@ -1307,8 +1479,25 @@ static int kit_render12(chan *c, float *A)
 			A[i] += y * 0.7f * KE(3);
 		}
 	}
+	/* the Lich shaker: PhISEM */
+	if (k->t_lich && k->t_a > 1e-4f && (k->sh_e > 1e-3f || k->sh_lvl > 1e-4f)) {
+		any = 1;
+		const ksvf bf = ksvf_set(ktan(clampf((2400.0f + 3000.0f * eff_tone((int)(c - CH))) / KSR, 0.0f, 0.24f)), 0.12f);
+		float e = k->sh_e, lvl = k->sh_lvl, s1 = k->t_b, s2 = k->t_lo;
+		const float p = k->sh_p, ga = 0.5f * k->t_a;
+		const float ed = fexp2(-6.644f / (clampf(k->t_len, 0.05f, 4.0f) * KSR));   /* (the shake: its stroke's length) */
+		for (uint32_t i = 0; i < KSUB; i++) {
+			e *= ed;
+			if (ku() < p * e)
+				lvl += 0.4f * e;                           /* a collision */
+			lvl *= 0.93f;
+			float lp, bp = ksvf_run(&bf, &s1, &s2, lvl * kn(), &lp);
+			A[i] += bp * ga * KE(4);
+		}
+		k->sh_e = e; k->sh_lvl = lvl; k->t_b = s1; k->t_lo = s2;
+	}
 	/* tissue paper over a mic */
-	if (k->t_a > 1e-4f && k->t_t < k->t_len + 0.08f) {
+	if (!k->t_lich && k->t_a > 1e-4f && k->t_t < k->t_len + 0.08f) {
 		any = 1;
 		const float dt = 1.0f / KSR;
 		/* the stroke's envelope and the hand's pressure, once a block: in over 30 ms, then fading
@@ -1345,10 +1534,34 @@ static int kit_render12(chan *c, float *A)
 			A[i] += ((bp - th) * ga + r2 * gr) * KE(4);
 		}
 		k->t_c = tc; k->t_b = tb; k->t_lo = tl; k->t_hp = th; k->t_r1 = r1; k->t_r2 = r2;
-	} else
+	} else if (!k->t_lich)
 		k->t_a = 0.0f;
+	/* the Lich Nord: the rungler */
+	if (k->n_lich && k->n_a > 1e-3f) {
+		any = 1;
+		float pa = k->rg_pa, pb = k->rg_pb, lp = k->rg_lp, na = k->n_a;
+		uint8_t reg = k->rg_reg;
+		const float dt = 1.0f / KSR, d = k->rg_depth;
+		float dac = (float)(reg & 7u) * (1.0f / 7.0f);
+		for (uint32_t i = 0; i < KSUB; i++) {
+			pa += k->rg_fa * (1.0f + d * 2.0f * dac) * dt;
+			pa -= pa >= 1.0f ? 1.0f : 0.0f;
+			pb += k->rg_fb * (1.0f + d * dac) * dt;
+			if (pb >= 1.0f) {                              /* B clocks the register; A's state is the data */
+				pb -= 1.0f;
+				const uint8_t bit = (uint8_t)((pa < 0.5f) ^ (reg >> 7));
+				reg = (uint8_t)((reg << 1) | bit);
+				dac = (float)(reg & 7u) * (1.0f / 7.0f);
+			}
+			const float y = ((pa < 0.5f) ^ (pb < 0.5f)) ? 1.0f : -1.0f;
+			lp += 0.35f * (y - lp);
+			A[i] += lp * na * 0.3f * KT[KT_L_NORD] * KE(5);
+			na *= k->n_ak;
+		}
+		k->rg_pa = pa; k->rg_pb = pb; k->rg_lp = lp; k->rg_reg = reg; k->n_a = na;
+	}
 	/* Nord sync / FM hit, at twice the rate */
-	if (k->n_a > 1e-3f) {
+	if (!k->n_lich && k->n_a > 1e-3f) {
 		any = 1;
 		const int os = k->n_menv > 0.03f ? 2 : 1;          /* twice the rate while the sync sweeps */
 		const float dt2 = 1.0f / ((float)os * KSR);
