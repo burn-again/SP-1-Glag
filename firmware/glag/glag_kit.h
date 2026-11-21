@@ -917,15 +917,22 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 				if (scale_pc[i] == chord_pc[0])
 					at = i;
 			/* the C1 octave (33-62 Hz), now and then the C2 */
-			k->n_f1 = kit_hz((ku() < 0.3f ? 36 : 24) + 12 * (int)KT[KT_N_OCT] + root_pc + kit_deg(at + d)) * oct;
+			const int nb = (ku() < 0.3f ? 36 : 24) + 12 * (int)KT[KT_N_OCT] + root_pc;
+			k->n_f1 = kit_hz(nb + kit_deg(at + d)) * oct;
+			float mul = oct;
 			if (k->n_f1 > 125.0f * oct * fexp2(KT[KT_N_OCT]))
-				k->n_f1 *= 0.5f;
-			static float last;
-			if (nord_down > 0)
-				k->n_f1 = last * 0.5f;
-			else if (nord_down < 0)
-				k->n_f1 *= 2.0f;
-			last = k->n_f1;
+				k->n_f1 *= 0.5f, mul *= 0.5f;
+			/* a fill's two Nord hits: the first an octave up, the second in that octave a third
+			 * (the key's) under it */
+			static int last_b, last_d;
+			static float last_m;
+			if (nord_down > 0) {
+				k->n_f1 = kit_hz(last_b + kit_deg(last_d - 2)) * last_m;
+			} else {
+				if (nord_down < 0)
+					k->n_f1 *= 2.0f, mul *= 2.0f;
+				last_b = nb, last_d = at + d, last_m = mul;
+			}
 		}
 		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f) * KT[KT_N_SWEEP];
 		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
