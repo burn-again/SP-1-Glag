@@ -3,7 +3,7 @@
 import re, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from params import P
-from tunings import TUNINGS, GLAG_MACRO
+from tunings import TUNINGS, GLAG_MACRO, MAP, MAP_GAIN
 ids = [p[0] for p in P]
 def parse(code):
     v = [float(p[3]) for p in P]
@@ -32,6 +32,12 @@ for n, r in zip(names, rows):
     c += '\t{ /* %s */\n\t\t%s},\n' % (n, ', '.join(('%gf' % x) if '.' in ('%g' % x) or 'e' in ('%g' % x) else ('%g.0f' % x) for x in r))
 c += '};\n/* where the macro takes the Kit channel at each tuning: activity, tone, length, register,\n * character (-1: busier, darker, longer, fuller than the piece has it) */\n'
 c += 'static const float KIT_TUNE_TO[KIT_NTUNE][5] = {%s};\n' % ', '.join('{%s}' % ', '.join('%gf' % x if '.' in '%g' % x else '%g.0f' % x for x in t) for t in targets)
+idx = {n: i for i, n in enumerate(names)}
+c += '/* the Kit map\'s corners (tunings): (0,0) (1,0) (0,1) (1,1), and each one\'s level */\n'
+c += 'static const uint8_t KIT_MAP[4] = {%s};\n' % ', '.join(str(idx[n]) for n in MAP)
+c += 'static const float KIT_MAP_GAIN[4] = {%s};\n' % ', '.join('%gf' % g if '.' in '%g' % g else '%g.0f' % g for g in MAP_GAIN)
+c += '/* which numbers the map blends (not the evolving, velocity and arc ones), which it switches */\n'
+c += 'static const uint8_t KT_MAPPED[KT_COUNT] = {%s};\n' % ', '.join('0' if p[1] in ('Evolve', 'Velocity', 'Arc') else ('2' if p[6] >= 1 else '1') for p in P)
 c += '/* @@END_KIT_TUNINGS */\n'
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../glag/glag_kit.h')
 s = open(path).read()

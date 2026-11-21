@@ -167,6 +167,7 @@ int gl_kit_ntunings(void);
 const char *gl_kit_tuning_name(int t);
 void gl_kit_tuning_lock(int on);      /* the tuning page: patches leave the Kit's numbers alone */
 int gl_kit_pattern_pos(void);
+void gl_kit_director(int on);         /* the tuning page: the Kit map wanders even while the page holds the numbers */
 void gl_alt(int voice, int method);   /* audition only: another way to make a voice (0: as it is) */
 
 /* Playworld (a prototype, outside the patch): see glag_play.h */

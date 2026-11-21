@@ -347,6 +347,23 @@ static void key_tick(float dt)
  * (up to -30 dB at full); past 70 % the notes bend down with it, up to a semitone ---- */
 static float pump_gain(float dt, float bpm)
 {
+	/* the Kit's director can pump too (kit_pump: > 0 the band ducks on the kick, < 0 it swells into it,
+	 * dipping between): when Playworld's pump is off, while a Kit is playing */
+	static float kp;
+	kit_pump_t -= dt;
+	kp += ((kit_pump_t > 0.0f ? kit_pump : 0.0f) - kp) * (1.0f - dcoef(1.5f, dt));
+	if (W.pump <= 0.0f && (kp > 0.02f || kp < -0.02f)) {
+		const float a = kp < 0.0f ? -kp : kp;
+		const float rel = 0.375f * 60.0f / bpm * (1.0f + a);
+		if (pump_tgt > pump_env)
+			pump_env += (pump_tgt - pump_env) * 0.25f;
+		else
+			pump_env = pump_tgt;
+		pump_tgt *= dcoef(rel * 3.0f, dt);
+		pbend = 1.0f;
+		const float depth = 0.5f * a;
+		return kp > 0.0f ? 1.0f - depth * pump_env : 1.0f - depth * (1.0f - pump_env);
+	}
 	if (W.pump <= 0.0f) {
 		pbend = 1.0f;
 		W.pdr_s += (1.0f - W.pdr_s) * (1.0f - dcoef(0.3f, dt));

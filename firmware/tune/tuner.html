@@ -97,7 +97,7 @@ details.foot pre { font-family:var(--mono); font-size:12px; overflow-x:auto; mar
   <div class="lanes" id="lanes"><span class="l">Sounds</span></div>
   <div class="code">
     <output id="code" aria-label="Your tuning code">GK1</output>
-    <div class="btns"><button id="copy">Copy code</button><button id="randall" title="Every slider to a random value (around the firmware's, not the extremes)">Randomize all</button><button id="clean" aria-pressed="false" title="Hear the kit with no colour (soggy, Cheby, combs) without losing your settings">Clean</button><button id="resetall" title="Every slider back to the firmware's value">Reset sliders</button><button id="reseteverything" title="Sliders, the channel controls, groove, macro, distortion, sound solos and the pattern, back to the piece as written">Reset everything</button></div>
+    <div class="btns"><button id="copy">Copy code</button><button id="randall" title="Every slider to a random value (around the firmware's, not the extremes)">Randomize all</button><button id="clean" aria-pressed="false" title="Hear the kit with no colour (soggy, Cheby, combs) without losing your settings">Clean</button><button id="resetall" title="Every slider back to the firmware's value">Reset sliders</button><button id="director" aria-pressed="false" title="Let the director wander the Kit map (the map's numbers then come from its four corner kits, not these sliders)">Director drives the map</button><button id="reseteverything" title="Sliders, the channel controls, groove, macro, distortion, sound solos and the pattern, back to the piece as written">Reset everything</button></div>
   </div>
 </div></header>
 
@@ -160,6 +160,7 @@ function applyAll() {
   for (const [cp] of CHAN) W.kt_ch(cp, chan[cp]);
   W.kt_macro(macro);
   W.kt_lanes(lanes);
+  W.kt_director(director ? 1 : 0);
   applyDist();
 }
 $("rate").onchange = async e => {
@@ -345,6 +346,8 @@ function setClean(on) {
   if (W) W.kt_set(COL_I, on ? 0 : val[COL_I]);
 }
 $("clean").onclick = () => setClean(!clean);
+let director = false;
+$("director").onclick = () => { director = !director; $("director").classList.toggle("on", director); $("director").setAttribute("aria-pressed", director); if (W) W.kt_director(director ? 1 : 0); if (!director && W) PARAMS.forEach((p, i) => W.kt_set(i, val[i])); };
 
 /* ---- the step pattern ---- */
 const PROWS = [["K", "Kick"], ["S", "Snare"], ["G", "Ghost"], ["Q", "Squash"], ["H", "Hat"], ["O", "Open hat"], ["C", "Clank"], ["T", "Tissue"],

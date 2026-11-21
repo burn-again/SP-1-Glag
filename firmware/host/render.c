@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	if (argc < 4) { fprintf(stderr, "render PIECE SECONDS OUT.wav [VOICES]\n"); return 2; }
 	int piece = atoi(argv[1]);
 	float secs = (float)atof(argv[2]);
-	gl_init(1234);
+	gl_init(getenv("SEED") ? (uint32_t)atoi(getenv("SEED")) : 1234u);   /* SEED=n: another take */
 	gl_patch p;
 	gl_piece(piece, &p);
 	if (argc > 4)

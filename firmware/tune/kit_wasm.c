@@ -108,5 +108,6 @@ EXPORT float kt_peak(void) { return gl_peak; }
 EXPORT void kt_pat(int row, int step, int v) { gl_kit_pattern(row, step, v); }
 EXPORT void kt_pat_mode(int on, int len, float swing) { gl_kit_pattern_mode(on, len, swing); }
 EXPORT int kt_pat_pos(void) { return gl_kit_pattern_pos(); }
+EXPORT void kt_director(int on) { gl_kit_director(on); }
 /* the mean power since the last call (a test's level tap) */
 EXPORT float kt_power(void) { float p = acc_n ? (float)(acc_e / acc_n) : 0.0f; acc_e = 0; acc_n = 0; return p; }
