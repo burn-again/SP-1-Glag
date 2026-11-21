@@ -153,10 +153,10 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
  * the rest are mono (their channel pan places them), which saves a buffer and half the mixing. SPREAD: how far each side sits
  * from the channel's pan. */
 static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1,
-                                        0, 0, 1, 1, 0};
+                                        0, 0, 1, 1, 1};
 static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
                                        0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f, 0.35f, 0.0f, 0.0f, 0.4f,
-                                       0.0f, 0.0f, 0.35f, 0.25f, 0.0f};
+                                       0.0f, 0.0f, 0.35f, 0.25f, 0.5f};
 
 /* the kit (glag_kit.h): a snare (also the roll's), and each sound's state */
 typedef struct { float x1, y1, x2, y2, e1, e2, drop, dk, b, bk, n, nk, hp, l1, l2, lpk, nl, drive, lo; } kit_snare;
@@ -2962,7 +2962,7 @@ static int chan_render(chan *c, float *A, float *B)
 		B = A;                                  /* mono voice: both sides are one buffer */
 	switch (c->voice) {
 	case GV_KIT:
-		any = kit_render(c, A);
+		any = kit_render(c, A, B);
 		break;
 	case GV_PULSE:                              /* the kick and the click; its noise is in pulse_noise */
 		if (c->pk_a > 1e-4f) {                    /* the kick: a sine whose pitch falls */
@@ -3865,6 +3865,8 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			}
 			/* the two sides, spread either side of the channel's pan */
 			float sp = SPREAD[vo];
+			if (vo == GV_KIT)
+				es *= 2.0f, vs *= 2.0f;                  /* (its sides at half: its sends as a mono voice's) */
 			float pa = clampf(pan - sp, 0.0f, 1.0f), pb = clampf(pan + sp, 0.0f, 1.0f);
 			float al = (1.0f - pa) * g, ar = pa * g, bl = (1.0f - pb) * g, br = pb * g;
 			for (uint32_t i = 0; i < VSUB; i++) {
