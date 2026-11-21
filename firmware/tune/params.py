@@ -143,4 +143,11 @@ P = [
  ('WET_AMT','Restraint','Colour amount',0.6,0,2,0.01,'how loud the chord resonators, the metal and the ring mod ring, over what the tuning says'),
  ('WET_OCT','Restraint','Colour octave',-12,-24,0,12,'the resonators and the ring mod an octave or two down'),
  ('WET_LP','Restraint','Colour cutoff',4000,300,8000,10,'Hz: a low-pass on the resonators and the ring mod (8000: open)'),
+ ('OCT_MOVE','Restraint','Colour octave moves',0.15,0,1,0.01,'how often a bar takes the colour an octave further down, or back up'),
+ ('IV_HITS','Restraint','Colour intervals',0.15,0,1,0.01,"how often a hit moves the colour up the chord's 3rd, 5th, 7th or 9th (until the next one)"),
+ ('IV_SET','Restraint','Which intervals',15,0,15,1,'bits: 1 the 3rd, 2 the 5th, 4 the 7th, 8 the 9th'),
+ ('CHO_MIX','Restraint','Chorus',0.3,0,1,0.01,'a shifting chorus at the very start of the kit, before the colour'),
+ ('CHO_RATE','Restraint','Chorus speed',0.35,0.05,3,0.01,'Hz'),
+ ('CHO_DEPTH','Restraint','Chorus depth',2.5,0.2,8,0.1,'ms'),
+ ('VTHROW','Arc','Reverb throws',0.35,0,1,0.01,"how often bar 2's last hit is thrown into the reverb"),
 ]

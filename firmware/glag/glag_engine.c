@@ -184,6 +184,7 @@ typedef struct {
 	uint16_t c_w;
 	uint8_t c_sel;
 	float c_d1, c_d2, c_lfo, c_lp1, c_lp2, c_t, c_tail, c_wl, c_roct, k_since;
+	uint8_t vthr;
 	float c_r1[3], c_r2[3], c_ra[3], c_rb[3], c_rg[3];   /* the resonators: states, coefficients, input gain */
 	uint16_t c_rmask;              /* the chord they were set for */
 	float c_ph, c_env, c_fast, c_s1, c_s2, c_relk, c_ceil, c_dc;
@@ -3293,6 +3294,7 @@ static void space_settle(void);
 
 void gl_init(uint32_t seed)
 {
+	kit_r2 ^= seed * 2654435761u;                 /* (the Kit's second dice: each seed its own) */
 	for (int i = 0; i <= TBL; i++) {
 		/* sine without libm: a short Taylor series per point, then exact quarter symmetry */
 		float x = (float)(i % (TBL / 2)) * (6.2831853f / TBL);
@@ -4573,6 +4575,48 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{60, 50, 50, 50, 0, 0, 50, 50, 88}, {40, 30, 70, 50, 10, 60, 50, 30, 34},
 	  {40, 30, 70, 50, 0, 15, 50, 30, 53}, {30, 40, 60, 50, 20, 45, 60, 30, 34}},
 	 {70, 30, 50, 50, 0, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {4, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
+	/* ---- the Kit with the other voices: the restrained kit (its colour an octave down, moving now and
+	 * then; interval hits; throws into the echo and, at bar 2's end, the reverb; the chorus first) ---- */
+	/* downtempo: harp figures and a sine-and-triangle glow over a round bass; D Dorian, 80 */
+	{"Glass Canvas", {GV_KIT, GV_HARP, GV_GLOW, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 30, 90}, {35, 50, 60, 50, 30, 55, 35, 40, 51},
+	  {30, 35, 75, 50, 10, 60, 65, 30, 40}, {35, 30, 80, 50, 0, 10, 50, 30, 61}},
+	 {60, 40, 50, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 0, 0}, 8, {3, 2, 1, 0}, 8, 0, {16, 0, 0, 0}, 0},
+	/* euclidean: a kalimba, strings and a drone, slow and wide; A Aeolian, 72, a bloom */
+	{"Tuned Rain", {GV_KIT, GV_KALIMBA, GV_STRINGS, GV_DRONE},
+	 {{45, 40, 45, 50, 0, 0, 50, 40, 100}, {40, 45, 55, 50, 35, 60, 40, 35, 66},
+	  {30, 30, 80, 50, 10, 65, 60, 30, 49}, {20, 25, 90, 25, 0, 40, 50, 20, 51}},
+	 {52, 45, 60, 45, 9, 5, 25, 40}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 1, 0}, 12, {3, 2, 2, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* two-step: the supersaw low, a bass, the shimmer voice above; F minor, 120 */
+	{"Night Chorus", {GV_KIT, GV_SUPER, GV_BASS, GV_SHIMMER},
+	 {{65, 50, 35, 50, 0, 0, 50, 40, 86}, {35, 35, 70, 50, 15, 45, 50, 30, 36},
+	  {45, 30, 70, 50, 0, 10, 50, 40, 58}, {25, 45, 80, 75, 25, 70, 50, 30, 30}},
+	 {100, 35, 50, 50, 5, 5, 25, 40}, {GR_HALL, GS_FIFTH, 3}, {3, 1, 1, 0}, 8, {4, 2, 2, 1}, 8, 0, {4, 0, 0, 0}, 0},
+	/* drill: harpsichord and pizzicato over a sliding bass; C# Phrygian, 70 */
+	{"Harpsi Drill", {GV_KIT, GV_HARPSI, GV_PIZZ, GV_BASS},
+	 {{60, 50, 40, 50, 0, 0, 50, 40, 96}, {40, 50, 50, 50, 25, 40, 35, 40, 45},
+	  {45, 45, 45, 50, 20, 40, 65, 40, 41}, {40, 30, 75, 50, 0, 10, 50, 40, 65}},
+	 {50, 40, 45, 50, 1, 2, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {3, 1, 0, 0}, 8, {4, 2, 2, 1}, 8, 0, {8, 0, 0, 0}, 0},
+	/* house: marimba and an EP, four on the floor; G Mixolydian, 118 */
+	{"Marimba House", {GV_KIT, GV_MARIMBA, GV_EP, GV_BASS},
+	 {{65, 45, 35, 50, 0, 0, 50, 35, 78}, {45, 50, 45, 50, 30, 40, 40, 40, 39},
+	  {35, 40, 60, 50, 20, 45, 60, 35, 37}, {45, 30, 65, 50, 0, 10, 50, 35, 54}},
+	 {98, 40, 45, 50, 7, 4, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {20, 0, 0, 0}, 0},
+	/* jungle at half: a flute and the ribbon over a drone; E Dorian, 87 */
+	{"Flute Jungle", {GV_KIT, GV_FLUTE, GV_RIBBON, GV_DRONE},
+	 {{70, 50, 35, 50, 0, 0, 50, 45, 89}, {30, 45, 70, 50, 30, 55, 40, 35, 42},
+	  {30, 40, 70, 50, 20, 55, 60, 35, 36}, {20, 25, 90, 25, 0, 40, 50, 20, 40}},
+	 {67, 40, 55, 50, 4, 1, 25, 40}, {GR_HALL, GS_OCTAVE, 4}, {3, 1, 1, 0}, 8, {4, 2, 2, 1}, 8, 0, {12, 0, 0, 0}, 0},
+	/* cumbia: the funk keys and a piano, a walking bass; A minor, 95 */
+	{"Funk Cumbia", {GV_KIT, GV_FUNK, GV_PIANO, GV_BASS},
+	 {{60, 50, 40, 50, 0, 0, 50, 40, 87}, {45, 45, 40, 50, 15, 30, 40, 40, 41},
+	  {30, 40, 60, 50, 20, 50, 60, 30, 37}, {45, 30, 60, 50, 0, 10, 50, 40, 60}},
+	 {75, 35, 40, 50, 9, 5, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 1, 0, 0}, 8, {3, 2, 1, 1}, 8, 0, {32, 0, 0, 0}, 0},
+	/* IDM: the analog sequence, a swell and the gong; B Aeolian, 100 */
+	{"Seq Tears", {GV_KIT, GV_SEQ, GV_SWELL, GV_GONG},
+	 {{70, 50, 35, 50, 0, 0, 50, 50, 84}, {45, 45, 45, 50, 25, 40, 40, 40, 38},
+	  {25, 35, 85, 50, 10, 65, 60, 30, 34}, {15, 40, 80, 50, 20, 70, 50, 30, 30}},
+	 {80, 40, 55, 50, 11, 5, 25, 40}, {GR_SHIMMER, GS_OCTAVE, 3}, {3, 1, 1, 1}, 8, {4, 2, 2, 2}, 8, 0, {40, 0, 0, 0}, 0},
 #endif
 };
 
