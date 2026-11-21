@@ -152,9 +152,9 @@ P = [
  ('CHO_RATE','Restraint','Chorus speed',0.35,0.05,3,0.01,'Hz'),
  ('CHO_DEPTH','Restraint','Chorus depth',2.5,0.2,8,0.1,'ms'),
  ('CHO_WIDE','Restraint','Chorus width',0.8,0,1.5,0.01,'how far the two taps spread left and right'),
- ('CHO_SWELL','Restraint','Chorus width swell',0.3,0,1,0.01,'how much wider it gets as a phrase builds into its fourth bar'),
+ ('CHO_SWELL','Restraint','Chorus width swell',0.25,0,1,0.01,'how much wider it gets as a phrase builds into its fourth bar'),
  ('VTHROW','Arc','Reverb throws',0.0,0,1,0.01,"how often bar 2's last hit is thrown into the reverb"),
  ('FILL_RATE','Arc','Fills',1.0,0,10,0.01,'how often a phrase ends in a fill (x the tuning\'s tom fill chance)'),
- ('FILL_TYPE','Arc','Fill',0,0,16,1,'0 any of the set; 1 toms down the chord, 2 up, 3 low triplets, 4 call and answer, 5 snare and toms, 6 clank and Nord, 7 one low tom, 8 roll into a tom, 9 half-time up, 10 ghost ripple, 11 hat triplets, 12 snare triplets, 13 clank triplets, 14 tissue triplets, 15 Nord triplets, 16 kick-snare-hat triplets'),
- ('FILL_SET','Arc','Fills to pick from',64919,0,65535,1,'bits, fill n at bit n - 1 (64919: 1, 2, 3, 5, 8, 9 and the six triplets)'),
+ ('FILL_TYPE','Arc','Fill',0,0,18,1,'0 any of the set; 1 toms down the chord, 2 up, 3 low triplets, 4 call and answer, 5 snare and toms, 6 clank and Nord, 7 one low tom, 8 roll into a tom, 9 half-time up, 10 ghost ripple, 11 hat triplets, 12 snare triplets, 13 clank triplets, 14 tissue triplets, 15 the Nord twice, the second an octave down, 16 kick-snare-hat triplets, 17 hats slowing down, 18 Nord triplets'),
+ ('FILL_SET','Arc','Fills to pick from',97687,0,262143,1,'bits, fill n at bit n - 1 (97687: 1, 2, 3, 5, 8, 9, 11 to 15 and 17); triplets sit out in the house groove'),
 ]
