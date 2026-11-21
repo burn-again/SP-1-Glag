@@ -158,5 +158,5 @@ P = [
  ('FILL_RATE','Arc','Fills',1.0,0,10,0.01,'how often a phrase ends in a fill (x the tuning\'s tom fill chance)'),
  ('FILL_TYPE','Arc','Fill',0,0,18,1,'0 any of the set; 1 toms down the chord, 2 up, 3 low triplets, 4 call and answer, 5 snare and toms, 6 clank and Nord, 7 one low tom, 8 roll into a tom, 9 half-time up, 10 ghost ripple, 11 hat triplets, 12 snare triplets, 13 clank triplets, 14 tissue triplets, 15 the Nord twice, an octave up, then a third under that, 16 kick-snare-hat triplets, 17 hats slowing down, 18 Nord triplets'),
  ('NORD_FILLX','Arc','Fill Nord length',2.0,1,4,0.01,"how much longer a fill's Nord hits ring"),
- ('FILL_SET','Arc','Fills to pick from',97687,0,262143,1,'bits, fill n at bit n - 1 (97687: 1, 2, 3, 5, 8, 9, 11 to 15 and 17); triplets sit out in the house groove'),
+ ('FILL_SET','Arc','Fills to pick from',31127,0,262143,1,'bits, fill n at bit n - 1 (31127: 1, 2, 3, 5, 8, 9, 12 to 15; 11 and 17, the slow-hat bars, are out); triplets sit out in the house groove'),
 ]

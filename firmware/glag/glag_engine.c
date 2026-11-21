@@ -4584,10 +4584,10 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{55, 45, 40, 50, 0, 0, 50, 30, 90}, {35, 50, 60, 50, 30, 55, 35, 40, 51},
 	  {30, 35, 75, 50, 10, 60, 65, 30, 40}, {35, 30, 80, 50, 0, 10, 50, 30, 61}},
 	 {60, 40, 50, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 0, 0}, 8, {3, 2, 1, 0}, 8, 0, {16, 0, 0, 0}, 0},
-	/* euclidean: a kalimba, strings and a drone, slow and wide; A Aeolian, 72, a bloom */
-	{"Tuned Rain", {GV_KIT, GV_KALIMBA, GV_STRINGS, GV_DRONE},
-	 {{45, 40, 45, 50, 0, 0, 50, 40, 100}, {40, 45, 55, 50, 35, 60, 40, 35, 66},
-	  {30, 30, 80, 50, 10, 65, 60, 30, 49}, {20, 25, 90, 25, 0, 40, 50, 20, 51}},
+	/* euclidean: a kalimba, the glow and a drone, slow and wide; A Aeolian, 72, a bloom */
+	{"Tuned Rain", {GV_KIT, GV_KALIMBA, GV_GLOW, GV_DRONE},
+	 {{45, 40, 45, 50, 0, 0, 50, 40, 100}, {40, 45, 55, 50, 35, 60, 40, 35, 80},
+	  {30, 30, 80, 50, 10, 65, 60, 30, 59}, {20, 25, 90, 25, 0, 40, 50, 20, 63}},
 	 {52, 45, 60, 45, 9, 5, 25, 40}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 1, 0}, 12, {3, 2, 2, 1}, 12, 0, {0, 0, 0, 0}, 0},
 	/* two-step: the supersaw low, a bass, the shimmer voice above; F minor, 120 */
 	{"Night Chorus", {GV_KIT, GV_SUPER, GV_BASS, GV_SHIMMER},
@@ -4619,6 +4619,38 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{70, 50, 35, 50, 0, 0, 50, 50, 84}, {45, 45, 45, 50, 25, 40, 40, 40, 38},
 	  {25, 35, 85, 50, 10, 65, 60, 30, 34}, {15, 40, 80, 50, 20, 70, 50, 30, 30}},
 	 {80, 40, 55, 50, 11, 5, 25, 40}, {GR_SHIMMER, GS_OCTAVE, 3}, {3, 1, 1, 1}, 8, {4, 2, 2, 2}, 8, 0, {40, 0, 0, 0}, 0},
+	/* ---- the second set: the kit as it now stands (the colour moving and tuned, the wide chorus,
+	 * the fills), each with a groove and voices it hasn't met yet ---- */
+	/* jazz: a ride swung in triplets under a piano and the glow, a walking bass; Bb Dorian, 70 */
+	{"Velvet Brushes", {GV_KIT, GV_PIANO, GV_GLOW, GV_BASS},
+	 {{50, 45, 45, 50, 0, 0, 50, 35, 100}, {40, 45, 50, 50, 20, 45, 40, 40, 57},
+	  {25, 30, 85, 50, 10, 60, 60, 30, 43}, {45, 30, 60, 50, 0, 10, 50, 40, 77}},
+	 {50, 35, 45, 50, 10, 1, 25, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 0, 1}, 8, {3, 2, 1, 2}, 8, 0, {36, 0, 0, 0}, 0},
+	/* reggaeton's dembow: a kalimba, the supersaw low, a bass; E Aeolian, 95 */
+	{"Dembow Glass", {GV_KIT, GV_KALIMBA, GV_SUPER, GV_BASS},
+	 {{65, 50, 35, 50, 0, 0, 50, 40, 82}, {45, 50, 45, 50, 30, 40, 40, 40, 41},
+	  {30, 30, 75, 25, 10, 45, 60, 30, 29}, {45, 30, 65, 50, 0, 10, 50, 40, 56}},
+	 {75, 40, 45, 50, 4, 5, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {3, 1, 0, 0}, 8, {4, 2, 1, 1}, 8, 0, {28, 0, 0, 0}, 0},
+	/* two-step at full tilt: a pad and the bells over a bass; C Dorian, 120 */
+	{"Tide Steps", {GV_KIT, GV_PAD, GV_BELLS, GV_BASS},
+	 {{65, 50, 35, 50, 0, 0, 50, 40, 88}, {35, 35, 75, 50, 10, 60, 50, 30, 35},
+	  {35, 45, 55, 50, 30, 55, 40, 35, 40}, {45, 30, 65, 50, 0, 10, 50, 40, 60}},
+	 {100, 40, 55, 50, 0, 1, 25, 40}, {GR_HALL, GS_OCTAVE, 3}, {3, 1, 1, 0}, 8, {4, 2, 2, 1}, 8, 0, {4, 0, 0, 0}, 0},
+	/* downtempo: a flute and the harp over a drone; G Dorian, 82, a bloom */
+	{"Paper Lanterns", {GV_KIT, GV_FLUTE, GV_HARP, GV_DRONE},
+	 {{55, 45, 40, 50, 0, 0, 50, 35, 99}, {30, 45, 70, 50, 30, 55, 40, 35, 47},
+	  {35, 50, 60, 50, 30, 55, 60, 40, 47}, {20, 25, 90, 25, 0, 40, 50, 20, 43}},
+	 {62, 45, 60, 50, 7, 1, 25, 40}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 1, 0}, 12, {3, 2, 2, 1}, 12, 0, {16, 0, 0, 0}, 0},
+	/* euclidean, slow: the gong, a swell and the shimmer voice; D Phrygian, 76 */
+	{"Iron Choir", {GV_KIT, GV_GONG, GV_SWELL, GV_SHIMMER},
+	 {{50, 40, 45, 50, 0, 0, 50, 45, 100}, {20, 40, 80, 50, 20, 65, 40, 30, 51},
+	  {25, 35, 85, 50, 10, 65, 60, 30, 54}, {20, 45, 80, 75, 25, 70, 50, 30, 45}},
+	 {56, 45, 65, 45, 2, 2, 25, 45}, {GR_SHIMMER, GS_FIFTH, 4}, {3, 1, 1, 1}, 12, {4, 2, 2, 2}, 12, 0, {0, 0, 0, 0}, 0},
+	/* cumbia: marimba and the arp over a bass; F Mixolydian, 100 */
+	{"Night Market", {GV_KIT, GV_MARIMBA, GV_ARP, GV_BASS},
+	 {{60, 50, 40, 50, 0, 0, 50, 40, 87}, {45, 50, 45, 50, 25, 40, 40, 40, 41},
+	  {40, 45, 50, 50, 20, 45, 60, 40, 33}, {45, 30, 60, 50, 0, 10, 50, 40, 60}},
+	 {80, 40, 45, 50, 5, 4, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {32, 0, 0, 0}, 0},
 #endif
 };
 
