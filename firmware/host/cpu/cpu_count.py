@@ -7,6 +7,8 @@ stores 2, VMLA/VFMA 3, VDIV/VSQRT 14, branches that leave a block 2-4). It does 
 flash cache, wait states or interrupts: treat the result as a floor and keep ~25 % margin.
 
 usage: cpu_count.py harness.elf [VOICES ...]    e.g.  0127  0000  5555
+       cpu_count.py harness.elf TOOLPREFIX --piece 70 --blocks 15000 --worst 10   (a piece as it plays; what ran in its worst blocks)
+       (pieces past 15 need the harness built with -DGL_DEMO_PIECES)
 """
 import subprocess, sys, struct, functools
 from unicorn import *
@@ -16,7 +18,8 @@ import capstone as cs
 ELF = sys.argv[1]
 TOOL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].endswith('-') else None
 # the first four characters are the voices (base 36, 0-n); after them, m<mask> and d<dist>
-configs = [a for a in sys.argv[2:] if len(a) >= 4 and all(ch in '0123456789abcdefghijklmno' for ch in a[:4]) and all(ch in '0123456789md' for ch in a[4:])] or ['0127']
+_vals = {i + 1 for i, x in enumerate(sys.argv) if x in ('--piece', '--blocks', '--worst')}
+configs = [a for i, a in enumerate(sys.argv[2:], 2) if i not in _vals and len(a) >= 4 and all(ch in '0123456789abcdefghijklmno' for ch in a[:4]) and all(ch in '0123456789md' for ch in a[4:])] or ['0127']
 NM = TOOL + 'nm' if TOOL else 'arm-zephyr-eabi-nm'
 OBJCOPY = TOOL + 'objcopy' if TOOL else 'arm-zephyr-eabi-objcopy'
 
@@ -77,23 +80,35 @@ def run(voices):
         mu.mem_write(lma(syms['cfg_dist']), struct.pack('<H', dist))
     if 'cfg_stress' in syms:
         mu.mem_write(lma(syms['cfg_stress']), bytes([0x81 if STRESS else 0x80]))   # nonzero init keeps it in .data
-    nblk = 1500 if STRESS else 300
+    if PIECE is not None:
+        mu.mem_write(lma(syms['cfg_piece']), bytes([PIECE]))
+    nblk = BLOCKS or (1500 if STRESS else 300)
     mu.mem_write(lma(syms['cfg_blocks']), struct.pack('<I', nblk))
     # enable the FPU (CPACR: CP10, CP11 full access)
     mu.mem_write(0xE000ED88, struct.pack('<I', 0xF << 20))
-    st = {'cyc': 0, 'start': 0, 'blocks': [], 'done': False}
+    st = {'cyc': 0, 'start': 0, 'blocks': [], 'done': False, 'cur': {}, 'per': []}
 
     def on_block(uc, addr, size, _):
         c = block_cost(addr, size)
         st['cyc'] += c
         if PROF is not None:
             PROF[addr] = PROF.get(addr, 0) + c
+        if WORST:
+            st['cur'][addr] = st['cur'].get(addr, 0) + c
 
     def on_mark(uc, access, addr, size, value, _):
         if value == 1:
             st['start'] = st['cyc']
         elif value == 2:
             st['blocks'].append(st['cyc'] - st['start'])
+            if WORST:
+                agg = {}
+                for a, c in st['cur'].items():
+                    f = func_of(a)
+                    agg[f] = agg.get(f, 0) + c
+                rd = lambda n: struct.unpack('<I', uc.mem_read(syms[n], 4))[0] if n in syms else 0
+                st['per'].append((agg, rd('step_n'), rd('notes_fired'), rd('chord_count')))
+                st['cur'] = {}
         elif value == 3:
             st['done'] = True
             uc.emu_stop()
@@ -109,9 +124,40 @@ def run(voices):
     budget = 64e6 * 96 / 48000      # cycles per 2 ms block
     avg = sum(b) / len(b) / budget * 100
     worst = max(b) / budget * 100
+    if WORST:
+        skip = len(st['blocks']) - len(b)
+        per = st['per'][skip:]
+        mean = {}
+        for agg, *_ in per:
+            for f, c in agg.items():
+                mean[f] = mean.get(f, 0) + c / len(per)
+        order = sorted(range(len(b)), key=lambda i: -b[i])[:WORST]
+        print(f"  typical block: {sum(b) / len(b) / budget * 100:5.1f} %")
+        for rank, i in enumerate(order):
+            agg, stp, nf, cc = per[i]
+            pstp, pnf, pcc = (per[i - 1][1:] if i > 0 else (stp, nf, cc))
+            print(f"  worst #{rank + 1}: {b[i] / budget * 100:5.1f} %  at {(i + skip) * 2 / 1000:6.2f} s  step {stp} (bar {stp // 16}, sixteenth {stp % 16})"
+                  f"  notes started {nf - pnf}  chord changed {'yes' if cc != pcc else 'no'}")
+            extra = sorted(((f, c - mean.get(f, 0)) for f, c in agg.items()), key=lambda x: -x[1])[:WORST_N]
+            for f, d in extra:
+                print(f"      {d / budget * 100:+6.1f} pts  {f:32s} ({agg[f] / budget * 100:5.1f} % here, {mean.get(f, 0) / budget * 100:5.1f} % typical)")
     return avg, worst
 
 PROF = {} if '--prof' in sys.argv else None
+def _opt(name, conv=int):
+    return conv(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else None
+PIECE = _opt('--piece')            # a piece as it plays (its own settings and macros), not the voices in piece 0
+BLOCKS = _opt('--blocks')          # how many 2 ms blocks (default 300; 1500 under --stress)
+WORST = _opt('--worst') or 0       # report the worst N blocks: what ran in them beyond a typical block
+WORST_N = 8
+_funcs = sorted((a, n) for n, a in syms.items() if a < 0x100000)
+_fa = [f[0] for f in _funcs]
+_fcache = {}
+def func_of(a):
+    if a not in _fcache:
+        import bisect
+        _fcache[a] = _funcs[bisect.bisect_right(_fa, a) - 1][1]
+    return _fcache[a]
 STRESS = '--stress' in sys.argv
 names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute', 'Arp',
          'Swell', 'EP', 'Gong', 'Pizz', 'Shimmer', 'Tails', 'Pulse', 'Strings', 'Glow', 'Seq', 'Super',
@@ -119,7 +165,8 @@ names = ['Pad', 'Bells', 'Bass', 'Piano', 'Marimba', 'Drone', 'Kalimba', 'Flute'
 for v in configs:
     avg, worst = run(v)
     vv = v[:4]
-    print(f"{v:8s} {' + '.join(names[int(c, 36)] for c in vv):40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
+    label = f"piece {PIECE}" if PIECE is not None else ' + '.join(names[int(c, 36)] for c in vv)
+    print(f"{'' if PIECE is not None else v:8s} {label:40s} avg {avg:5.1f} %   worst block {worst:5.1f} %")
 
 if PROF is not None:
     funcs = sorted((a, n) for n, a in syms.items() if a < 0x100000)

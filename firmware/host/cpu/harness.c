@@ -9,6 +9,7 @@ volatile uint32_t cfg_blocks = 500;
 volatile uint8_t cfg_mute = 0x80;
 volatile uint8_t cfg_stress = 0x80;
 volatile uint16_t cfg_dist = 0xFFFF;      /* type | amount << 4 | post << 8; 0xFFFF: none */      /* 0x81: every channel at full activity and length */           /* bit c: channel c at level 0 */
+volatile uint8_t cfg_piece = 0xFF;       /* 0xFF: piece 0 with cfg_voices in it (the table's way); else that piece as it plays, macros and all */
 volatile uint32_t mark;                  /* the host watches writes here */
 static int16_t blk[192];
 
@@ -19,7 +20,8 @@ int main(void)
 {
 	gl_init(1234);
 	gl_patch p;
-	gl_piece(0, &p);
+	const int whole = cfg_piece != 0xFF;
+	gl_piece(whole ? cfg_piece : 0, &p);
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);
 #endif
@@ -32,8 +34,9 @@ int main(void)
 #ifdef COMP
 	gl_world(GW_COMP, 1.0f);
 #endif
-	for (int c = 0; c < 4; c++)
-		p.voice[c] = cfg_voices[c];
+	if (!whole)
+		for (int c = 0; c < 4; c++)
+			p.voice[c] = cfg_voices[c];
 	if (cfg_stress & 1)
 		for (int c = 0; c < 4; c++)
 			p.ch[c][CP_ACTIVITY] = p.ch[c][CP_LENGTH] = 1.0f;
@@ -48,6 +51,13 @@ int main(void)
 	p.space[GL_SP_KIT] = KTUNE;      /* one of the Kit's tunings */
 #endif
 	gl_post_patch(&p);
+	if (whole) {                          /* the piece's own channel macros, as the renderer starts them */
+		uint8_t st[4];
+		float per;
+		gl_piece_macro(cfg_piece, st, &per);
+		for (int c = 0; c < 4; c++)
+			gl_macro(c, (float)st[c] / 4.0f, per);
+	}
 	if (cfg_dist != 0xFFFF)
 		gl_dist(cfg_dist & 15, (cfg_dist >> 4) & 15, (cfg_dist >> 8) & 1);
 	for (uint32_t b = 0; b < cfg_blocks; b++) {
