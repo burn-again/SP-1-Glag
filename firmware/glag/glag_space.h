@@ -217,8 +217,9 @@ static inline float sqrtf_fast(float x)    /* control rate only: two Newton step
 }
 
 /* audition (bits): 1 the Hall on four lines, 2 one damping band in every reverb (no lows outlasting
- * highs). A copy of the definition carries the change */
-static uint8_t rv_cut;
+ * highs), 4 the four-line Hall with the Hall's own two short diffusers (the other two out), 8 and with
+ * four of the Hall's own lines. A copy of the definition carries the change */
+static uint8_t rv_cut, rv_hall4;
 static rvdef rv_alt;
 void gl_rv_cut(int bits) { rv_cut = (uint8_t)bits; rv.cur = -1; }   /* (laid out again on the next block) */
 /* lay the chosen reverb out in the ring */
@@ -226,10 +227,12 @@ static void rv_layout(int type)
 {
 	rv.cur = type;
 	rv_alt = RVDEF[type];
+	rv_hall4 = 0;
 	if ((rv_cut & 1) && rv_alt.alg == ALG_FDN8) {
+		rv_hall4 = 1;
 		rv_alt.alg = ALG_FDN4_12;
-		rv_alt.rt_k *= 0.5f;                     /* (four lines hold their energy longer: half the time, to end where the eight do) */
-		rv_alt.gain *= 0.45f;                    /* (and ring louder: brought to about level) */
+		rv_alt.rt_k *= (rv_cut & 8) ? 0.65f : 0.5f;                     /* (four lines hold their energy longer: half the time, to end where the eight do) */
+		rv_alt.gain *= (rv_cut & 8) ? 0.38f : 0.45f;                    /* (and ring louder: brought to about level) */
 	}
 	if (rv_cut & 2)
 		rv_alt.twoband = 0;
@@ -259,6 +262,10 @@ static void rv_layout(int type)
 		for (int k = 0; k < 4; k++) {
 			rv.ilen[k] = r12 ? I4_12[k] : I4_24[k];
 			rv.len[k] = r12 ? L4_12[k] : L4_24[k];
+			if (rv_hall4 && (rv_cut & 4) && k >= 2)
+				rv.ilen[k] = 1;                         /* (audition: only the Hall's two short diffusers) */
+			if (rv_hall4 && (rv_cut & 8))
+				rv.len[k] = L8[2 * k + 1];               /* (audition: four of the Hall's own lines) */
 			rv.o_in[k] = o;
 			o += rv.ilen[k] + 1u;
 		}
