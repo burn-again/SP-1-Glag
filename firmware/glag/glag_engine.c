@@ -493,6 +493,12 @@ static uint8_t alt_m[GV_COUNT] = {[GV_STRINGS] = 2, [GV_GLOW] = 2, [GV_RIBBON] =
  * (no PWM), 16 two notes at most */
 static uint8_t str_thin;
 void gl_str_thin(int mask) { str_thin = (uint8_t)mask; }
+/* audition: a cap on how many notes and hits start in one step (0 off); past it the least heard
+ * give way (the Kit's ghosts, tissue, soft hats and clanks; the Strings' third note) */
+static int drop_cap;
+static uint32_t step_nf0;
+void gl_drop_cap(int n) { drop_cap = n; }
+static inline int over_cap(void) { return drop_cap > 0 && (int)(notes_fired - step_nf0) >= drop_cap; }
 void gl_alt(int voice, int method)
 {
 	if ((unsigned)voice < GV_COUNT)
@@ -1369,6 +1375,11 @@ static void strings_step(chan *c, int ch, uint32_t step, float act, int base)
 			v->ratio = n;                         /* its gliding pitch */
 		v->note = n;
 		float vel = 0.8f + 0.15f * rnd();
+		if (k == 2 && over_cap()) {                 /* (the step is full: the third note waits) */
+			if (moved && v->stage != ST_IDLE)
+				v->stage = ST_REL;
+			continue;
+		}
 		if (moved || rebow || v->stage == ST_IDLE || v->stage == ST_REL) {
 			v->hold = v->stage == ST_IDLE ? 0.0f : 0.035f;   /* a breath between bows */
 			notes_fired++;
@@ -2942,6 +2953,94 @@ static void nv_render_sol(nvoice *v, float *out)
 	}
 	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = f1; v->f2 = f2;
 }
+/* audition: the chord as one oscillator, after the Syntakt's SY CHORD: one cycle of a waveform
+ * holding all the voiced notes (each a saw of a few partials, its interval tuned just so the cycle
+ * repeats), drawn when the voicing changes, read by one phase, one envelope, one filter */
+#define SYN 1024
+static int16_t sy_tab[SYN];
+static int sy_key = -1;
+static uint32_t sy_ph, sy_D = 1;
+static float sy_l[4];
+static void sy_build(const int *nt, int n, float lhz)
+{
+	static const uint8_t JP[12] = {1, 16, 9, 6, 5, 4, 7, 3, 8, 5, 7, 15}, JQ[12] = {1, 15, 8, 5, 4, 3, 5, 2, 5, 3, 4, 8};
+	uint32_t p[3], q[3], D = 1;
+	for (int k = 0; k < n; k++) {
+		int s = nt[k] - nt[0];
+		p[k] = (uint32_t)JP[s % 12] << (s / 12);
+		q[k] = JQ[s % 12];
+		uint32_t a = D, b = q[k];
+		while (b) { uint32_t t = a % b; a = b; b = t; }
+		D = D / a * q[k];
+	}
+	uint32_t h[3], hmax = 1;
+	for (int k = 0; k < n; k++) {
+		h[k] = p[k] * D / q[k];
+		hmax = h[k] > hmax ? h[k] : hmax;
+	}
+	int K = (int)(9000.0f / (lhz * (float)hmax / (float)D));
+	int K2 = (int)((SYN / 2 - 1) / hmax);
+	K = K < K2 ? K : K2;
+	K = K < 1 ? 1 : K > 10 ? 10 : K;
+	static float buf[SYN];
+	float peak = 1e-6f;
+	for (int i = 0; i < SYN; i++) {
+		float x = 0.0f;
+		for (int k = 0; k < n; k++)
+			for (int j = 1; j <= K; j++)
+				x += sin_u((uint32_t)(h[k] * (uint32_t)j * (uint32_t)i) << 22) / (float)j;
+		buf[i] = x;
+		const float ax = x < 0.0f ? -x : x;
+		peak = ax > peak ? ax : peak;
+	}
+	for (int i = 0; i < SYN; i++)
+		sy_tab[i] = (int16_t)(buf[i] / peak * 32000.0f);
+	sy_D = D;
+}
+static void strings_chord_osc(chan *c, float *A)
+{
+	int nt[3], n = 0, low = -1;
+	float amp = 0.0f, ai = 0.0f;
+	for (int k = 0; k < 3; k++) {
+		nvoice *v = &c->v[k];
+		if (!(v->amp > 0.0f || v->ainc > 0.0f) || v->note <= 0.0f)
+			continue;
+		amp += v->amp;
+		ai += v->ainc;
+		nt[n++] = (int)(v->note + 0.5f);
+		if (low < 0 || v->note < c->v[low].note)
+			low = k;
+	}
+	if (!n)
+		return;
+	for (int a = 0; a < n; a++)                   /* (lowest first) */
+		for (int b = a + 1; b < n; b++)
+			if (nt[b] < nt[a]) { int t = nt[a]; nt[a] = nt[b]; nt[b] = t; }
+	const int key = nt[0] | (n > 1 ? nt[1] : 0) << 7 | (n > 2 ? nt[2] : 0) << 14 | n << 21;
+	if (key != sy_key) {
+		sy_key = key;
+		sy_build(nt, n, mtof((float)nt[0]));
+	}
+	const uint32_t inc = c->v[low].ic / sy_D;
+	const float g = c->v[low].fk, q = c->v[low].fq;
+	float l1 = sy_l[0], l2 = sy_l[1], l3 = sy_l[2], l4 = sy_l[3];
+	uint32_t ph = sy_ph;
+	const float lvl = 0.6f * 1.8f / (float)(n < 1 ? 1 : n);
+	for (uint32_t i = 0; i < VSUB; i++) {
+		const uint32_t i0 = ph >> 22, i1 = (i0 + 1u) & (SYN - 1);
+		const float f = (float)(ph & 0x3FFFFFu) * (1.0f / 4194304.0f);
+		const float x = ((float)sy_tab[i0] + f * (float)(sy_tab[i1] - sy_tab[i0])) * (1.0f / 32768.0f);
+		ph += inc;
+		float y;
+		LADDER(x, y);
+		A[i] += y * amp * lvl * (float)n;
+		amp += ai;
+	}
+	sy_ph = ph;
+	sy_l[0] = l1; sy_l[1] = l2; sy_l[2] = l3; sy_l[3] = l4;
+	for (int k = 0; k < 3; k++)                   /* (each voice's envelope moves on as it would) */
+		c->v[k].amp += c->v[k].ainc * (float)VSUB;
+}
 /* thinned strings: the oscillator alone (its envelope on), for one filter shared by the chord */
 static void nv_render_pwm_raw(nvoice *v, float *out)
 {
@@ -3151,7 +3250,9 @@ static int chan_render(chan *c, float *A, float *B)
 		if (m == 3)
 			for (uint32_t i = 0; i < VSUB; i++)
 				mid[i] = 0.0f;
-		if (m == 2 && (str_thin & 2)) {
+		if (m == 2 && (str_thin & 32))
+			strings_chord_osc(c, A);
+		else if (m == 2 && (str_thin & 2)) {
 			/* one filter for the chord: the loudest note's cutoff and resonance */
 			float raw[VSUB];
 			for (uint32_t i = 0; i < VSUB; i++)
@@ -3725,6 +3826,7 @@ static inline float macro_trem(int c)
 static void clock_step(int play)
 {
 	blk_since_step = 0;
+	step_nf0 = notes_fired;
 	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
 		chord_pending = 0;
 		chord_next();

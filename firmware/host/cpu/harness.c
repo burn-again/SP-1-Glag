@@ -25,6 +25,9 @@ int main(void)
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);
 #endif
+#ifdef DROPCAP
+	gl_drop_cap(DROPCAP);
+#endif
 #ifdef STRTHIN
 	gl_str_thin(STRTHIN);
 #endif

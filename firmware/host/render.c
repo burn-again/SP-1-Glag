@@ -41,6 +41,8 @@ int main(int argc, char **argv)
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
 	if (getenv("SDRUMS"))    /* SDRUMS=0..3: song mode's drums leaving (glag_engine.h) */
 		gl_song_drums(atoi(getenv("SDRUMS")));
+	if (getenv("DROPCAP"))   /* DROPCAP=n: at most n starts a step (glag_engine.h) */
+		gl_drop_cap(atoi(getenv("DROPCAP")));
 	if (getenv("STRTHIN"))   /* STRTHIN=bits: Strings thinned (glag_engine.h) */
 		gl_str_thin(atoi(getenv("STRTHIN")));
 	if (getenv("KIT"))       /* KIT=lanes mask: the kit's sounds on their own */
