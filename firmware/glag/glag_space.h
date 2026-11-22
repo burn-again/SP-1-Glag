@@ -228,7 +228,8 @@ static void rv_layout(int type)
 	rv_alt = RVDEF[type];
 	if ((rv_cut & 1) && rv_alt.alg == ALG_FDN8) {
 		rv_alt.alg = ALG_FDN4_12;
-		rv_alt.gain *= 0.45f;                    /* (four lines ring louder here: brought to about level) */
+		rv_alt.rt_k *= 0.5f;                     /* (four lines hold their energy longer: half the time, to end where the eight do) */
+		rv_alt.gain *= 0.45f;                    /* (and ring louder: brought to about level) */
 	}
 	if (rv_cut & 2)
 		rv_alt.twoband = 0;
