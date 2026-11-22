@@ -23,6 +23,9 @@ int main(void)
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);
 #endif
+#ifdef STRTHIN
+	gl_str_thin(STRTHIN);
+#endif
 #ifdef KCOL
 	gl_kit_color(KCOL);
 #endif

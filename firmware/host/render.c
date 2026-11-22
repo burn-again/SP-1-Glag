@@ -39,6 +39,10 @@ int main(int argc, char **argv)
 		p.ch[0][CP_REGISTER] = ((float)atof(getenv("REG")) + 2.0f) * 0.25f;
 	if (getenv("LEN"))
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
+	if (getenv("SDRUMS"))    /* SDRUMS=0..3: song mode's drums leaving (glag_engine.h) */
+		gl_song_drums(atoi(getenv("SDRUMS")));
+	if (getenv("STRTHIN"))   /* STRTHIN=bits: Strings thinned (glag_engine.h) */
+		gl_str_thin(atoi(getenv("STRTHIN")));
 	if (getenv("KIT"))       /* KIT=lanes mask: the kit's sounds on their own */
 		gl_kit_solo(atoi(getenv("KIT")));
 	if (getenv("KCOL"))      /* KCOL=0..7: the Kit's colour (none, comb, resonators, TZFM, soggy, metal, soggy + Chebyshev = the default, comb-soggy + low Chebyshev) */

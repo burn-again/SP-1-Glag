@@ -93,6 +93,26 @@ static const uint16_t MODE_POOL[GL_NMODES] = {
 	0x295, /* 0 2 4 7 9 */       0x4A9, /* 0 3 5 7 10 */
 };
 
+/* audition: twelve more scales, each carried by a preset (pieces 106 to 117, gl_piece) and not yet on the Mode
+ * control (a saved patch keeps its mode as a place on that control) */
+#define GL_NXSCALES 12
+const char *const GL_XSCALE_NAME[GL_NXSCALES] = {"Harmonic minor", "Melodic minor", "Phrygian dominant", "Double harmonic", "Hungarian minor", "Lydian dominant", "Hirajoshi", "In-sen", "Whole tone", "Blues", "Octatonic", "Pelog"};
+static const uint16_t XSCALE[GL_NXSCALES] = {
+	0x9AD, /* Harmonic minor: 0 2 3 5 7 8 11 */
+	0xAAD, /* Melodic minor: 0 2 3 5 7 9 11 */
+	0x5B3, /* Phrygian dominant: 0 1 4 5 7 8 10 */
+	0x9B3, /* Double harmonic: 0 1 4 5 7 8 11 */
+	0x9CD, /* Hungarian minor: 0 2 3 6 7 8 11 */
+	0x6D5, /* Lydian dominant: 0 2 4 6 7 9 10 */
+	0x18D, /* Hirajoshi: 0 2 3 7 8 */
+	0x4A3, /* In-sen: 0 1 5 7 10 */
+	0x555, /* Whole tone: 0 2 4 6 8 10 */
+	0x4E9, /* Blues: 0 3 5 6 7 10 */
+	0x6DB, /* Octatonic: 0 1 3 4 6 7 9 10 */
+	0x18B, /* Pelog: 0 1 3 7 8 */
+};
+static uint8_t scale_x;                    /* 0 the Mode control's; n: XSCALE[n - 1] */
+
 int gl_cp_steps(int cp) { return cp == CP_REGISTER ? 5 : 0; }
 int gl_gp_steps(int gp) { return gp == GP_ROOT ? 12 : gp == GP_MODE ? GL_NMODES : 0; }
 int gl_cp_centred(int cp) { return cp == CP_PAN; }
@@ -278,6 +298,13 @@ static float step_acc;                     /* 16ths */
 /* Playworld's hooks (glag_play.h): per channel level and activity from the form, the pump, the
  * tape's ping-pong, the macros' shape, the key's travel */
 static float w_lvl[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f}, w_act[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
+/* song mode's drums: how they leave and come back (0 a fade over a bar and a half, 1 the same over
+ * three, 2 the Kit peeling off sound by sound, the kick last, 3 that with a fill thrown into the
+ * reverb as it starts); w_peel the Kit's place in it (1 all in) */
+static uint8_t song_drums = 0;
+static float w_peel[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
+static uint8_t w_exit[GL_NCH];
+void gl_song_drums(int style) { song_drums = (uint8_t)(style < 0 ? 0 : style > 3 ? 3 : style); }
 static float pump_env, pump_tgt, sp_duck = 1.0f;
 static float pump_prev[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};   /* each channel's duck last block */
 static int w_pingpong, key_off, mode_swap, form_fill;
@@ -300,7 +327,7 @@ static void harmony_update(void)
 {
 	int mode = stepped(P.g[GP_MODE], GL_NMODES);
 	int root = (stepped(P.g[GP_ROOT], 12) + key_off + 24) % 12;
-	if (mode_swap) {
+	if (mode_swap && !scale_x) {
 		/* the relative major / minor: the same notes, another home. Where each mode sits in its
 		 * major scale (Ionian .. Aeolian; the pentatonics as major and minor) */
 		static const int8_t AT[8] = {0, 2, 4, 5, 7, 9, 0, 9};
@@ -310,10 +337,18 @@ static void harmony_update(void)
 		else if (mode == 0 || mode == 3 || mode == 4) { mode = 5; root = (maj + 9) % 12; }
 		else { mode = 0; root = maj; }
 	}
+	if (scale_x)
+		mode = 100 + scale_x;                  /* (an audition scale: the relative swap left alone) */
 	if (mode == mode_cur && root == root_cur)
 		return;
 	int rel[12];
-	scale_n = gl_scale(mode, rel);
+	if (scale_x) {
+		scale_n = 0;
+		for (int i = 0; i < 12; i++)
+			if (XSCALE[scale_x - 1] & (1u << i))
+				rel[scale_n++] = i;
+	} else
+		scale_n = gl_scale(mode, rel);
 	scale_mask = 0;
 	for (int i = 0; i < scale_n; i++) {
 		scale_pc[i] = (rel[i] + root) % 12;
@@ -447,6 +482,10 @@ static void arp_held_control(chan *c, int ch, float dt, float tone, float len);
 /* the chosen ways (picked by ear from three each): Juno PWM strings, warm Glow, subtractive
  * Ribbon, the noise-plucked Harp */
 static uint8_t alt_m[GV_COUNT] = {[GV_STRINGS] = 2, [GV_GLOW] = 2, [GV_RIBBON] = 1, [GV_HARP] = 1};
+/* Strings, thinned (bits): 1 no chorus, 2 one filter for the chord, 4 a two-pole filter, 8 one saw
+ * (no PWM), 16 two notes at most */
+static uint8_t str_thin;
+void gl_str_thin(int mask) { str_thin = (uint8_t)mask; }
 void gl_alt(int voice, int method)
 {
 	if ((unsigned)voice < GV_COUNT)
@@ -1674,6 +1713,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			break;
 		int top = base + 9 < 71 ? base + 9 : 71;
 		int nn = rnd() < 0.45f ? 2 : 3, open = rnd() < 0.3f, roll = rnd() < 0.3f;
+		if (str_thin & 16)
+			nn = 2;
 		int notes[3], sum = 0, inv = 0;
 		for (int tries = 0; tries < 4; tries++) {
 			/* walk the inversions (up, now and then back), a shape unlike the last */
@@ -2839,9 +2880,44 @@ static void nv_render_sol(nvoice *v, float *out)
 	}
 	v->pc = a; v->pc2 = b; v->amp = amp; v->f1 = f1; v->f2 = f2;
 }
+/* thinned strings: the oscillator alone (its envelope on), for one filter shared by the chord */
+static void nv_render_pwm_raw(nvoice *v, float *out)
+{
+	uint32_t a = v->pc;
+	const uint32_t ia = v->ic, w = (uint32_t)(v->bend * 4294967296.0f);
+	float amp = v->amp, ai = v->ainc;
+	const int one = str_thin & 8;
+	for (uint32_t i = 0; i < VSUB; i++) {
+		out[i] += (one ? 0.6f * blep_saw(a, ia) : 0.6f * (blep_saw(a, ia) - blep_saw(a + w, ia))) * amp;
+		a += ia;
+		amp += ai;
+	}
+	v->pc = a; v->amp = amp;
+}
 /* audition strings: Juno PWM (a pulse, two saws half a width apart, through the ladder) */
 static void nv_render_pwm(nvoice *v, float *out)
 {
+	if (str_thin & 12) {                         /* thinned: one saw, and/or two poles */
+		uint32_t a = v->pc;
+		const uint32_t ia = v->ic, w = (uint32_t)(v->bend * 4294967296.0f);
+		float amp = v->amp, ai = v->ainc, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
+		const float g = v->fk, q = v->fq;
+		const int one = str_thin & 8, two = str_thin & 4;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float x = one ? 0.6f * blep_saw(a, ia) : 0.6f * (blep_saw(a, ia) - blep_saw(a + w, ia)), y;
+			a += ia;
+			if (two) {
+				l1 += g * (x - 0.5f * q * l2 - l1);
+				l2 += g * (l1 - l2);
+				y = l2 * (1.0f + 0.3f * q);
+			} else
+				LADDER(x, y);
+			out[i] += y * amp;
+			amp += ai;
+		}
+		v->pc = a; v->amp = amp; v->f1 = l1; v->f2 = l2; v->idx2 = l3; v->menv2 = l4;
+		return;
+	}
 	uint32_t a = v->pc;
 	const uint32_t ia = v->ic, w = (uint32_t)(v->bend * 4294967296.0f);
 	float amp = v->amp, ai = v->ainc, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
@@ -3013,6 +3089,34 @@ static int chan_render(chan *c, float *A, float *B)
 		if (m == 3)
 			for (uint32_t i = 0; i < VSUB; i++)
 				mid[i] = 0.0f;
+		if (m == 2 && (str_thin & 2)) {
+			/* one filter for the chord: the loudest note's cutoff and resonance */
+			float raw[VSUB];
+			for (uint32_t i = 0; i < VSUB; i++)
+				raw[i] = 0.0f;
+			int lead = 0;
+			for (int i = 0; i < 3; i++)
+				if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
+					nv_render_pwm_raw(&c->v[i], raw);
+					if (c->v[i].amp > c->v[lead].amp)
+						lead = i;
+				}
+			static float sl[GL_NCH][4];
+			float *s4 = sl[c - CH];
+			float l1 = s4[0], l2 = s4[1], l3 = s4[2], l4 = s4[3];
+			const float g = c->v[lead].fk, q = c->v[lead].fq;
+			for (uint32_t i = 0; i < VSUB; i++) {
+				float y;
+				if (str_thin & 4) {
+					l1 += g * (raw[i] - 0.5f * q * l2 - l1);
+					l2 += g * (l1 - l2);
+					y = l2 * (1.0f + 0.3f * q);
+				} else
+					LADDER(raw[i], y);
+				A[i] += y;
+			}
+			s4[0] = l1; s4[1] = l2; s4[2] = l3; s4[3] = l4;
+		} else
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
 				if (m == 0)
@@ -3032,6 +3136,9 @@ static int chan_render(chan *c, float *A, float *B)
 				A[i] += 0.7f * mid[i];
 				B[i] += 0.7f * mid[i];
 			}
+		else if (str_thin & 1)
+			for (uint32_t i = 0; i < VSUB; i++)
+				B[i] = A[i];                          /* (no chorus: one side, both ways) */
 		else
 			juno_chorus(c, (int)(c - CH), A, B);
 		any = 1;
@@ -3601,7 +3708,11 @@ static void control(float dt)
 		for (int c = 0; c < GL_NCH; c++)
 			for (int k = 0; k < 2; k++)
 				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
-		gl_piece(0, &P);
+		{
+			const uint8_t sx = scale_x;              /* (the posted piece's scale, kept across this reset) */
+			gl_piece(0, &P);
+			scale_x = sx;
+		}
 		space_init();
 		mode_cur = root_cur = -1;
 		chord_deg = 0;
@@ -4651,6 +4762,68 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{60, 50, 40, 50, 0, 0, 50, 40, 87}, {45, 50, 45, 50, 25, 40, 40, 40, 41},
 	  {40, 45, 50, 50, 20, 45, 60, 40, 33}, {45, 30, 60, 50, 0, 10, 50, 40, 60}},
 	 {80, 40, 45, 50, 5, 4, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {32, 0, 0, 0}, 0},
+	/* ---- audition: twelve more scales, each with a preset in its own world (pieces 106 to 117 carry
+	 * XSCALE 1 to 12, in this order: gl_piece) ---- */
+	/* harmonic minor: noir, a raised seventh's pull; downtempo, EP and pad; D, 82 */
+	{"Noir Steps", {GV_KIT, GV_EP, GV_BASS, GV_PAD},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 98}, {40, 45, 50, 50, 25, 45, 40, 40, 46},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 39}, {35, 30, 75, 50, 5, 30, 50, 35, 58}},
+	 {62, 40, 50, 50, 2, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {16, 0, 0, 0}, 0},
+	/* melodic minor: jazz's bittersweet minor; brushes swung, piano and glow; G, 70 */
+	{"Bittersweet", {GV_KIT, GV_PIANO, GV_GLOW, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 62},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 52}, {35, 30, 75, 50, 5, 30, 50, 35, 77}},
+	 {50, 40, 50, 50, 7, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {36, 0, 0, 0}, 0},
+	/* Phrygian dominant: flamenco, the Levant, desert heat; dembow, harp and flute over a drone; E, 90 */
+	{"Desert Glass", {GV_KIT, GV_HARP, GV_FLUTE, GV_DRONE},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 84}, {40, 45, 50, 50, 25, 45, 40, 40, 40},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 34}, {35, 30, 75, 50, 5, 30, 50, 35, 50}},
+	 {70, 40, 50, 50, 4, 5, 25, 40}, {GR_HALL, GS_FIFTH, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {28, 0, 0, 0}, 0},
+	/* double harmonic: Byzantine and Hindustani (Bhairav), ornate and grave; euclidean, gong, swell, shimmer; D, 74 */
+	{"Byzantine", {GV_KIT, GV_GONG, GV_SWELL, GV_SHIMMER},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 72},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 60}, {35, 30, 75, 50, 5, 30, 50, 35, 89}},
+	 {54, 40, 50, 50, 2, 5, 25, 40}, {GR_SHIMMER, GS_FIFTH, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* Hungarian minor: gypsy, dark romance, two augmented seconds; jungle at half, harpsichord and pizzicato; A, 87 */
+	{"Gypsy Clock", {GV_KIT, GV_HARPSI, GV_PIZZ, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 84}, {40, 45, 50, 50, 25, 45, 40, 40, 40},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 34}, {35, 30, 75, 50, 5, 30, 50, 35, 50}},
+	 {67, 40, 50, 50, 9, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {12, 0, 0, 0}, 0},
+	/* Lydian dominant: sci-fi wonder, fusion brightness (the raised fourth, the flat seventh); house, sequence and supersaw; C, 118 */
+	{"Bright Engine", {GV_KIT, GV_SEQ, GV_SUPER, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 84}, {40, 45, 50, 50, 25, 45, 40, 40, 40},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 34}, {35, 30, 75, 50, 5, 30, 50, 35, 50}},
+	 {98, 40, 50, 50, 0, 5, 25, 40}, {GR_HALL, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {20, 0, 0, 0}, 0},
+	/* Hirajoshi: Japanese koto tuning, still and melancholy; euclidean, kalimba and glow; A, 68 */
+	{"Paper Garden", {GV_KIT, GV_KALIMBA, GV_GLOW, GV_DRONE},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 55},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 47}, {35, 30, 75, 50, 5, 30, 50, 35, 68}},
+	 {48, 40, 50, 50, 9, 5, 25, 40}, {GR_BLOOM, GS_OCTAVE, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* In-sen: shakuhachi and temple bells, sparse, dark; downtempo, gong and flute; E, 64 */
+	{"Temple Rain", {GV_KIT, GV_GONG, GV_FLUTE, GV_DRONE},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 99}, {40, 45, 50, 50, 25, 45, 40, 40, 47},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 40}, {35, 30, 75, 50, 5, 30, 50, 35, 59}},
+	 {44, 40, 50, 50, 4, 5, 25, 40}, {GR_HALL, GS_FIFTH, 5}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {16, 0, 0, 0}, 0},
+	/* whole tone: dreams, Debussy, no home note; euclidean, bells, pad, shimmer; C, 78 */
+	{"Floating", {GV_KIT, GV_BELLS, GV_PAD, GV_SHIMMER},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 71},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 60}, {35, 30, 75, 50, 5, 30, 50, 35, 89}},
+	 {58, 40, 50, 50, 0, 5, 25, 40}, {GR_SHIMMER, GS_OCTAVE, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* blues (hexatonic, with the blue note): lofi, smoky; jazz swing, funk keys and EP; A, 75 */
+	{"Smoke Blues", {GV_KIT, GV_FUNK, GV_EP, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 54},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 46}, {35, 30, 75, 50, 5, 30, 50, 35, 68}},
+	 {55, 40, 50, 50, 9, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 2}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {36, 0, 0, 0}, 0},
+	/* octatonic (half-whole): suspense, Messiaen, film tension; IDM, sequence and pizzicato; C#, 100 */
+	{"Clockwork Dread", {GV_KIT, GV_SEQ, GV_PIZZ, GV_BASS},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 89}, {40, 45, 50, 50, 25, 45, 40, 40, 42},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 36}, {35, 30, 75, 50, 5, 30, 50, 35, 53}},
+	 {80, 40, 50, 50, 1, 5, 25, 40}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {40, 0, 0, 0}, 0},
+	/* pelog (selisir, approximated): Balinese gamelan, shimmering metal; euclidean, marimba, bells, gong; C, 84 */
+	{"Gamelan Night", {GV_KIT, GV_MARIMBA, GV_BELLS, GV_GONG},
+	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 68},
+	  {30, 35, 75, 50, 15, 55, 60, 35, 58}, {35, 30, 75, 50, 5, 30, 50, 35, 86}},
+	 {64, 40, 50, 50, 0, 5, 25, 40}, {GR_HALL, GS_OCTAVE, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
 #endif
 };
 
@@ -4675,6 +4848,12 @@ void gl_piece_scene(int i, uint8_t *steps, float *period_s)
 void gl_piece(int i, gl_patch *out)
 {
 	const recipe *r = &PIECES[(unsigned)i < GL_NPIECES ? i : 0];
+#ifdef GL_DEMO_PIECES
+	/* (audition: the twelve scale pieces carry their scale, 106 on) */
+	scale_x = (unsigned)(i - 106) < GL_NXSCALES ? (uint8_t)(i - 105) : 0;
+#else
+	scale_x = 0;
+#endif
 	for (int c = 0; c < GL_NCH; c++) {
 		out->voice[c] = r->voice[c];
 		for (int p = 0; p < GL_NCP; p++)

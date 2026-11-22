@@ -127,6 +127,7 @@ void gl_world_ch(int what, int i, float v)
  * density never goes past 100 % (no notes cut short to make room), and the filter stays one kind
  * of filter, gliding, for as long as the form is on. */
 static inline float fminf_(float a, float b) { return a < b ? a : b; }
+static inline float fmaxf_(float a, float b) { return a > b ? a : b; }
 enum { ROLE_HELD, ROLE_PLUCK, ROLE_BASS, ROLE_DRUMS };
 static int voice_role(int v)
 {
@@ -159,6 +160,9 @@ static const kf ARC_BASS[] = {{0.18f, 0.0f}, {0.27f, 1.0f}, {0.55f, 1.0f}, {0.61
                               {0.78f, 1.0f}, {0.94f, 1.0f}, {0.995f, 0.0f}};
 static const kf ARC_DRUMS[] = {{0.28f, 0.0f}, {0.36f, 1.0f}, {0.53f, 1.0f}, {0.58f, 0.0f}, {0.76f, 0.0f},
                                {0.81f, 0.55f}, {0.85f, 1.0f}, {0.93f, 1.0f}, {0.98f, 0.0f}};
+/* (the drums' longer arc: the exits and entries over about twice as long) */
+static const kf ARC_DRUMS_L[] = {{0.25f, 0.0f}, {0.38f, 1.0f}, {0.50f, 1.0f}, {0.61f, 0.0f}, {0.73f, 0.0f},
+                                 {0.80f, 0.55f}, {0.86f, 1.0f}, {0.92f, 1.0f}, {0.99f, 0.0f}};
 static const kf ARC_ACT[] = {{0.0f, 0.65f}, {0.40f, 1.0f}, {0.55f, 1.0f}, {0.63f, 0.7f}, {0.72f, 0.7f},
                              {0.85f, 1.0f}, {0.94f, 1.0f}, {1.0f, 0.65f}};
 static const kf ARC_FILT[] = {{0.58f, 0.47f}, {0.67f, 0.30f}, {0.72f, 0.30f}, {0.85f, 0.47f}};   /* the DJ filter: open is 0.47 */
@@ -288,14 +292,28 @@ static void form_tick(float dt)
 		float lvl = 1.0f, l0 = 1.0f, off = 0.035f * (float)seen[r]++ + 0.3f * W.stag[c] + W.stray_off[c];
 		float xs = fmodf_pos(xc - off, 1.0f);
 		if (r)
-			lvl = kf_at(arc[kd][r], an[kd][r], xs);
+			lvl = (r == ROLE_DRUMS && kd == 0 && song_drums) ? kf_at(ARC_DRUMS_L, NK(ARC_DRUMS_L), xs) : kf_at(arc[kd][r], an[kd][r], xs);
 		if (r0 && r0 != r)
 			l0 = kf_at(arc[kd][r0], an[kd][r0], xs);              /* crossfading: the quieter */
 		float l = 1.0f + f * (fminf_(lvl, l0) - 1.0f);
 		if (W.ending && c != anchor)
 			l = 0.0f;                                            /* the outro: down to the anchor */
 		float a = c == anchor ? 1.0f + f * (0.5f * (act + 1.0f) - 1.0f) : 1.0f + f * (act - 1.0f);
-		w_lvl[c] += (l - w_lvl[c]) * k;
+		/* (the drums' own slew, from style 1: at least a bar and a half, however short the song) */
+		const float kd_ = (song_drums && r0 == ROLE_DRUMS && W.form_init) ? 1.0f - dcoef(fmaxf_(1.2f, 1.5f * bar_s), dt) : k;
+		if (CH[c].voice == GV_KIT && song_drums >= 2) {
+			/* the Kit peels off: its place in the arc picks which sounds play (kit_fire), its level
+			 * held until only the kick is left, which then fades */
+			const float was = w_peel[c];
+			w_peel[c] += (l - w_peel[c]) * kd_;
+			if (song_drums == 3 && was >= 0.97f && w_peel[c] < 0.97f && l < was)
+				w_exit[c] = 1;                                  /* (leaving: a fill into the reverb) */
+			const float g = w_peel[c] / 0.35f;
+			w_lvl[c] = g > 1.0f ? 1.0f : g;
+		} else {
+			w_peel[c] = 1.0f;
+			w_lvl[c] += (l - w_lvl[c]) * kd_;
+		}
 		w_act[c] += (a - w_act[c]) * k;
 	}
 	/* the breakdown's filter and space, and the fill, belong to the first arrangement; FILLS

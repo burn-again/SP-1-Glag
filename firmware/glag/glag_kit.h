@@ -666,6 +666,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	int nord_down = 0;
 	if (lane == 20 || lane == 21)                   /* (a fill's Nord: 21 the first hit, 20 the second) */
 		nord_down = lane == 20 ? 1 : -1, lane = 5;
+	/* song mode peeling the Kit off: the extras first, then the snare, the hats, the kick last */
+	if (!kit_from_midi && w_peel[ch] < 0.999f) {
+		const float pl = w_peel[ch];
+		const int keep = lane == 0 ? pl > 0.03f : lane == 2 ? pl > 0.4f : (lane == 1 || lane == 7) ? pl > 0.62f : pl > 0.84f;
+		if (!keep)
+			return;
+	}
 	const int fillhat = lane == 22;
 	if (fillhat)
 		lane = 2;
@@ -1241,6 +1248,13 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	kit_state *k = &c->kt;
 	k->pos16 = (uint8_t)s16;
 	k->k_since += step_s;                             /* (the kick fits its ring to this) */
+	if (w_exit[ch] && (s16 & 3u) == 0u) {               /* song mode's drums leaving: a fill into the reverb */
+		w_exit[ch] = 0;
+		const int t = kit_fill_pick(ch);
+		kit_fill(c, ch, t ? t : 1, step_s);
+		P.ch[ch][CP_VERB] = clampf(Pb.ch[ch][CP_VERB] + 0.7f, 0.0f, 1.0f);
+		k->vthr = 6;
+	}
 	if (k->vthr && !--k->vthr)
 		P.ch[ch][CP_VERB] = Pb.ch[ch][CP_VERB];       /* the reverb throw over */
 	if ((step & 63u) == 0u) {
