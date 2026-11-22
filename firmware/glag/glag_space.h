@@ -216,11 +216,23 @@ static inline float sqrtf_fast(float x)    /* control rate only: two Newton step
 	return 0.5f * (y + x / y);
 }
 
+/* audition (bits): 1 the Hall on four lines, 2 one damping band in every reverb (no lows outlasting
+ * highs). A copy of the definition carries the change */
+static uint8_t rv_cut;
+static rvdef rv_alt;
+void gl_rv_cut(int bits) { rv_cut = (uint8_t)bits; rv.cur = -1; }   /* (laid out again on the next block) */
 /* lay the chosen reverb out in the ring */
 static void rv_layout(int type)
 {
 	rv.cur = type;
-	rv.d = &RVDEF[type];
+	rv_alt = RVDEF[type];
+	if ((rv_cut & 1) && rv_alt.alg == ALG_FDN8) {
+		rv_alt.alg = ALG_FDN4_12;
+		rv_alt.gain *= 0.45f;                    /* (four lines ring louder here: brought to about level) */
+	}
+	if (rv_cut & 2)
+		rv_alt.twoband = 0;
+	rv.d = &rv_alt;
 	const rvdef *d = rv.d;
 	int r12 = d->alg != ALG_FDN4_24;
 	uint32_t o = 0;
@@ -425,8 +437,11 @@ static inline __attribute__((always_inline)) void fdn8_tick(float in, float *ol,
 #pragma GCC unroll 8
 	for (int k = 0; k < 8; k++) {
 		rv.lp[k] += rv.kd * (d[k] - rv.lp[k]);
-		rv.lo[k] += rv.kx * (rv.lp[k] - rv.lo[k]);
-		y[k] = rv.gl[k] * rv.lo[k] + rv.gh[k] * (rv.lp[k] - rv.lo[k]);
+		if (rv.d->twoband) {
+			rv.lo[k] += rv.kx * (rv.lp[k] - rv.lo[k]);
+			y[k] = rv.gl[k] * rv.lo[k] + rv.gh[k] * (rv.lp[k] - rv.lo[k]);
+		} else
+			y[k] = rv.g[k] * rv.lp[k];
 		e += d[k] * d[k];
 	}
 	/* Hadamard 8: three rounds of butterflies, scaled to keep the energy */

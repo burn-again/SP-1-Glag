@@ -25,6 +25,12 @@ int main(void)
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);
 #endif
+#ifdef CHOSHARE
+	gl_cho_share(CHOSHARE);
+#endif
+#ifdef RVCUT
+	gl_rv_cut(RVCUT);
+#endif
 #ifdef DROPCAP
 	gl_drop_cap(DROPCAP);
 #endif
@@ -50,6 +56,9 @@ int main(void)
 	for (int c = 0; c < 4; c++)
 		if (cfg_mute & (1u << c))
 			p.ch[c][CP_LEVEL] = 0.0f;
+#ifdef RVTYPE
+	p.space[GL_SP_REVERB] = RVTYPE;   /* one of the four reverbs */
+#endif
 #ifdef KTUNE
 	p.space[GL_SP_KIT] = KTUNE;      /* one of the Kit's tunings */
 #endif

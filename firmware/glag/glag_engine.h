@@ -153,6 +153,8 @@ void gl_crank(void);
  * drums by the note's name in any octave: C kick, D/E snare, F#/G# hat, A# open hat, C#/D# click
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
+void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
+void gl_rv_cut(int bits);            /* audition only: 1 the Hall on four lines, 2 one damping band */
 void gl_drop_cap(int n);             /* audition only: at most n notes and hits start in a step (0 off) */
 void gl_str_thin(int mask);          /* audition only: Strings thinned (bits: 1 no chorus, 2 one filter, 4 two poles, 8 one saw, 16 two notes) */
 void gl_song_drums(int style);       /* song mode's drums leaving: 0 fade, 1 longer, 2 peel, 3 peel + a fill into the reverb */

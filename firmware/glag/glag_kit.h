@@ -623,6 +623,75 @@ static void kit_map(float x, float y)
 		KT[i] = v;                                     /* (the morph redoes its own few from KTB each block) */
 	}
 }
+/* the phrase's build at this step (the director's spice, before its peak) */
+static float kd_env(int phrase)
+{
+	const float x = phrase >= 48 ? 1.0f : (float)phrase / 48.0f;
+	float e;
+	switch (KD.shape) {
+	case 1: e = x * x * x; break;                                       /* late */
+	case 2: e = (float)(phrase >> 4) * (1.0f / 3.0f); break;            /* a step each bar */
+	case 3: e = x > 0.5f ? (x - 0.5f) * 2.0f : 0.0f; break;             /* held off, then a sweep */
+	default: e = x; break;
+	}
+	return KD.plain ? 0.0f : e;
+}
+/* the map's blend worked out ahead: between phrase starts the director's glide is a fixed rule, so
+ * the place the map will be at the next beat is known; blended into KMP in a quiet block, taken up
+ * on the beat if the map is where it was told it would be (else blended there, as before) */
+static float kd_lx = -1.0f, kd_ly = -1.0f;        /* (where it was last blended) */
+static float KMP[KT_COUNT], kmp_x, kmp_y;
+static uint32_t kmp_step;
+static uint8_t kmp_ok;
+static void kit_map_prepare(void)
+{
+	if (kmp_ok || blk_since_step < 20 || !KD.seeded || kit_map_reset)
+		return;
+	if (!((!kit_tune_lock || kit_dir_force) && kit_tune_cur == 0 && KTB[KT_MAP_ON] >= 0.5f) || KTB[KT_MAP_FIX] >= 0.5f)
+		return;
+	const uint32_t b = (KD.last | 3u) + 1u;            /* the next beat */
+	if ((b & 63u) == 0u)
+		return;                                       /* (a phrase starts there: its new place can't be told) */
+	float mx = KD.mx, my = KD.my;
+	for (uint32_t t = KD.last + 1u; t <= b; t++) {
+		const float S = kd_env((int)(t % 64u)) * KD.pk;
+		const float gx = KD.bx + (KD.tx - KD.bx) * S, gy = KD.ty * S;
+		mx += (gx - mx) * 0.12f;
+		my += (gy - my) * 0.12f;
+	}
+	const float dx = mx - kd_lx, dy = my - kd_ly;
+	if (!(dx * dx + dy * dy > 4e-6f))
+		return;                                       /* (it won't be blended there anyway) */
+	const float x = mx, y = my;
+	const float w0 = (1.0f - x) * (1.0f - y), w1 = x * (1.0f - y), w2 = (1.0f - x) * y, w3 = x * y;
+	const float w[4] = {w0, w1, w2, w3};
+	int near = 0;
+	for (int j = 1; j < 4; j++)
+		near = w[j] > w[near] ? j : near;
+	const float *const r0 = KIT_TUNE[KIT_MAP[0]], *const r1 = KIT_TUNE[KIT_MAP[1]];
+	const float *const r2 = KIT_TUNE[KIT_MAP[2]], *const r3 = KIT_TUNE[KIT_MAP[3]];
+	const float *const rn = KIT_TUNE[KIT_MAP[near]];
+	const float g = w0 * KIT_MAP_GAIN[0] + w1 * KIT_MAP_GAIN[1] + w2 * KIT_MAP_GAIN[2] + w3 * KIT_MAP_GAIN[3];
+	for (int i = 0; i < KT_COUNT; i++) {
+		const uint8_t m = KT_MAPPED[i];
+		if (!m)
+			continue;
+		float v = m == 2 ? rn[i] : w0 * r0[i] + w1 * r1[i] + w2 * r2[i] + w3 * r3[i];
+		if (i == KT_OUT)
+			v *= g;
+		KMP[i] = v;
+	}
+	kmp_x = mx;
+	kmp_y = my;
+	kmp_step = b;
+	kmp_ok = 1;
+}
+static void kit_map_take(void)
+{
+	for (int i = 0; i < KT_COUNT; i++)
+		if (KT_MAPPED[i])
+			KTB[i] = KT[i] = KMP[i];
+}
 /* the macro on a Kit channel (from macro_tick): one movement, not several. Its glide (u, -1..1) at
  * its depth d gives the morph m; the channel's activity, tone, length, register and character move
  * together toward the tuning's far end (KIT_TUNE_TO), and the numbers above with them */
@@ -1322,18 +1391,8 @@ static void kit_step(chan *c, int ch, uint32_t step)
 			if (arc > 0.0f && !KD.plain && !k->rot_r && ku() < 0.3f * KD.pk)
 				k->rot_r = 4;                             /* (armed: it turns in the fourth bar) */
 		}
-		{
-			const float x = phrase >= 48 ? 1.0f : (float)phrase / 48.0f;
-			float e;
-			switch (KD.shape) {
-			case 1: e = x * x * x; break;                                       /* late */
-			case 2: e = (float)(phrase >> 4) * (1.0f / 3.0f); break;            /* a step each bar */
-			case 3: e = x > 0.5f ? (x - 0.5f) * 2.0f : 0.0f; break;             /* held off, then a sweep */
-			default: e = x; break;
-			}
-			KD.env = KD.plain ? 0.0f : e;
-			KD.S = KD.env * KD.pk;
-		}
+		KD.env = kd_env((int)phrase);
+		KD.S = KD.env * KD.pk;
 		KD.throw_p = KD.thr_base * KD.S * 1.5f;
 		kit_pump = KD.pump_sel * KD.S;
 		kit_pump_t = 1.0f;
@@ -1347,16 +1406,21 @@ static void kit_step(chan *c, int ch, uint32_t step)
 				KD.my += (gy - KD.my) * 0.12f;
 			}
 			/* (blended again only every fourth step, and only once it has moved: the blend is the
-			 * director's one heavy job) */
-			static float lx = -1.0f, ly = -1.0f;
+			 * director's one heavy job, so it is worked out ahead in a quiet block when the place
+			 * it will be can be told, kit_map_prepare, and only taken up here) */
 			if (kit_map_reset)
-				lx = ly = -1.0f, kit_map_reset = 0;
-			const float dx = KD.mx - lx, dy = KD.my - ly;
+				kd_lx = kd_ly = -1.0f, kit_map_reset = 0;
+			const float dx = KD.mx - kd_lx, dy = KD.my - kd_ly;
 			if ((step & 3u) == 0u && dx * dx + dy * dy > 4e-6f) {
-				lx = KD.mx;
-				ly = KD.my;
-				kit_map(KD.mx, KD.my);
+				kd_lx = KD.mx;
+				kd_ly = KD.my;
+				if (kmp_ok && kmp_step == step && kmp_x == KD.mx && kmp_y == KD.my)
+					kit_map_take();
+				else
+					kit_map(KD.mx, KD.my);
 			}
+			if ((step & 3u) == 0u)
+				kmp_ok = 0;
 		}
 	}
 	/* evolving: how weird this step is. The phrase's form: three bars restrained and one weird; or that
@@ -1848,6 +1912,7 @@ static int kit_render12(chan *c, float *A)
 	int any = 0;
 	float eg[8][KSUB];
 	unsigned ea = 0;
+	kit_map_prepare();                                   /* (the next beat's map blend, while it's quiet) */
 	kit_morph(k->morph, k->weird);                       /* (the macro's morph and the weird window, this channel's) */
 	for (int s = 0; s < 8; s++)
 		ea |= (unsigned)kit_env(k, s, eg[s]) << s;
@@ -2219,7 +2284,7 @@ static int kit_render12(chan *c, float *A)
 		k->r_acc = acc; k->r_held = held;
 	}
 	/* (the chorus sits out with the colour under the load governor) */
-	const int cho = KT[KT_CHO_MIX] > 0.0f && (gov_cap >= FM_CAP || kit_solo);
+	const int cho = KT[KT_CHO_MIX] > 0.0f && (gov_cap >= FM_CAP || kit_solo) && !cho_share;
 	kit_side_on = (uint8_t)(cho && KT[KT_CHO_WIDE] > 0.0f);
 	if (cho)
 		kit_chorus(A);

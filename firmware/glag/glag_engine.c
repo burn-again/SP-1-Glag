@@ -496,6 +496,53 @@ void gl_str_thin(int mask) { str_thin = (uint8_t)mask; }
 /* audition: a cap on how many notes and hits start in one step (0 off); past it the least heard
  * give way (the Kit's ghosts, tissue, soft hats and clanks; the Strings' third note) */
 static int drop_cap;
+/* audition: one chorus for the Strings and the Kit (1 the Juno's way, 2 the Kit's two swaying taps),
+ * fed from both channels after their levels, instead of one each */
+static uint8_t cho_share;
+void gl_cho_share(int m) { cho_share = (uint8_t)m; }
+static float shc_ring[512], shc_hp, shc_ph, shc_bus[GL_SUB];
+static uint32_t shc_w;
+static void shared_chorus(const float *in, float *L, float *R)
+{
+	if (cho_share == 1) {                         /* Juno: a triangle sweeping two taps in opposite directions */
+		const float lo = 40.0f, span = 110.0f;
+		float t0 = shc_ph < 0.5f ? 4.0f * shc_ph - 1.0f : 3.0f - 4.0f * shc_ph;
+		shc_ph += 0.6f * (float)VSUB / VSR;
+		shc_ph -= shc_ph >= 1.0f ? 1.0f : 0.0f;
+		float t1 = shc_ph < 0.5f ? 4.0f * shc_ph - 1.0f : 3.0f - 4.0f * shc_ph;
+		float dl = lo + span * (0.5f + 0.5f * t0), dr = lo + span * (0.5f - 0.5f * t0);
+		const float dd = span * 0.5f * (t1 - t0) * (1.0f / VSUB);
+		for (uint32_t i = 0; i < VSUB; i++) {
+			float x = in[i];
+			shc_hp += 0.039f * (x - shc_hp);
+			shc_ring[shc_w] = x - shc_hp;
+			float pl = (float)(shc_w + 512u) - dl, pr = (float)(shc_w + 512u) - dr;
+			int il = (int)pl, ir = (int)pr;
+			float fl = pl - (float)il, fr = pr - (float)ir;
+			float a0 = shc_ring[il & 511], a1 = shc_ring[(il + 1) & 511], b0 = shc_ring[ir & 511], b1 = shc_ring[(ir + 1) & 511];
+			L[i] += 0.42f * (a0 + fl * (a1 - a0));
+			R[i] += 0.42f * (b0 + fr * (b1 - b0));
+			dl += dd; dr -= dd;
+			shc_w = (shc_w + 1u) & 511u;
+		}
+	} else {                                      /* the Kit's: two taps near 9 and 14 ms, swaying apart */
+		shc_ph += 0.35f * (float)VSUB / VSR;
+		shc_ph -= shc_ph >= 1.0f ? 1.0f : 0.0f;
+		const float s = sin_u((uint32_t)(shc_ph * 4294967296.0f)), dp = 0.0025f * VSR;
+		const float t1 = 0.009f * VSR + dp * s, t2 = 0.014f * VSR - dp * s;
+		for (uint32_t i = 0; i < VSUB; i++) {
+			shc_ring[shc_w] = in[i];
+			float p1 = (float)(shc_w + 512u) - t1, p2 = (float)(shc_w + 512u) - t2;
+			int i1 = (int)p1, i2 = (int)p2;
+			float f1 = p1 - (float)i1, f2 = p2 - (float)i2;
+			float a = shc_ring[i1 & 511] + f1 * (shc_ring[(i1 + 1) & 511] - shc_ring[i1 & 511]);
+			float b = shc_ring[i2 & 511] + f2 * (shc_ring[(i2 + 1) & 511] - shc_ring[i2 & 511]);
+			L[i] += 0.33f * (0.6f * a + 0.4f * b);
+			R[i] += 0.33f * (0.4f * a + 0.6f * b);
+			shc_w = (shc_w + 1u) & 511u;
+		}
+	}
+}
 static uint32_t step_nf0;
 void gl_drop_cap(int n) { drop_cap = n; }
 static inline int over_cap(void) { return drop_cap > 0 && (int)(notes_fired - step_nf0) >= drop_cap; }
@@ -3299,9 +3346,9 @@ static int chan_render(chan *c, float *A, float *B)
 				A[i] += 0.7f * mid[i];
 				B[i] += 0.7f * mid[i];
 			}
-		else if (str_thin & 1)
+		else if ((str_thin & 1) || cho_share)
 			for (uint32_t i = 0; i < VSUB; i++)
-				B[i] = A[i];                          /* (no chorus: one side, both ways) */
+				B[i] = A[i] = cho_share ? 0.7f * A[i] : A[i];   /* (no chorus of its own: one side, both ways) */
 		else
 			juno_chorus(c, (int)(c - CH), A, B);
 		any = 1;
@@ -4155,6 +4202,14 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				E[SI(i)] += m * es;
 				VV[SI(i)] += m * vs;
 			}
+			if (cho_share && (vo == GV_STRINGS || vo == GV_KIT))
+				for (uint32_t i = 0; i < VSUB; i++)
+					shc_bus[i] += (ca[i] + cb[i]) * g;    /* (into the one chorus, after its level) */
+		}
+		if (cho_share) {
+			shared_chorus(shc_bus, HL, HR);
+			for (uint32_t i = 0; i < VSUB; i++)
+				shc_bus[i] = 0.0f;
 		}
 		texture_block(HL, HR, VSUB, VSR);           /* Playworld's bed, dry */
 		{	/* the dark send: 12 dB an octave from 1.5 kHz */

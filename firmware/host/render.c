@@ -41,6 +41,15 @@ int main(int argc, char **argv)
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
 	if (getenv("SDRUMS"))    /* SDRUMS=0..3: song mode's drums leaving (glag_engine.h) */
 		gl_song_drums(atoi(getenv("SDRUMS")));
+	if (getenv("CHOSHARE"))  /* CHOSHARE=1|2: one chorus for the Strings and the Kit */
+		gl_cho_share(atoi(getenv("CHOSHARE")));
+	if (getenv("RVCUT"))     /* RVCUT=bits: the reverb cut (1 Hall on four lines, 2 one damping band) */
+		gl_rv_cut(atoi(getenv("RVCUT")));
+	if (getenv("RVSEND")) {  /* RVSEND=x: every channel's reverb send times x */
+		const float x = (float)atof(getenv("RVSEND"));
+		for (int c = 0; c < GL_NCH; c++)
+			p.ch[c][CP_VERB] = p.ch[c][CP_VERB] * x > 1.0f ? 1.0f : p.ch[c][CP_VERB] * x;
+	}
 	if (getenv("DROPCAP"))   /* DROPCAP=n: at most n starts a step (glag_engine.h) */
 		gl_drop_cap(atoi(getenv("DROPCAP")));
 	if (getenv("STRTHIN"))   /* STRTHIN=bits: Strings thinned (glag_engine.h) */
@@ -147,6 +156,7 @@ int main(int argc, char **argv)
 		for (char *t = strtok(buf, ","); t && ncrank < 16; t = strtok(0, ","))
 			crank[ncrank++] = (float)atof(t);
 	}
+	float rest_at = getenv("RESTAT") ? (float)atof(getenv("RESTAT")) : -1.0f;   /* RESTAT=s: rest (no new notes) from then */
 	float song_on = -1.0f, song_off = -1.0f;   /* SONG=on,off in seconds: song mode switched as the UI does */
 	if (getenv("SONG"))
 		sscanf(getenv("SONG"), "%f,%f", &song_on, &song_off);
@@ -180,6 +190,10 @@ int main(int argc, char **argv)
 		if (song_off >= 0.0f && (float)n / 48000.0f >= song_off) {
 			gl_world(GW_SONG, 0.0f);         /* song mode off: its outro, then the piece back */
 			song_off = -1.0f;
+		}
+		if (rest_at >= 0.0f && (float)n / 48000.0f >= rest_at) {
+			gl_play(0);
+			rest_at = -1.0f;
 		}
 		if (sweep_t >= 0)
 			gl_dist(sweep_t, 1 + (int)((uint64_t)n * 4u / frames), sweep_p);
