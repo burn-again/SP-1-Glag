@@ -236,6 +236,13 @@ typedef struct {
 	int last_note;
 	/* pad */
 	float cyc[NV], gap[NV];
+	/* strings: the next voicing, chosen ahead in a quiet block (lead_voices) */
+	int8_t lv_nt[3];
+	uint8_t lv_ok, lv_differ, lv_stage;
+	int lv_best;
+	int lv_base;
+	uint32_t lv_chord;
+	float lv_from[3];
 	/* bells */
 	int8_t loop[4][BELL_MAX];
 	uint8_t lpos[4];
@@ -1211,7 +1218,9 @@ static int nearest_chord(int n)
 }
 /* three voices of the chord, each moved as little as it can from where it was (common tones
  * held), kept apart and near home: a keyboard player's voice leading */
-static void lead_voices(chan *c, int base, int *out, int differ)
+/* the voicing search, over the chord shapes s0 .. s1-1 (of ns; *best carried between calls, so a
+ * search split across blocks finds what one whole search does); returns ns */
+static int lead_search(chan *c, int base, int *out, int differ, int s0, int s1, int *bestp)
 {
 	int ctr = base < 45 ? 45 : base > 62 ? 62 : base;
 	int lo = ctr - 4, hi = ctr + 13;
@@ -1236,8 +1245,8 @@ static void lead_voices(chan *c, int base, int *out, int differ)
 	sets[ns][0] = chord_pc[0]; sets[ns][1] = chord_pc[1]; sets[ns][2] = n6; col[ns++] = 1;
 	sets[ns][0] = n9; sets[ns][1] = chord_pc[1]; sets[ns][2] = n6; col[ns++] = 1;
 	static const int8_t PERM[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
-	int best = 1 << 30;
-	for (int st = 0; st < ns; st++)
+	int best = *bestp;
+	for (int st = s0; st < (s1 < ns ? s1 : ns); st++)
 		for (int pm = 0; pm < 6; pm++) {
 			int cand[3], cost = 0;
 			for (int k = 0; k < 3; k++) {
@@ -1277,10 +1286,61 @@ static void lead_voices(chan *c, int base, int *out, int differ)
 					out[k] = cand[k];
 			}
 		}
+	*bestp = best;
+	return ns;
+}
+static void lead_choose(chan *c, int base, int *out, int differ)
+{
+	int best = 1 << 30;
+	lead_search(c, base, out, differ, 0, 6, &best);
+}
+/* the voicing the strings (or the brass section) move to: chosen ahead in a quiet block when it
+ * could be (lead_prepare), else now; then remembered, so the next one differs. The choice reads
+ * only the chord, the base, the voices' notes and the remembered voicings, so one chosen ahead is
+ * the one that would be chosen now */
+static void lead_voices(chan *c, int base, int *out, int differ)
+{
+	int ok = c->lv_ok && c->lv_chord == chord_count && c->lv_base == base && c->lv_differ == (uint8_t)(differ != 0);
+	for (int k = 0; k < 3 && ok; k++)
+		ok = c->lv_from[k] == c->v[k].note;
+	if (ok)
+		for (int k = 0; k < 3; k++)
+			out[k] = c->lv_nt[k];
+	else
+		lead_choose(c, base, out, differ);
+	c->lv_ok = 0;
+	c->lv_stage = 0;
 	for (int i = 11; i >= 3; i--)                  /* remembered */
 		c->loop[2][i] = c->loop[2][i - 3];
 	for (int k = 0; k < 3; k++)
 		c->loop[2][k] = (int8_t)out[k];
+}
+/* (a quiet moment: some 20 ms after the last step, the hits it started settled) */
+static uint8_t blk_since_step;
+static void lead_prepare(chan *c, int base)
+{
+	if (c->lv_ok || blk_since_step < 20 || chord_n < 1)
+		return;
+	const int fresh = c->seen_chord != chord_count || c->v[0].note <= 0.0f;
+	int same = c->lv_stage > 0 && c->lv_chord == chord_count && c->lv_base == base && c->lv_differ == (uint8_t)!fresh;
+	for (int k = 0; k < 3 && same; k++)
+		same = c->lv_from[k] == c->v[k].note;
+	if (!same) {                                  /* (a new search) */
+		c->lv_stage = 0;
+		c->lv_best = 1 << 30;
+		c->lv_base = base;
+		c->lv_differ = (uint8_t)!fresh;
+		c->lv_chord = chord_count;
+		for (int k = 0; k < 3; k++)
+			c->lv_from[k] = c->v[k].note;
+	}
+	/* one chord shape a block (its six orders), so the search never weighs on one block */
+	int out[3] = {c->lv_nt[0], c->lv_nt[1], c->lv_nt[2]};
+	const int ns = lead_search(c, base, out, !fresh, c->lv_stage, c->lv_stage + 1, &c->lv_best);
+	for (int k = 0; k < 3; k++)
+		c->lv_nt[k] = (int8_t)out[k];
+	if (++c->lv_stage >= ns)
+		c->lv_ok = 1;
 }
 
 /* ---- strings, as a string machine is played: whole chords held, each new chord voice-led
@@ -2010,6 +2070,8 @@ static void chan_control(chan *c, int ch, float dt)
 	case GV_STRINGS: {
 		if (alt_m[GV_STRINGS]) {
 			strings_control(c, ch, sdt, tone, len);
+			if (playing)
+				lead_prepare(c, HOME[c->voice] + 12 * (stepped(P.ch[ch][CP_REGISTER], 5) - 2));   /* the next voicing, while it's quiet (no dice: an octave leap on the beat chooses then) */
 			break;
 		}
 		/* Juno strings as chords, never held drones: each struck chord rises in 20 ms, falls in
@@ -3662,6 +3724,7 @@ static inline float macro_trem(int c)
  * leaves the drums out: they add little to a frozen space and a tap on a hat is only a click) */
 static void clock_step(int play)
 {
+	blk_since_step = 0;
 	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
 		chord_pending = 0;
 		chord_next();
@@ -3690,6 +3753,8 @@ static void clock_step(int play)
 static void control(float dt)
 {
 	uint32_t s = post_seq;
+	if (blk_since_step < 255)
+		blk_since_step++;
 	if (cmd_fresh != seen_fresh) {
 		/* the album: this piece from its start, exactly as rendered: the state of power-on with
 		 * this seed (piece 1 loaded, its chord built, every channel reset, the space emptied),

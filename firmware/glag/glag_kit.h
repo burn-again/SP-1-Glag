@@ -601,24 +601,27 @@ static const float KARC[8] = {0.25f, 0.45f, 0.7f, 1.0f, 0.5f, 0.85f, 0.35f, 0.6f
 /* the map: the numbers blended between the four corners (the switches from the nearest), into KTB */
 static void kit_map(float x, float y)
 {
-	const float w[4] = {(1.0f - x) * (1.0f - y), x * (1.0f - y), (1.0f - x) * y, x * y};
+	const float w0 = (1.0f - x) * (1.0f - y), w1 = x * (1.0f - y), w2 = (1.0f - x) * y, w3 = x * y;
+	const float w[4] = {w0, w1, w2, w3};
 	int near = 0;
 	for (int j = 1; j < 4; j++)
 		near = w[j] > w[near] ? j : near;
+	/* (the four corners' rows looked up once, and one pass writing both tables: the same sums in
+	 * the same order as before, about a third of the work) */
+	const float *const r0 = KIT_TUNE[KIT_MAP[0]], *const r1 = KIT_TUNE[KIT_MAP[1]];
+	const float *const r2 = KIT_TUNE[KIT_MAP[2]], *const r3 = KIT_TUNE[KIT_MAP[3]];
+	const float *const rn = KIT_TUNE[KIT_MAP[near]];
+	const float g = w0 * KIT_MAP_GAIN[0] + w1 * KIT_MAP_GAIN[1] + w2 * KIT_MAP_GAIN[2] + w3 * KIT_MAP_GAIN[3];
 	for (int i = 0; i < KT_COUNT; i++) {
-		if (!KT_MAPPED[i])
+		const uint8_t m = KT_MAPPED[i];
+		if (!m)
 			continue;
-		if (KT_MAPPED[i] == 2)
-			KTB[i] = KIT_TUNE[KIT_MAP[near]][i];
-		else
-			KTB[i] = w[0] * KIT_TUNE[KIT_MAP[0]][i] + w[1] * KIT_TUNE[KIT_MAP[1]][i] + w[2] * KIT_TUNE[KIT_MAP[2]][i] + w[3] * KIT_TUNE[KIT_MAP[3]][i];
+		float v = m == 2 ? rn[i] : w0 * r0[i] + w1 * r1[i] + w2 * r2[i] + w3 * r3[i];
+		if (i == KT_OUT)
+			v *= g;                                    /* (the level, matched across the corners) */
+		KTB[i] = v;
+		KT[i] = v;                                     /* (the morph redoes its own few from KTB each block) */
 	}
-	KTB[KT_OUT] *= w[0] * KIT_MAP_GAIN[0] + w[1] * KIT_MAP_GAIN[1] + w[2] * KIT_MAP_GAIN[2] + w[3] * KIT_MAP_GAIN[3];
-	/* into KT too: the morph (kit_morph, every block) redoes its own few from KTB, the rest are these */
-	for (int i = 0; i < KT_COUNT; i++)
-		if (KT_MAPPED[i])
-			KT[i] = KTB[i];
-	KT[KT_OUT] = KTB[KT_OUT];
 }
 /* the macro on a Kit channel (from macro_tick): one movement, not several. Its glide (u, -1..1) at
  * its depth d gives the morph m; the channel's activity, tone, length, register and character move
