@@ -228,6 +228,18 @@ static uint8_t rv_drift;
 static float rv_dr, rv_dt, rv_shr;
 void gl_rv_drift(int mode) { rv_drift = (uint8_t)mode; rv_dt = 0.0f; rv.cur = -1; }
 void gl_rv_shim_ratio(float r) { rv_shr = r; }
+/* audition: odd tails (1 crushed more the longer it rings; 2 crushed again on every pass, in the
+ * Hall's loop; 3 and 4 an endless rise or fall in the Shimmer's loop, a semitone a pass with a copy an
+ * octave away fading in; 5 a ring tone stepping up the scale; 6 two ring tones in contrary motion,
+ * left rising, right falling; 7 and 8 a ring tone stepping the scale by Fibonacci numbers, up or down) */
+static uint8_t rv_fx;
+#ifndef SHEP_AMT
+#define SHEP_AMT 0.5f
+#define SHEP_G 1.0f
+#endif
+static float rvx_t, rvx_pk, rvx_env, rvx_q, rvx_h[2], rvx_hn, sh_p2;
+static uint32_t rvx_ph[2], rvx_n, rvx_step, rvx_fa, rvx_fb;
+void gl_rv_fx(int mode) { rv_fx = (uint8_t)mode; rvx_t = 99.0f; rvx_step = 0; rvx_fa = 0; rvx_fb = 1; }
 static rvdef rv_alt;
 void gl_rv_cut(int bits) { rv_cut = (uint8_t)bits; rv.cur = -1; }   /* (laid out again on the next block) */
 /* lay the chosen reverb out in the ring */
@@ -319,8 +331,13 @@ static void rv_derive(float rvv)
 		/* less shimmer as the tail grows longer, and room left in the loop for what it adds;
 		 * frozen, the shifter takes over and the servo holds the level */
 		rv.sh_amt = 0.35f * clampf((1.0f - rv.g[0]) * 12.0f, 0.0f, 1.0f);
-		if (rv_shr > 0.0f && rv.sh_amt < 0.25f)
+		if ((rv_shr > 0.0f || rv_fx == 3 || rv_fx == 4) && rv.sh_amt < 0.25f)
 			rv.sh_amt = 0.25f;                       /* (audition: the shifted tail heard even at the longest) */
+		if (rv_fx == 3 || rv_fx == 4) {              /* (audition: the shifter carries most of the loop) */
+			rv.sh_amt = SHEP_AMT;
+			for (int k = 0; k < rv.nl; k++)
+				rv.g[k] *= SHEP_G;
+		}
 		for (int k = 0; k < rv.nl; k++)
 			rv.g[k] *= 1.0f - 0.15f * rv.sh_amt;
 		if (frozen) {
@@ -403,7 +420,7 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 		/* what goes in is cut at 2.7 kHz first (elliptic, 4 poles: -47 dB at 4): shifted up an
 		 * octave, anything over 3 kHz would pass 6 and fold back down off-pitch */
 		{
-			float in = 0.5f * (d0 + d1 + d2 + d3), *z = rv.sz;
+			float in = rv_fx == 3 || rv_fx == 4 ? 0.5f * (d0 + d1 - d2 - d3) : 0.5f * (d0 + d1 + d2 + d3), *z = rv.sz;
 			float y = 0.069917512f * in + z[0];
 			z[0] = 0.125911025f * in + 0.686835095f * y + z[1];
 			z[1] = 0.069917512f * in - 0.264994175f * y;
@@ -412,7 +429,8 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 			z[3] = y - 0.744281625f * y2;
 			RWR(rv.o_sh, y2);
 		}
-		const float r = rv_shr > 0.0f ? rv_shr : SH_RATIO[rv.shim];
+		const int shep = rv_fx == 3 || rv_fx == 4;
+		const float r = shep ? (rv_fx == 3 ? 1.0594631f : 0.9438743f) : rv_shr > 0.0f ? rv_shr : SH_RATIO[rv.shim];
 		float pa = rv.sh_p, pb = rv.sh_p + 0.5f;
 		pb -= pb >= 1.0f ? 1.0f : 0.0f;
 		float da = 1.0f + (float)(SH_W - 3) * (1.0f - pa), db = 1.0f + (float)(SH_W - 3) * (1.0f - pb);
@@ -421,7 +439,18 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 		rv.sh_p += (r - 1.0f) * (1.0f / (float)(SH_W - 3));
 		rv.sh_p -= rv.sh_p >= 1.0f ? 1.0f : 0.0f;
 		rv.sh_p += rv.sh_p < 0.0f ? 1.0f : 0.0f;          /* (a ratio below 1: the taps wrap the other way) */
-		const float lk = SH_LPK[rv.shim];
+		if (shep) {                                /* (the copy an octave away, fading in to replace it) */
+			const float r2 = rv_fx == 3 ? 0.5297316f : 1.8877486f;
+			float qa = sh_p2, qb = sh_p2 + 0.5f;
+			qb -= qb >= 1.0f ? 1.0f : 0.0f;
+			float ea = 1.0f + (float)(SH_W - 3) * (1.0f - qa), eb = 1.0f + (float)(SH_W - 3) * (1.0f - qb);
+			float va = 1.0f - (qa > 0.5f ? 2.0f * qa - 1.0f : 1.0f - 2.0f * qa);
+			sh += 0.5f * (va * rrdf(rv.o_sh, ea) + (1.0f - va) * rrdf(rv.o_sh, eb));
+			sh_p2 += (r2 - 1.0f) * (1.0f / (float)(SH_W - 3));
+			sh_p2 -= sh_p2 >= 1.0f ? 1.0f : 0.0f;
+			sh_p2 += sh_p2 < 0.0f ? 1.0f : 0.0f;
+		}
+		const float lk = shep ? 0.3f : SH_LPK[rv.shim];
 		rv.sh_lp += lk * (sh - rv.sh_lp);
 		rv.sh_lp2 += lk * (rv.sh_lp - rv.sh_lp2);
 		rv.sh_hp += 0.08f * (rv.sh_lp2 - rv.sh_hp);
@@ -491,6 +520,13 @@ static inline __attribute__((always_inline)) void fdn8_tick(float in, float *ol,
 				y[j + h] = a - b;
 			}
 	float ag = rv_servo(0.5f * e) * 0.35355339f;
+	if (rv_fx == 2 && rvx_q > 0.0f) {              /* (audition: every pass rounded to a coarse step) */
+		const float iq = 1.0f / rvx_q;
+		for (int k = 0; k < 8; k++) {
+			float u = y[k] * iq;
+			y[k] = (float)(int)(u + (u >= 0.0f ? 0.5f : -0.5f)) * rvx_q;
+		}
+	}
 #pragma GCC unroll 8
 	for (int k = 0; k < 8; k++)
 		RWR(rv.o_l[k], ag * y[k] + ((k & 1) ? -0.5f : 0.5f) * x);
@@ -569,6 +605,71 @@ static void rv_block(float *X, float *WL, float *WR)
 	for (uint32_t k = 0; k < 13; k++) {
 		rv.ul[k] = A[M + k];
 		rv.ur[k] = B[M + k];
+	}
+}
+
+/* (audition) the odd tails after the reverb, at 24 kHz; X the send */
+static float rvx_note(int deg)
+{
+	const int n = scale_n > 0 ? scale_n : 7, o = deg >= 0 ? deg / n : -((n - 1 - deg) / n);
+	const int d = deg - o * n;
+	return mtof((float)(48 + 12 * o + ((scale_pc[d] - root_pc + 12) % 12) + root_pc % 12));
+}
+static void rv_fx_block(const float *X, float *WL, float *WR, uint32_t n)
+{
+	float pk = 0.0f;
+	for (uint32_t j = 0; j < n; j++)
+		pk = X[j] > pk ? X[j] : -X[j] > pk ? -X[j] : pk;
+	if (pk > 2.0f * rvx_pk + 0.002f)
+		rvx_t = 0.0f;                              /* a new hit */
+	rvx_pk += (pk - rvx_pk) * (pk > rvx_pk ? 0.5f : 0.02f);
+	rvx_t += (float)n / 24000.0f;
+	rvx_q = sqrtf_fast(rv.agc_env * 0.125f + 1e-12f) * 1.0f;
+	if (rv_fx == 1) {                              /* fewer bits and fewer samples the longer it rings */
+		const float t = rvx_t;
+		const float bits = t < 5.0f ? 8.0f - 1.2f * t : 2.0f;
+		const float hold = t < 5.0f ? 1.0f + 1.4f * t : 8.0f;
+		for (uint32_t j = 0; j < n; j++) {
+			float a = (WL[j] > 0.0f ? WL[j] : -WL[j]) + (WR[j] > 0.0f ? WR[j] : -WR[j]);
+			rvx_env += (a - rvx_env) * (a > rvx_env ? 0.01f : 0.0003f);
+			if ((rvx_hn += 1.0f) >= hold) {
+				rvx_hn -= hold;
+				const float q = (rvx_env + 1e-6f) * 2.0f * fexp2(-bits), iq = 1.0f / q;
+				float u = WL[j] * iq, v = WR[j] * iq;
+				rvx_h[0] = (float)(int)(u + (u >= 0.0f ? 0.5f : -0.5f)) * q;
+				rvx_h[1] = (float)(int)(v + (v >= 0.0f ? 0.5f : -0.5f)) * q;
+			}
+			WL[j] = rvx_h[0];
+			WR[j] = rvx_h[1];
+		}
+		return;
+	}
+	if (rv_fx < 5)
+		return;
+	/* the ring tones: a step every so often, each step a note of the song's scale from C3 */
+	const uint32_t every = rv_fx == 6 ? 8000u : rv_fx >= 7 ? 6000u : 4000u;
+	if ((rvx_n += n) >= every) {
+		rvx_n -= every;
+		rvx_step++;
+		const uint32_t m = 2u * (uint32_t)(scale_n > 0 ? scale_n : 7), c = (rvx_fa + rvx_fb) % m;
+		rvx_fa = rvx_fb;
+		rvx_fb = c;
+	}
+	const int sn = scale_n > 0 ? scale_n : 7;
+	float fa, fb;
+	if (rv_fx == 5)
+		fa = fb = rvx_note((int)(rvx_step % (uint32_t)(2 * sn)));
+	else if (rv_fx == 6) {
+		fa = rvx_note((int)(rvx_step % (uint32_t)(2 * sn)));
+		fb = rvx_note(2 * sn - (int)(rvx_step % (uint32_t)(2 * sn)));
+	} else
+		fa = fb = rvx_note(rv_fx == 7 ? (int)rvx_fa : 2 * sn - (int)rvx_fa);
+	const uint32_t ia = (uint32_t)(fa / 24000.0f * 4294967296.0f), ib = (uint32_t)(fb / 24000.0f * 4294967296.0f);
+	for (uint32_t j = 0; j < n; j++) {
+		rvx_ph[0] += ia;
+		rvx_ph[1] += ib;
+		WL[j] *= 0.3f + 0.9f * sin_u(rvx_ph[0]);
+		WR[j] *= 0.3f + 0.9f * sin_u(rvx_ph[1]);
 	}
 }
 
@@ -673,7 +774,15 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 	tb4(ER, ER, 1.0f, sp_lp + 8, GL_SUB / 2);
 	for (uint32_t j = 0; j < GL_SUB / 2; j++)
 		X[j] = (0.5f * V[j] + (EL[j] + ER[j]) * 0.25f) * fi;
-	rv_block(X, WL, WRr);
+	{
+		float X0[GL_SUB / 2];
+		if (rv_fx)
+			for (uint32_t j = 0; j < GL_SUB / 2; j++)
+				X0[j] = X[j];
+		rv_block(X, WL, WRr);
+		if (rv_fx)
+			rv_fx_block(X0, WL, WRr, GL_SUB / 2);
+	}
 	reverse_block(WL, WRr, GL_SUB / 2);
 	if (dist.amt && dist.post == 2) {            /* dirty tails, clean instruments */
 		dist_block(WL, GL_SUB / 2, 4);

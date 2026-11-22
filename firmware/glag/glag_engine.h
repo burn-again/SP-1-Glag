@@ -156,6 +156,7 @@ void gl_midi_note(int ch, int note, int vel);
 void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
 void gl_rv_drift(int mode);          /* audition only: the Hall's lines drifting (1 grow/shrink, 2 diverge, 3 grow, 4 shrink) */
 void gl_rv_shim_ratio(float r);      /* audition only: the Shimmer's interval as a ratio (below 1: down; 0 its own) */
+void gl_rv_fx(int mode);              /* audition only: odd tails (1 crush growing, 2 crush per pass, 3/4 endless rise/fall, 5 ring arp, 6 ring contrary, 7/8 Fibonacci ring up/down) */
 void gl_rv_cut(int bits);            /* audition only: 1 the Hall on four lines, 2 one damping band */
 void gl_drop_cap(int n);             /* audition only: at most n notes and hits start in a step (0 off) */
 void gl_str_thin(int mask);          /* audition only: Strings thinned (bits: 1 no chorus, 2 one filter, 4 two poles, 8 one saw, 16 two notes) */

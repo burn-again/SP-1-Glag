@@ -44,6 +44,8 @@ int main(int argc, char **argv)
 		gl_rv_drift(atoi(getenv("RVDRIFT")));
 	if (getenv("SHRATIO"))
 		gl_rv_shim_ratio((float)atof(getenv("SHRATIO")));
+	if (getenv("RVFX"))
+		gl_rv_fx(atoi(getenv("RVFX")));
 	gl_play(0);                               /* (resting: nothing of its own, only the hits) */
 	/* hit k at 2 + 10k s on channel k % 4, held down 0.4 s (so each channel's own sequencer rests) */
 	static const int NOTE[8] = {67, 60, 72, 60, 67, 60, 60, 62};   /* (the Kit: D, its snare) */
