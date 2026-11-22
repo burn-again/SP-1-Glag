@@ -220,6 +220,14 @@ static inline float sqrtf_fast(float x)    /* control rate only: two Newton step
  * highs), 4 the four-line Hall with the Hall's own two short diffusers (the other two out), 8 and with
  * four of the Hall's own lines. A copy of the definition carries the change */
 static uint8_t rv_cut, rv_hall4;
+/* audition: the Hall's lines drifting in length as it rings (1 growing then shrinking, ten seconds each
+ * way; 2 half growing, half shrinking; 3 all growing slowly; 4 all shrinking slowly), and the
+ * Shimmer's interval set to any ratio (below 1: down) */
+#define DROOM 700u                                /* (room each line may grow into: 58 ms at 12 kHz) */
+static uint8_t rv_drift;
+static float rv_dr, rv_dt, rv_shr;
+void gl_rv_drift(int mode) { rv_drift = (uint8_t)mode; rv_dt = 0.0f; rv.cur = -1; }
+void gl_rv_shim_ratio(float r) { rv_shr = r; }
 static rvdef rv_alt;
 void gl_rv_cut(int bits) { rv_cut = (uint8_t)bits; rv.cur = -1; }   /* (laid out again on the next block) */
 /* lay the chosen reverb out in the ring */
@@ -272,7 +280,7 @@ static void rv_layout(int type)
 	}
 	for (int k = 0; k < rv.nl; k++) {
 		rv.o_l[k] = o;
-		o += rv.len[k] + FMOD_ROOM;
+		o += rv.len[k] + FMOD_ROOM + (rv_drift && rv.nl == 8 ? DROOM : 0u);
 	}
 	rv.o_sh = o;
 	o += SH_W + 2u;
@@ -311,6 +319,8 @@ static void rv_derive(float rvv)
 		/* less shimmer as the tail grows longer, and room left in the loop for what it adds;
 		 * frozen, the shifter takes over and the servo holds the level */
 		rv.sh_amt = 0.35f * clampf((1.0f - rv.g[0]) * 12.0f, 0.0f, 1.0f);
+		if (rv_shr > 0.0f && rv.sh_amt < 0.25f)
+			rv.sh_amt = 0.25f;                       /* (audition: the shifted tail heard even at the longest) */
 		for (int k = 0; k < rv.nl; k++)
 			rv.g[k] *= 1.0f - 0.15f * rv.sh_amt;
 		if (frozen) {
@@ -402,7 +412,7 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 			z[3] = y - 0.744281625f * y2;
 			RWR(rv.o_sh, y2);
 		}
-		const float r = SH_RATIO[rv.shim];
+		const float r = rv_shr > 0.0f ? rv_shr : SH_RATIO[rv.shim];
 		float pa = rv.sh_p, pb = rv.sh_p + 0.5f;
 		pb -= pb >= 1.0f ? 1.0f : 0.0f;
 		float da = 1.0f + (float)(SH_W - 3) * (1.0f - pa), db = 1.0f + (float)(SH_W - 3) * (1.0f - pb);
@@ -410,6 +420,7 @@ static inline __attribute__((always_inline)) void fdn4_tick(float in, float *ol,
 		float sh = wa * rrdf(rv.o_sh, da) + (1.0f - wa) * rrdf(rv.o_sh, db);
 		rv.sh_p += (r - 1.0f) * (1.0f / (float)(SH_W - 3));
 		rv.sh_p -= rv.sh_p >= 1.0f ? 1.0f : 0.0f;
+		rv.sh_p += rv.sh_p < 0.0f ? 1.0f : 0.0f;          /* (a ratio below 1: the taps wrap the other way) */
 		const float lk = SH_LPK[rv.shim];
 		rv.sh_lp += lk * (sh - rv.sh_lp);
 		rv.sh_lp2 += lk * (rv.sh_lp - rv.sh_lp2);
@@ -442,6 +453,24 @@ static inline __attribute__((always_inline)) void fdn8_tick(float in, float *ol,
 		d[k] = RRD(rv.o_l[k] + rv.len[k]);
 	d[2] = rrdf(rv.o_l[2], (float)rv.len[2] + rv.fmod * ms);
 	d[6] = rrdf(rv.o_l[6], (float)rv.len[6] + rv.fmod * mc);
+	if (rv_drift) {                                /* (audition: every line read where its drift has it) */
+		rv_dt += 1.0f / 12000.0f;
+		float a, b;
+		if (rv_drift == 1) {                       /* growing ten seconds, shrinking ten */
+			const float ph = rv_dt * 0.05f - (float)(int)(rv_dt * 0.05f);
+			a = b = (float)(DROOM - 4u) * (ph < 0.5f ? 2.0f * ph : 2.0f - 2.0f * ph);
+		} else if (rv_drift == 2) {                /* half one way, half the other, over 80 s */
+			const float u = rv_dt < 80.0f ? rv_dt / 80.0f : 1.0f, c = 0.5f * (float)(DROOM - 4u);
+			a = c + c * u;
+			b = c - c * u;
+		} else {                                   /* all growing (3) or shrinking (4), over 80 s */
+			const float u = rv_dt < 80.0f ? rv_dt / 80.0f : 1.0f;
+			a = b = (float)(DROOM - 4u) * (rv_drift == 3 ? u : 1.0f - u);
+		}
+		rv_dr = a;
+		for (int k = 0; k < 8; k++)
+			d[k] = rrdf(rv.o_l[k], (float)rv.len[k] + ((k & 1) ? b : a) + (k == 2 ? rv.fmod * ms : k == 6 ? rv.fmod * mc : 0.0f));
+	}
 #pragma GCC unroll 8
 	for (int k = 0; k < 8; k++) {
 		rv.lp[k] += rv.kd * (d[k] - rv.lp[k]);
