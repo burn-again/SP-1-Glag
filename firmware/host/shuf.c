@@ -39,8 +39,16 @@ int main(int argc, char **argv)
 		gl_fresh((uint32_t)strtoul(argv[5], 0, 0));
 	if (getenv("NODIST")) { dist_amt = 0; gl_dist(dist_type, 0, dist_post); }
 	if (getenv("POST")) { dist_post = atoi(getenv("POST")); gl_dist(dist_type, dist_amt, dist_post); }
+	if (getenv("SOLO")) { int k = atoi(getenv("SOLO")); for (int c = 0; c < 4; c++) if (c != k) cur.ch[c][CP_LEVEL] = 0.0f; gl_post_patch(&cur); }
+	if (getenv("DRYONLY")) { cur.g[GP_REVERB] = 0.0f; cur.g[GP_DELAY] = 0.0f; for (int c = 0; c < 4; c++) cur.ch[c][CP_VERB] = cur.ch[c][CP_ECHO] = 0.0f; gl_post_patch(&cur); }
+	if (getenv("MUTE")) { for (int c = 0; c < 4; c++) cur.ch[c][CP_LEVEL] = 0.0f; gl_post_patch(&cur); }
+	if (getenv("NOWARBLE"))
+		gl_world_ch(GWC_TEXP, 1, 0.0f);
+	if (getenv("NOTEX")) { w_tex = 0; gl_world(GW_TEXTURE, 0.0f); }
+	if (getenv("NOPUMP")) { w_pump = 0; gl_world(GW_PUMP, 0.0f); }
 	if (getenv("FLAGS")) { cur.space[GL_SP_FLAGS] = (uint8_t)atoi(getenv("FLAGS")); gl_post_patch(&cur); }
 	if (getenv("NOECHO")) { cur.g[GP_DELAY] = 0.0f; gl_post_patch(&cur); }
+	if (w_tex) fprintf(stderr, "texture %d: level %.2f, its controls %.2f %.2f %.2f\n", w_tex, wv_tex[w_tex][0], wv_tex[w_tex][1], wv_tex[w_tex][2], wv_tex[w_tex][3]);
 	fprintf(stderr, "dist type %d amt %d post %d | reverb %d shim %d flags %d echo %d delay %.2f reverb %.2f | pump %d arp %d tex %d | macros %d %d %d %d\n",
 		dist_type, dist_amt, dist_post, cur.space[GL_SP_REVERB], cur.space[GL_SP_SHIMMER], cur.space[GL_SP_FLAGS],
 		cur.space[GL_SP_ECHO], cur.g[GP_DELAY], cur.g[GP_REVERB], w_pump, w_arp, w_tex,
@@ -52,6 +60,7 @@ int main(int argc, char **argv)
 	for (uint32_t n = 0; n < frames; n += 96) {
 		glui_tick(2 + n / 48, &in, &out);
 		gl_render(blk, 96, out.volume);
+		if (getenv("COMPLOG")) { static FILE *cf; if (!cf) cf = fopen(getenv("COMPLOG"), "w"); fprintf(cf, "%.6f\n", gl_scope.comp); }
 		fwrite(blk, 2, 192, f);
 	}
 	fclose(f);

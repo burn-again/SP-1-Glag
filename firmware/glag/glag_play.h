@@ -697,7 +697,7 @@ static void arp_held_control(chan *c, int ch, float dt, float tone, float len)
 /* ---- textures, at 24 kHz into the dry mix ---- */
 static uint32_t tx_r = 0x2545F491u;
 static float tx_s[12];
-static float tx_drop, tx_dk, tx_dpan, tx_lfo;
+static float tx_drop, tx_dk, tx_dpan, tx_lfo, tx_ce;
 static float rn_f[2] = {0.3f, 0.5f}, rn_ft[2] = {0.3f, 0.5f};            /* rain: two moving bands */
 static float sf_env[2], sf_ph[2] = {0.0f, 0.55f}, sf_per[2] = {9.0f, 11.0f}, sf_pan[2];   /* surf: two waves */
 static inline float tx_noise(void)
@@ -769,15 +769,24 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			break;
 		}
 		case 2: {   /* vinyl: crackle, and a quieter surface (the warble is on the whole mix) */
-			float c = 0.0f;
-			if ((tx_r & 0xFFFu) < (uint32_t)(4.0f * tp[0] + 0.5f))   /* ~12 pops a second */
-				c = (a > 0.0f ? 1.0f : -1.0f) * (0.4f + 0.6f * b * b);
-			s[0] += 0.5f * (c - s[0]);
+			/* a pop is a scratch in the groove as a record's playback hears it: a burst a few
+			 * tenths of a millisecond long, rounded off above ~2 kHz, mostly tiny, now and then a
+			 * bigger one (a single bright sample, as it was, sounded like a digital tick) */
+			if ((tx_r & 0xFFFu) < (uint32_t)(4.0f * tp[0] + 0.5f)) {   /* ~12 pops a second */
+				const float u = 0.5f + 0.5f * b;
+				tx_ce = (0.15f + 0.85f * u * u * u * u) * (a > 0.0f ? 1.0f : -1.0f);
+			}
+			float c = tx_ce * (0.6f + 0.4f * a);
+			tx_ce *= 0.8f;                                 /* (~0.2 ms) */
+			s[5] += 0.35f * (c - s[5]);
+			s[6] += 0.35f * (s[5] - s[6]);
+			s[0] += 0.02f * (s[6] - s[0]);                 /* (no thump under it) */
+			const float pop = (s[6] - s[0]) * 1.6f;
 			s[1] += 0.25f * (a - s[1]);
 			s[2] += 0.004f * (s[1] - s[2]);
 			float hiss = (s[1] - s[2]) * 0.09f * tp[2] * wash;
-			l = (c - s[0]) * 1.4f + hiss;
-			r = (c - s[0]) * 1.2f + hiss;
+			l = pop * 1.1f + hiss;
+			r = pop * 0.95f + hiss;
 			break;
 		}
 		case 3: {   /* tape hiss: soft, rolled off above ~4.5 kHz, breathing slowly */
