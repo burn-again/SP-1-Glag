@@ -71,6 +71,8 @@ int main(int argc, char **argv)
 				gl_kit_tune(i, v);
 		}
 	}
+	if (getenv("KCHEAP"))    /* KCHEAP=bits: cheaper Kit (audition) */
+		gl_kit_cheap(atoi(getenv("KCHEAP")));
 	if (getenv("KROT"))      /* KROT=1: the Kit rotates on every phrase */
 		gl_kit_rotate(1);
 	if (getenv("CHAR"))

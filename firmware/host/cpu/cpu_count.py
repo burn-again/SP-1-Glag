@@ -101,6 +101,13 @@ def run(voices):
             st['start'] = st['cyc']
         elif value == 2:
             st['blocks'].append(st['cyc'] - st['start'])
+            if WORST and '--worst-lines' in sys.argv:
+                cost = st['blocks'][-1]
+                keep = st.setdefault('wl', [])
+                if len(st['blocks']) > 50 and (len(keep) < 3 or cost > keep[-1][0]):
+                    keep.append((cost, len(st['blocks']) - 1, dict(st['cur'])))
+                    keep.sort(key=lambda x: -x[0])
+                    del keep[3:]
             if WORST:
                 agg = {}
                 for a, c in st['cur'].items():
@@ -141,6 +148,20 @@ def run(voices):
             extra = sorted(((f, c - mean.get(f, 0)) for f, c in agg.items()), key=lambda x: -x[1])[:WORST_N]
             for f, d in extra:
                 print(f"      {d / budget * 100:+6.1f} pts  {f:32s} ({agg[f] / budget * 100:5.1f} % here, {mean.get(f, 0) / budget * 100:5.1f} % typical)")
+    if WORST and '--worst-lines' in sys.argv:
+        only = sys.argv[sys.argv.index('--func') + 1] if '--func' in sys.argv else None
+        for cost, bi, d in st.get('wl', []):
+            addrs = sorted(a for a in d if only is None or func_of(a) == only)
+            lines = []
+            for i in range(0, len(addrs), 2000):
+                lines += subprocess.check_output([TOOL + 'addr2line', '-e', ELF] + [hex(a) for a in addrs[i:i + 2000]], text=True).splitlines()
+            agg = {}
+            for a, l in zip(addrs, lines):
+                k = l.split('/')[-1].split(' ')[0]
+                agg[k] = agg.get(k, 0) + d[a]
+            print(f"  lines of the block at {bi * 2 / 1000:.2f} s ({cost / budget * 100:.1f} %):")
+            for k, c in sorted(agg.items(), key=lambda x: -x[1])[:25]:
+                print(f"      {c / budget * 100:5.2f} pts  {k}")
     return avg, worst
 
 PROF = {} if '--prof' in sys.argv else None

@@ -40,6 +40,9 @@ int main(void)
 #ifdef STRTHIN
 	gl_str_thin(STRTHIN);
 #endif
+#ifdef KCHEAP
+	gl_kit_cheap(KCHEAP);
+#endif
 #ifdef KCOL
 	gl_kit_color(KCOL);
 #endif

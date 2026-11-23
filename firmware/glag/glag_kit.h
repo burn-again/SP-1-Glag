@@ -47,6 +47,21 @@ static inline float kn(void)
 	return (float)(int32_t)kit_r * (1.0f / 2147483648.0f);
 }
 static inline float ku(void) { return 0.5f + 0.5f * kn(); }
+/* the kit's dice moved on n draws at once (an LCG jumps ahead by squaring its step) */
+static void kit_r_skip(uint32_t n)
+{
+	uint32_t am = 1664525u, ac = 1013904223u, m = 1u, c = 0u;
+	while (n) {
+		if (n & 1u) {
+			m *= am;
+			c = c * am + ac;
+		}
+		ac = (am + 1u) * ac;
+		am *= am;
+		n >>= 1;
+	}
+	kit_r = m * kit_r + c;
+}
 static inline float ksat(float x) { x = clampf(x, -3.0f, 3.0f); return x * (27.0f + x * x) / (27.0f + 9.0f * x * x); }
 static inline float kexp(float t_s) { return t_s > 0.0f ? fexp2(-6.644f / (t_s * KSR)) : 0.0f; }   /* down 40 dB in t seconds */
 
@@ -151,7 +166,58 @@ static int kit_deg(int d)
 	int rel = scale_n > 0 ? (scale_pc[i] - root_pc + 12) % 12 : 2 * i;
 	return rel + 12 * o;
 }
-static float kit_hz(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
+/* (the kick's modes' levels for its firmness: the same sums, remembered for the last firmness) */
+static float kit_firm_w(float firm, int m)
+{
+	static float f_in = -1.0f, w[5];
+	if (firm != f_in) {
+		for (int j = 0; j < 5; j++)
+			w[j] = fexp2(-(float)j * (1.0f - firm) * 0.72f);
+		f_in = firm;
+	}
+	return w[m];
+}
+/* (the membrane's mode spacing as a decay divisor: the same sum, once) */
+static float kit_mem_div(int m)
+{
+	static float tab[5];
+	static uint8_t have;
+	if (!have) {
+		for (int j = 0; j < 5; j++)
+			tab[j] = fexp2(0.8f * flog2(K_MEM[j]));
+		have = 1;
+	}
+	return tab[m];
+}
+static float kit_hz_calc(int midi) { return 440.0f * fexp2((float)(midi - 69) * (1.0f / 12.0f)); }
+/* (each note's frequency worked out once, by the same sum: a hit's setup reads it) */
+static float kit_hz(int midi)
+{
+	static float tab[128];
+	static uint8_t have[128];
+	if ((unsigned)midi >= 128u)
+		return kit_hz_calc(midi);
+	if (!have[midi]) {
+		tab[midi] = kit_hz_calc(midi);
+		have[midi] = 1;
+	}
+	return tab[midi];
+}
+/* (a hit's setup: its exponentials of inputs that hardly ever change, remembered by input) */
+static float kit_x2(float x)
+{
+	static float in[16], out[16];
+	static uint8_t n, have;
+	for (int j = 0; j < (int)have; j++)
+		if (in[j] == x)
+			return out[j];
+	const float v = fexp2(x);
+	in[n] = x;
+	out[n] = v;
+	n = (uint8_t)((n + 1u) & 15u);
+	have = have < 16 ? (uint8_t)(have + 1u) : have;
+	return v;
+}
 
 /* ---- the tuning: every number the Kit tuning page reaches (gl_kit_tune), at the firmware's
  * defaults (written by tune/gen_tunings.py from tune/params.py: edit that) ---- */
@@ -721,6 +787,11 @@ void gl_kit_solo(int lanes) { kit_solo = (uint32_t)lanes; }
 #define KSOLO(l) (kit_solo & (1u << (l)))
 
 static int kit_rot_always;
+/* audition: cheaper ways to make the Kit (bits: 1 the Nord at the kit's rate with smoothed jumps, 2 the
+ * Karplus drum's burst drawn as it is first read, on its own dice, instead of all at the hit) */
+static uint8_t kit_cheap;
+static uint32_t kit_r3 = 0x7F4A7C15u;   /* (the audition's own dice for the drum's burst) */
+void gl_kit_cheap(int bits) { kit_cheap = (uint8_t)bits; }
 void gl_kit_rotate(int always) { kit_rot_always = always; }
 /* the rotation: the kick's hits played by the snare, the snare's by the hat, the hat's by the
  * kick (turned once, or twice) */
@@ -815,7 +886,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	const float dyn_d = clampf(1.0f + dyn * 3.0f * dv, 0.35f, 2.0f);
 	if (vel < 0.99f)
 		vel = clampf(vel * (1.0f + dyn * 1.8f * dv), 0.05f, 0.98f);
-	const float reg = (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2), oct = fexp2(reg * 0.5f);
+	const float reg = (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2), oct = kit_x2(reg * 0.5f);
 	notes_fired++;
 	c->glow = vel;
 	/* short by default; an accent (velocity 1: the phrase's downbeat, the odd tissue stroke, a
@@ -866,11 +937,11 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			k->k_e[m] = f0 * (1.0f + (K_MEM[m] - 1.0f) * KT[KT_K_SPREAD]) * (6.2832f / KSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
 				k->k_x[m] = 0.0f, k->k_y[m] = 1.0f;
-			k->k_amp[m] = vel * KT[KT_L_KICK] * (m ? KT[KT_K_MODES] : 1.0f) * K_MEMA[m] * fexp2(-(float)m * (1.0f - firm) * 0.72f) * (1.0f + 0.3f * kn());
-			k->k_dec[m] = kexp(tau1 / fexp2(0.8f * flog2(K_MEM[m])));
+			k->k_amp[m] = vel * KT[KT_L_KICK] * (m ? KT[KT_K_MODES] : 1.0f) * K_MEMA[m] * kit_firm_w(firm, m) * (1.0f + 0.3f * kn());
+			k->k_dec[m] = kexp(tau1 / kit_mem_div(m));
 		}
 		k->k_glide = press ? -0.18f : slack * 0.25f * KT[KT_K_SLACK];   /* (pressed: from below, rising) */
-		k->k_gk = fexp2(-1.4427f / (0.03f * 1000.0f));    /* (once a millisecond) */
+		k->k_gk = kit_x2(-1.4427f / (0.03f * 1000.0f));   /* (once a millisecond) */
 		k->k_att = 0.0f;
 		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * KSR);
 		k->k_nz = vel * (press ? 0.35f : 0.75f) * KT[KT_K_CLICK] * KT[KT_L_KICK];
@@ -907,8 +978,15 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			const float f = 185.0f * fexp2(semis * (1.0f / 12.0f)) * (lane == 9 ? 0.75f : 1.0f);
 			uint16_t n = (uint16_t)clampf(KSR / f, 8.0f, (float)KSD_MAX);
 			const float a = (lane == 7 ? 0.35f : 1.0f) * vel * 9000.0f;
-			for (uint16_t i = 0; i < n; i++)
-				kb[i] = (int16_t)(kn() * a);
+			if (kit_cheap & 2) {
+				k->ksd_fill = 0;                          /* (audition: filled as it is first read) */
+				k->ksd_amp = a;
+				kit_r_skip(n);                            /* (the kit's own dice where they'd have been) */
+			} else {
+				for (uint16_t i = 0; i < n; i++)
+					kb[i] = (int16_t)(kn() * a);
+				k->ksd_fill = n;
+			}
 			k->ksd_n = n;
 			k->ksd_i = 0;
 			k->ksd_on = 1;
@@ -920,7 +998,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		}
 		if (press && lane == 1) {                         /* pressed: rising from below, muffled */
 			k->sn.drop = -0.2f;
-			k->sn.dk = fexp2(-1.4427f / 25.0f);
+			k->sn.dk = kit_x2(-1.4427f / 25.0f);
 			k->sn.n *= 0.5f;
 		}
 		break;
@@ -1032,13 +1110,13 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		}
 		k->n_sweep = (12.0f + 24.0f * x) * (1.0f + kn() * (0.1f + 0.2f * x) * 0.35f) * KT[KT_N_SWEEP];
 		k->n_fm = (0.08f + 0.25f * x) * (1.0f + kn() * 0.1f);
-		k->n_md = fexp2(-1.4427f / (0.16f * 1000.0f));   /* a slow sweep, 160 ms (once a millisecond) */
+		k->n_md = kit_x2(-1.4427f / (0.16f * 1000.0f));   /* a slow sweep, 160 ms (once a millisecond) */
 		k->n_menv = 1.0f;
 		k->n_cut = 350.0f * fexp2(3.0f * t) * KT[KT_N_CUT];
 		k->n_a = vel;
 		k->n_ak = kexp((0.4f + 1.0f * l) * dm * KT[KT_N_DECAY] * (nord_down ? KTB[KT_NORD_FILLX] : 1.0f));   /* (a fill's Nord rings longer) */
 		k->n_att = 0.0f;
-		k->n_p1 = k->n_p2 = 0.0f;
+		k->n_p1 = k->n_p2 = k->n_pend = 0.0f;
 		/* the Lich: a rungler (two oscillators: B clocks an 8-bit register that A's state feeds; the
 		 * register's low three bits bend both); a few octaves above the Nord's note */
 		k->n_lich = (uint8_t)kit_lich(k, KT_LICH_NORD);
@@ -1991,8 +2069,13 @@ static int kit_render12(chan *c, float *A)
 		uint16_t j = k->ksd_i;
 		const float g = 0.5f * k->ksd_g, rough = k->ksd_rough, out = 5.4f * KT[KT_L_SNARE] / 9000.0f;   /* (its averaging loses level: made up) */
 		float peak = 0.0f;
+		uint16_t fill = k->ksd_fill;
 		for (uint32_t i = 0; i < KSUB; i++) {
 			const uint16_t j2 = (uint16_t)(j + 1u >= n ? 0 : j + 1u);
+			while (fill < n && fill <= j2) {                 /* (audition: the burst drawn as it's reached) */
+				kit_r3 = kit_r3 * 1664525u + 1013904223u;
+				kb[fill++] = (int16_t)((float)(int32_t)kit_r3 * (1.0f / 2147483648.0f) * k->ksd_amp);
+			}
 			float v = ((float)kb[j] + (float)kb[j2]) * g;
 			if (ku() < rough)
 				v = -v;                                    /* (the drum's roughness) */
@@ -2002,7 +2085,8 @@ static int kit_render12(chan *c, float *A)
 			j = j2;
 		}
 		k->ksd_i = j;
-		if (peak < 4.0f)
+		k->ksd_fill = fill;
+		if (peak < 4.0f && fill >= n)
 			k->ksd_on = 0;
 	}
 	/* R-8 snare (and its ghosts) */
@@ -2056,39 +2140,44 @@ static int kit_render12(chan *c, float *A)
 		float bp1 = k->h_bp, lo = k->h_lo, hh = k->h_hp, l2 = k->h_l2, l3 = k->h_l3, ha = k->h_a, ad = k->h_ad;
 		const float hk = k->h_k, grit = k->h_grit, hlk = k->h_lpk;
 		float hl = k->h_lp;
-		for (uint32_t i = 0; i < KSUB; i++) {
-			/* the squares: each one's top bit, counted */
-			ph0 += K_METAL[0]; ph1 += K_METAL[1]; ph2 += K_METAL[2];
-			ph3 += K_METAL[3]; ph4 += K_METAL[4]; ph5 += K_METAL[5];
-			int n = (int)((ph0 >> 31) + (ph1 >> 31) + (ph2 >> 31) + (ph3 >> 31) + (ph4 >> 31) + (ph5 >> 31));
-			float s = (float)(3 - n) * (1.0f / 3.0f);
-			/* the high band (its body) and a little of the low metal */
-			float lp, bp = ksvf_run(&hf, &bp1, &lo, s, &lp);
-			hh += KP(0.6f) * (bp - hh);
-			l2 += KP(0.36f) * (s - l2);
-			l3 += KP(0.36f) * (l2 - l3);
-			float x0 = ((bp - hh) * 2.0f + (l2 - l3) * grit) * ha;
-			ha *= hk;
-			/* the two all-pass chains (in z^-2: y = c x + v[n-2], v = c y - x; the two
-			 * memories taken in turn, odd and even samples) */
-			const int p = (int)(i & 1u);
-			float a = x0, b = x0;
-			for (int j = 0; j < 2; j++) {
-				float ya = K_HA[j] * a + k->ha_v[j][p];
-				k->ha_v[j][p] = K_HA[j] * ya - a;
-				a = ya;
-				float yb = K_HB[j] * b + k->hb_v[j][p];
-				k->hb_v[j][p] = K_HB[j] * yb - b;
-				b = yb;
-			}
-			float re = ad, im = b;
-			ad = a;                                       /* (chain A one sample later) */
-			hl += hlk * ((re * pc + im * ps) - hl);         /* (shifted up for a positive f) */
-			A[i] += hl * 2.8f * KE(2);
-			float nc = pc * cr - ps * sr;                 /* the phasor turns */
-			ps = pc * sr + ps * cr;
-			pc = nc;
+		/* (the all-passes' memories held in locals, odd and even samples in turn: kept in registers,
+		 * where the output buffer could otherwise alias them; the same sums in the same order) */
+		float va00 = k->ha_v[0][0], va01 = k->ha_v[0][1], va10 = k->ha_v[1][0], va11 = k->ha_v[1][1];
+		float vb00 = k->hb_v[0][0], vb01 = k->hb_v[0][1], vb10 = k->hb_v[1][0], vb11 = k->hb_v[1][1];
+#define METAL_SAMPLE(I, VA0, VA1, VB0, VB1) {                                                      \
+			ph0 += K_METAL[0]; ph1 += K_METAL[1]; ph2 += K_METAL[2];                          \
+			ph3 += K_METAL[3]; ph4 += K_METAL[4]; ph5 += K_METAL[5];                          \
+			int n = (int)((ph0 >> 31) + (ph1 >> 31) + (ph2 >> 31) + (ph3 >> 31) + (ph4 >> 31) + (ph5 >> 31)); \
+			float s = (float)(3 - n) * (1.0f / 3.0f);                                         \
+			float lp, bp = ksvf_run(&hf, &bp1, &lo, s, &lp);                                  \
+			hh += KP(0.6f) * (bp - hh);                                                       \
+			l2 += KP(0.36f) * (s - l2);                                                       \
+			l3 += KP(0.36f) * (l2 - l3);                                                      \
+			float x0 = ((bp - hh) * 2.0f + (l2 - l3) * grit) * ha;                            \
+			ha *= hk;                                                                         \
+			float a = x0, b = x0, ya, yb;                                                     \
+			ya = K_HA[0] * a + VA0; VA0 = K_HA[0] * ya - a; a = ya;                           \
+			yb = K_HB[0] * b + VB0; VB0 = K_HB[0] * yb - b; b = yb;                           \
+			ya = K_HA[1] * a + VA1; VA1 = K_HA[1] * ya - a; a = ya;                           \
+			yb = K_HB[1] * b + VB1; VB1 = K_HB[1] * yb - b; b = yb;                           \
+			float re = ad, im = b;                                                            \
+			ad = a;                                                                           \
+			hl += hlk * ((re * pc + im * ps) - hl);                                           \
+			A[I] += hl * 2.8f * (ea >> 2 & 1u ? eg[2][I] : 1.0f);                              \
+			float nc = pc * cr - ps * sr;                                                     \
+			ps = pc * sr + ps * cr;                                                           \
+			pc = nc; }
+		/* the squares: each one's top bit, counted; the high band (its body) and a little of the
+		 * low metal; the two all-pass chains (in z^-2: y = c x + v[n-2], v = c y - x; the two
+		 * memories taken in turn, odd and even samples); chain A one sample later; shifted up
+		 * for a positive f, the phasor turning */
+		for (uint32_t i = 0; i < KSUB; i += 2) {
+			METAL_SAMPLE(i, va00, va10, vb00, vb10)
+			METAL_SAMPLE(i + 1, va01, va11, vb01, vb11)
 		}
+#undef METAL_SAMPLE
+		k->ha_v[0][0] = va00; k->ha_v[0][1] = va01; k->ha_v[1][0] = va10; k->ha_v[1][1] = va11;
+		k->hb_v[0][0] = vb00; k->hb_v[0][1] = vb01; k->hb_v[1][0] = vb10; k->hb_v[1][1] = vb11;
 		k->h_ph[0] = ph0; k->h_ph[1] = ph1; k->h_ph[2] = ph2; k->h_ph[3] = ph3; k->h_ph[4] = ph4; k->h_ph[5] = ph5;
 		k->h_bp = bp1; k->h_lo = lo; k->h_hp = hh; k->h_l2 = l2; k->h_l3 = l3; k->h_a = ha; k->h_ad = ad;
 		k->h_c = pc; k->h_s = ps; k->h_lp = hl;
@@ -2209,7 +2298,57 @@ static int kit_render12(chan *c, float *A)
 	/* Nord sync / FM hit, at twice the rate */
 	if (!k->n_lich && k->n_a > 1e-3f) {
 		any = 1;
-		const int os = k->n_menv > 0.03f ? 2 : 1;          /* twice the rate while the sync sweeps */
+		const int os = k->n_menv > 0.03f && !(kit_cheap & 1) ? 2 : 1;   /* twice the rate while the sync sweeps */
+		if (kit_cheap & 1) {
+			/* (audition: at the kit's own rate, its saw's jumps smoothed (PolyBLEP, one sample
+			 * late), instead of twice the rate) */
+			const float f2b = k->n_f1 * fexp2(k->n_sweep * k->n_menv * (1.0f / 12.0f));
+			const float fcb = clampf(k->n_cut * fexp2(2.0f * k->n_menv), 60.0f, 0.21f * KSR);
+			const ksvf nfb = ksvf_set(ktan(fcb * (1.0f / KSR)), 0.7f);
+			k->n_menv *= k->n_md;
+			const float fm4 = k->n_fm * (0.3f + 0.7f * k->n_menv) * 4.0f, f1 = k->n_f1 * (1.0f / KSR), i2 = f2b * (1.0f / KSR);
+			float p1 = k->n_p1, p2 = k->n_p2, s1 = k->n_bp1, s2 = k->n_lo1, pend = k->n_pend;
+			float na = k->n_a, att = k->n_att, dc = k->n_dc;
+			for (uint32_t i = 0; i < KSUB; i++) {
+				const float o2 = 2.0f * p2 - 1.0f;
+				const float inc1 = f1 * (1.0f + fm4 * o2);
+				p1 += inc1;
+				float jump = 0.0f, d = 0.0f;                   /* a jump in the saw, d samples ago */
+				if (p1 >= 1.0f) {
+					p1 -= (float)(int)p1;
+					d = inc1 > 1e-6f ? clampf(p1 / inc1, 0.0f, 1.0f) : 0.0f;
+					const float at = p2 + i2 * (1.0f - d);     /* where the slave was when synced */
+					jump = -2.0f * (at - (float)(int)at);
+					p2 = i2 * d;                               /* the sync */
+				} else {
+					p1 += p1 < 0.0f ? 1.0f : 0.0f;
+					p2 += i2;
+					if (p2 >= 1.0f) {
+						p2 -= 1.0f;
+						d = i2 > 1e-6f ? clampf(p2 / i2, 0.0f, 1.0f) : 0.0f;
+						jump = -2.0f;
+					}
+				}
+				const float tri = p1 < 0.5f ? 4.0f * p1 - 1.0f : 3.0f - 4.0f * p1;
+				float x = 0.55f * (2.0f * p2 - 1.0f) + 0.45f * tri;
+				if (jump != 0.0f) {
+					const float sj = 0.55f * jump;
+					pend += sj * ((d - 1.0f) + 0.5f * (d - 1.0f) * (d - 1.0f) + 0.5f);   /* the sample before */
+					x += sj * (d - 0.5f * d * d - 0.5f);                                  /* this one */
+				}
+				float l1;
+				ksvf_run(&nfb, &s1, &s2, pend, &l1);
+				pend = x;
+				att = att < 1.0f ? att + 0.004f * KRAT : 1.0f;
+				float y = l1 * na * att * 0.8f * KT[KT_L_NORD];
+				dc += KP(0.008f) * (y - dc);
+				A[i] += (y - dc) * KE(5);
+				na *= k->n_ak;
+			}
+			k->n_p1 = p1; k->n_p2 = p2; k->n_bp1 = s1; k->n_lo1 = s2; k->n_pend = pend;
+			k->n_a = na; k->n_att = att; k->n_dc = dc;
+			goto nord_done;
+		}
 		const float dt2 = 1.0f / ((float)os * KSR);
 		/* the sweep and the filter move once a block (1 ms) */
 		const float f2 = k->n_f1 * fexp2(k->n_sweep * k->n_menv * (1.0f / 12.0f));
@@ -2246,6 +2385,7 @@ static int kit_render12(chan *c, float *A)
 		k->n_p1 = p1; k->n_p2 = p2; k->n_bp1 = s1; k->n_lo1 = s2;
 		k->n_a = na; k->n_att = att; k->n_dc = dc;
 	}
+nord_done:
 	/* EPS crunch roll (its retriggers land on the millisecond) */
 	if (k->r_i < k->r_n || k->rs.b > 1e-3f || k->rs.n > 1e-3f) {
 		any = 1;

@@ -190,7 +190,7 @@ typedef struct {
 	float d_index, d_ik, d_a, d_k, d_fb, d_m1, d_m2;
 	int d_grit;
 	float t_len, t_t, t_a, t_prob, t_bp, t_fc, t_prox, t_w0, t_w1, t_ph0, t_c, t_lo, t_b, t_hp, t_r1, t_r2;
-	float n_f1, n_sweep, n_fm, n_md, n_menv, n_cut, n_a, n_ak, n_att, n_p1, n_p2, n_lo1, n_bp1, n_lo2, n_bp2, n_dc;
+	float n_f1, n_sweep, n_fm, n_md, n_menv, n_cut, n_a, n_ak, n_att, n_p1, n_p2, n_lo1, n_bp1, n_lo2, n_bp2, n_dc, n_pend;
 	uint8_t r_n, r_i, r_mode, r_split;
 	int8_t r_dir;
 	float r_gap, r_accel, r_t, r_vel, r_hold, r_q, r_semis, r_acc, r_held;
@@ -217,6 +217,8 @@ typedef struct {
 	float morph;                   /* the macro's morph (kit_macro) */
 	/* the Lich models (after TINY): which are on for the hit sounding, and their states */
 	uint8_t k_lich, h_lich, d_lich, t_lich, n_lich, ksd_on, rg_reg;
+	uint16_t ksd_fill;              /* (audition: how much of the drum's burst is drawn) */
+	float ksd_amp;
 	uint16_t lf_reg, ksd_n, ksd_i;
 	uint32_t kl_ph;
 	float lf_cnt, lf_per, kl_f0, kl_fall, ksd_g, ksd_rough, ksd_env;
