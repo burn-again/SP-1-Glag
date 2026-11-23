@@ -186,3 +186,19 @@ if PROF is not None and '--lines' in sys.argv:
     out = subprocess.check_output([TOOL + 'addr2line', '-e', ELF] + addrs, text=True).splitlines()
     for (a, c), l in zip(top, out):
         print(f"{c/tot*100:5.1f} %  {a:#x}  {l.split('/')[-1]}")
+
+if PROF is not None and '--dump' in sys.argv:
+    # every address's cycles, by source line (needs the harness built with -g): file:line cycles
+    out_path = sys.argv[sys.argv.index('--dump') + 1]
+    addrs = sorted(PROF)
+    lines = []
+    for i in range(0, len(addrs), 2000):
+        chunk = addrs[i:i + 2000]
+        lines += subprocess.check_output([TOOL + 'addr2line', '-e', ELF] + [hex(a) for a in chunk], text=True).splitlines()
+    agg = {}
+    for a, l in zip(addrs, lines):
+        k = l.split('/')[-1].split(' ')[0]
+        agg[k] = agg.get(k, 0) + PROF[a]
+    with open(out_path, 'w') as f:
+        for k, c in sorted(agg.items(), key=lambda x: -x[1]):
+            f.write(f"{k} {c}\n")
