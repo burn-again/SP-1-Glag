@@ -35,6 +35,25 @@ static float fexp2(float x)
 	u.i += i * (1 << 23);
 	return u.f;
 }
+/* zeroing a big buffer, a word at a time, eight to a turn. The firmware's C library is built for
+ * size and its memset stores a byte per loop (~6 cycles a byte): clearing the reverb's 32 KB took a
+ * block and a half on the SP-1, and a piece change or a new reverb put a block past 200 % (seen on
+ * hardware). n is in bytes, a multiple of 4, p word-aligned. (The loop is kept from being turned
+ * back into a memset call.) */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-tree-loop-distribute-patterns")))
+#endif
+static void clear32(void *p, uint32_t n)
+{
+	volatile uint32_t *w = (volatile uint32_t *)p;
+	uint32_t k = n >> 2;
+	for (; k >= 8u; k -= 8u, w += 8) {
+		w[0] = 0u; w[1] = 0u; w[2] = 0u; w[3] = 0u;
+		w[4] = 0u; w[5] = 0u; w[6] = 0u; w[7] = 0u;
+	}
+	for (; k; k--)
+		*w++ = 0u;
+}
 static inline float mtof_calc(float m) { return 440.0f * fexp2((m - 69.0f) * (1.0f / 12.0f)); }
 /* a note's frequency, remembered: most voices ask again every millisecond for a note that hasn't
  * moved. A small table keyed on the note's exact bits, so it returns exactly what the sum does */
@@ -696,6 +715,8 @@ static int fm_cap = FM_CAP, fm_dist = FM_CAP;   /* the cap now; the cap the dist
  * 88 % the cap comes down a voice at a time (the quietest decaying notes give way), and after a
  * second under 72 % it goes back up. A safety net under the worst cases, never heard otherwise. */
 static int gov_cap = FM_CAP, gov_cool;
+static uint8_t gov_lean;                    /* the governor's last resort (opts_eff, below) */
+static uint16_t gov_hot, gov_calm;
 void gl_load(float frac)
 {
 	if (frac > 0.88f) {
@@ -706,6 +727,24 @@ void gl_load(float frac)
 		gov_cap += 2;
 	}
 	fm_cap = fm_dist < gov_cap ? fm_dist : gov_cap;
+	/* the last resort: still over with the cap down, for 25 blocks (50 ms at 2 ms): a step leaner
+	 * (taken at the start of the next block); 5 s under 0.7: a step back */
+	if (frac > 0.94f && gov_cap <= 12) {
+		if (++gov_hot >= 25u) {
+			gov_hot = 0;
+			gov_calm = 0;
+			if (gov_lean < 2)
+				gov_lean++;
+		}
+	} else if (gov_hot)
+		gov_hot--;
+	if (frac < 0.70f && gov_lean) {
+		if (++gov_calm >= 2500u) {
+			gov_calm = 0;
+			gov_lean--;
+		}
+	} else
+		gov_calm = 0;
 }
 static chan CH[GL_NCH];
 static int chan_of(const nvoice *v)
@@ -975,9 +1014,10 @@ static nvoice *alloc_from(chan *c, int from, int n)
 
 /* ================================================================ channel: voice logic */
 
+_Static_assert(sizeof(chan) % 4u == 0u, "chan is cleared a word at a time");
 static void chan_reset(chan *c, int voice)
 {
-	memset(c, 0, sizeof *c);
+	clear32(c, sizeof *c);
 	c->voice = c->want = (uint8_t)voice;
 	c->fade = 0.0f;
 	c->last_note = -1;
@@ -4197,7 +4237,28 @@ void gl_prof_take(uint32_t avg[5], uint32_t worst[5], uint32_t *miss_avg, uint32
 #define PROF_ADD(acc, v) do { } while (0)
 #endif
 static volatile uint8_t pend_opts, pend_space24, pend_ctl_n;
+static uint8_t user_space24 = GL_SPACE24_DEF, user_ctl_n = GL_CTL_N;
 static uint32_t ctl_ph;
+/* the governor's last resort (gl_load): when the voice cap is down and blocks still run over, the CPU
+ * options come on by themselves (1: control every 2 ms and the space at 24 kHz, both all but
+ * inaudible; 2: and the Hall on four of its own lines and the cheaper Kit), stepping back down
+ * after 5 calm seconds. Better a leaner sound than a stream that runs dry */
+static uint8_t lean_now;
+static void rv_lean_set(int bits);
+static void kit_lean_set(int bits);
+static void opts_eff(void)
+{
+	opt_space24 = (uint8_t)(user_space24 || gov_lean >= 1);
+	const uint8_t n = (uint8_t)(gov_lean >= 1 && user_ctl_n < 2 ? 2 : user_ctl_n);
+	if (n != opt_ctl_n) {
+		opt_ctl_n = n;
+		ctl_inv = 1.0f / (float)(VSUB * opt_ctl_n);
+		ctl_ph = 0;
+	}
+	rv_lean_set(gov_lean >= 2 ? 13 : 0);
+	kit_lean_set(gov_lean >= 2 ? 3 : 0);
+}
+void gl_gov_state(int *cap, int *lean) { *cap = gov_cap; *lean = gov_lean; }
 /* (taken at the start of the next block, so a change from another thread never lands mid-tick) */
 void gl_cpu_opts(int space24, int ctl_n)
 {
@@ -4207,13 +4268,16 @@ void gl_cpu_opts(int space24, int ctl_n)
 }
 static void cpu_opts_take(void)
 {
+	if (lean_now != gov_lean) {
+		lean_now = gov_lean;
+		opts_eff();
+	}
 	if (!pend_opts)
 		return;
 	pend_opts = 0;
-	opt_space24 = pend_space24;
-	opt_ctl_n = pend_ctl_n;
-	ctl_inv = 1.0f / (float)(VSUB * opt_ctl_n);
-	ctl_ph = 0;
+	user_space24 = pend_space24;
+	user_ctl_n = pend_ctl_n;
+	opts_eff();
 }
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {

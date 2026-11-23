@@ -431,6 +431,25 @@ static void fill_block(int16_t *b)
 }
 #endif /* CONFIG_SP1_GLAG */
 
+/* After a START: n more silent blocks, written as the queue takes them (blocking, as every path here
+ * does), so the first render begins with blocks in hand. With only the primed block, a render that
+ * takes most of a block (Glag at 85 %+) supplies the next one late, the stream errors again at once,
+ * and the restart loop below never got out (seen on hardware: silence until reboot). */
+static void feed_silence(int n)
+{
+	for (int i = 0; i < n; i++) {
+		void *blk;
+		if (k_mem_slab_alloc(&tx_slab, &blk, K_MSEC(100)) != 0) {
+			return;
+		}
+		memset(blk, 0, BLK_BYTES);
+		if (i2s_write(i2s_dev, blk, BLK_BYTES) != 0) {
+			k_mem_slab_free(&tx_slab, blk);
+			return;
+		}
+	}
+}
+
 static void prime(int n)
 {
 	for (int i = 0; i < n; i++) {
@@ -503,6 +522,7 @@ static void audio_thread(void *a, void *b, void *c)
 			goto park;
 		}
 		started = true;
+		feed_silence(2);
 
 		int wfail = 0;
 		while (atomic_get(&run_req)) {
@@ -562,8 +582,10 @@ static void audio_thread(void *a, void *b, void *c)
 					 * tape-looper; cheap to close. */
 					k_msleep(5);
 					prime(TX_QUEUE);
-					(void)i2s_trigger(i2s_dev, I2S_DIR_TX,
-							  I2S_TRIGGER_START);
+					if (i2s_trigger(i2s_dev, I2S_DIR_TX,
+							I2S_TRIGGER_START) == 0) {
+						feed_silence(2);   /* blocks in hand before rendering */
+					}
 				}
 				continue;
 			}

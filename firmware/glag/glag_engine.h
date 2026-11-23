@@ -170,6 +170,9 @@ void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss);   /* audition only: the
  * rate converter for both) and the control layer every ctl_n milliseconds (1 as before, 2 halves
  * its cost) */
 void gl_cpu_opts(int space24, int ctl_n);
+/* the load governor's state: the voice cap (half-voices) and how lean it has gone (0 none, 1 the
+ * CPU options, 2 and the four-line Hall and cheaper Kit) */
+void gl_gov_state(int *cap, int *lean);
 /* a test build (GL_PROF): each block's cost by part against a cycle counter, and flash-cache misses.
  * Parts: control, voices (but the Kit), the Kit, the space, the rest. Averages and worsts since the
  * last take, in counter units per block */

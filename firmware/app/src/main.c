@@ -124,9 +124,11 @@ static void glag_cpu_test_tick(uint32_t budget)
 		w10[i] = budget ? (uint32_t)(((uint64_t)worst[i] * 1000u) / budget) : 0u;
 	}
 	if (glag_test_step != 0xFFu) {
-		printk("GLAG cfg=%u ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
+		int cap, lean;
+		gl_gov_state(&cap, &lean);
+		printk("GLAG cfg=%u lean=%d cap=%d ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
 		       " out=%u.%u/%u.%u  miss/blk avg=%u max=%u  blk=%u\n",
-		       glag_test_cfg,
+		       glag_test_cfg, lean, cap,
 		       a10[0] / 10u, a10[0] % 10u, w10[0] / 10u, w10[0] % 10u,
 		       a10[1] / 10u, a10[1] % 10u, w10[1] / 10u, w10[1] % 10u,
 		       a10[2] / 10u, a10[2] % 10u, w10[2] / 10u, w10[2] % 10u,

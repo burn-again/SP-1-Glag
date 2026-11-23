@@ -249,7 +249,24 @@ static float rvx_t, rvx_pk, rvx_env, rvx_q, rvx_h[2], rvx_hn, sh_p2;
 static uint32_t rvx_ph[2], rvx_n, rvx_step, rvx_fa, rvx_fb;
 void gl_rv_fx(int mode) { rv_fx = (uint8_t)mode; rvx_t = 99.0f; rvx_step = 0; rvx_fa = 0; rvx_fb = 1; }
 static rvdef rv_alt;
-void gl_rv_cut(int bits) { rv_cut = (uint8_t)bits; rv.cur = -1; }   /* (laid out again on the next block) */
+static uint8_t rv_cut_user, rv_cut_lean;
+void gl_rv_cut(int bits)                          /* (laid out again on the next block) */
+{
+	rv_cut_user = (uint8_t)bits;
+	const uint8_t eff = (uint8_t)(rv_cut_user | rv_cut_lean);
+	if (eff != rv_cut) { rv_cut = eff; rv.cur = -1; }
+}
+/* (the governor's: the Hall on four of its own lines; laid out again only if it is the Hall playing) */
+static void rv_lean_set(int bits)
+{
+	rv_cut_lean = (uint8_t)bits;
+	const uint8_t eff = (uint8_t)(rv_cut_user | rv_cut_lean);
+	if (eff != rv_cut) {
+		rv_cut = eff;
+		if (rv.cur == GR_HALL)
+			rv.cur = -1;
+	}
+}
 /* lay the chosen reverb out in the ring */
 static void rv_layout(int type)
 {
@@ -305,7 +322,7 @@ static void rv_layout(int type)
 	rv.o_sh = o;
 	o += SH_W + 2u;
 	/* (the biggest, Bloom's, takes 14.2 k of the ring's 16 k) */
-	memset(rring, 0, sizeof rring);
+	clear32(rring, sizeof rring);
 	for (int k = 0; k < 8; k++)
 		rv.lp[k] = rv.lo[k] = 0.0f;
 	rv.bw = 0.0f;
@@ -705,7 +722,7 @@ static void tb4(float *out, const float *x, float k, float *z, uint32_t n)
 
 static void space_init(void)
 {
-	memset(tape, 0, sizeof tape);
+	clear32(tape, sizeof tape);
 	tp.w = 0;
 	tp.ph = 0;
 	tp.acc = tp.lp = tp.hp = tp.l0 = tp.r0 = tp.l1 = tp.r1 = 0.0f;

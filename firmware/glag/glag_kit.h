@@ -879,7 +879,9 @@ static void kc_step(void)
 #else
 void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss) { *hits = *miss = 0; }
 #endif
-void gl_kit_cheap(int bits) { kit_cheap = (uint8_t)bits; }
+static uint8_t kit_cheap_user, kit_cheap_lean;
+void gl_kit_cheap(int bits) { kit_cheap_user = (uint8_t)bits; kit_cheap = (uint8_t)(kit_cheap_user | kit_cheap_lean); }
+static void kit_lean_set(int bits) { kit_cheap_lean = (uint8_t)bits; kit_cheap = (uint8_t)(kit_cheap_user | kit_cheap_lean); }
 void gl_kit_rotate(int always) { kit_rot_always = always; }
 /* the rotation: the kick's hits played by the snare, the snare's by the hat, the hat's by the
  * kick (turned once, or twice) */

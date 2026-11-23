@@ -282,7 +282,9 @@ minutes a round, round after round:
 | 4 | and the Hall on four of its own lines (the pieces on the Hall: Garden, Shifted Metal, String Drum Mass) |
 
 Each switch is announced (`GLAG TEST piece=... cfg=...`), and after every `AUD` line a `GLAG` line
-gives the same 5 s by part, as average/worst percent of the block: `ctl` the control layer, `vox`
+gives the load governor's state (`lean`: 0, or 1 when it has turned the two CPU options on by
+itself, 2 when it has also put the Hall on four lines and the Kit on its cheaper paths; `cap`: the
+voice cap in half-voices) and the same 5 s by part, as average/worst percent of the block: `ctl` the control layer, `vox`
 the voices but the Kit, `kit` the Kit, `spc` the echo and reverb, `out` the rest (mixing, rate
 conversion, the output), then the flash cache's misses per block. Let it run a full round with
 the console open and keep the log; it writes nothing anywhere, and any button press works as
