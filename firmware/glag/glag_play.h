@@ -711,7 +711,10 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 {
 	if (W.tex <= 0 || W.tex_lvl <= 0.0f)
 		return;
-	float g = W.tex_lvl * W.tex_lvl * 0.25f, bt = (float)n / sr;
+	/* (every texture 20 % quieter than it was, and its noise washes 20 % under that again; the
+	 * drops and crackles keep their place over them) */
+	float g = W.tex_lvl * W.tex_lvl * 0.25f * 0.8f, bt = (float)n / sr;
+	const float wash = 0.8f;
 	float *s = tx_s;
 	const float *tp = W.tp[W.tex <= 4 ? W.tex : 0];           /* its three controls past the level */
 	tx_lfo += bt / 20.0f * (W.tex == 3 ? 2.0f * tp[1] + 0.1f : 1.0f);   /* tape hiss: a breath every ~20 s */
@@ -751,8 +754,8 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 				s[2 * k] = lo;
 				s[2 * k + 1] = bp;
 			}
-			l = (s[1] * 0.8f + s[3] * 0.35f) * 0.6f;
-			r = (s[3] * 0.8f + s[1] * 0.35f) * 0.6f;
+			l = (s[1] * 0.8f + s[3] * 0.35f) * 0.6f * wash;
+			r = (s[3] * 0.8f + s[1] * 0.35f) * 0.6f * wash;
 			if (tx_drop < 0.01f && (tx_r & 0xFFFu) < (uint32_t)(6.0f * tp[1] + 0.5f)) {   /* ~18 drops a second */
 				tx_drop = 0.3f + 0.7f * (float)((tx_r >> 12) & 255u) / 255.0f;
 				tx_dk = 0.992f - 0.006f * (float)((tx_r >> 20) & 15u) / 15.0f;
@@ -772,7 +775,7 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			s[0] += 0.5f * (c - s[0]);
 			s[1] += 0.25f * (a - s[1]);
 			s[2] += 0.004f * (s[1] - s[2]);
-			float hiss = (s[1] - s[2]) * 0.09f * tp[2];
+			float hiss = (s[1] - s[2]) * 0.09f * tp[2] * wash;
 			l = (c - s[0]) * 1.4f + hiss;
 			r = (c - s[0]) * 1.2f + hiss;
 			break;
@@ -786,8 +789,8 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			s[4] += tk * ((b - s[1]) - s[4]);
 			s[5] += tk * (s[4] - s[5]);
 			float br = 1.0f - 0.4f * tp[0] + 0.4f * tp[0] * sin_u((uint32_t)(tx_lfo * 4294967296.0f));
-			l = s[3] * 0.26f * br;
-			r = s[5] * 0.26f * br;
+			l = s[3] * 0.26f * br * wash;
+			r = s[5] * 0.26f * br * wash;
 			break;
 		}
 		default: {  /* surf: low noise for each wave, brighter as it breaks, moving along the shore */
@@ -795,7 +798,7 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 				float e = sf_env[k], kf = (0.02f + 0.13f * e * e) * (0.5f + tp[2]), x = k ? b : a;
 				s[2 * k] += kf * (x - s[2 * k]);
 				s[2 * k + 1] += kf * (s[2 * k] - s[2 * k + 1]);
-				float v = s[2 * k + 1] * (0.15f + 1.8f * e);
+				float v = s[2 * k + 1] * (0.15f + 1.8f * e) * wash;
 				float pn = clampf(sf_pan[k] + 0.3f * (sf_ph[k] - 0.5f), 0.05f, 0.95f);
 				l += v * (1.0f - pn) * 1.4f;
 				r += v * pn * 1.4f;
