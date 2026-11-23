@@ -159,6 +159,8 @@ void gl_rv_shim_ratio(float r);      /* audition only: the Shimmer's interval as
 void gl_rv_fx(int mode);              /* audition only: odd tails (1 crush growing, 2 crush per pass, 3/4 endless rise/fall, 5 ring arp, 6 ring contrary, 7/8 Fibonacci ring up/down) */
 void gl_rv_cut(int bits);            /* audition only: 1 the Hall on four lines, 2 one damping band */
 void gl_drop_cap(int n);             /* audition only: at most n notes and hits start in a step (0 off) */
+uint32_t gl_thin_dropped(void);       /* audition only: how many the thinning let go */
+void gl_thin(int cap, float thr);    /* audition only: past cap starts in a step, the least important (position x role x velocity < thr) go */
 void gl_str_thin(int mask);          /* audition only: Strings thinned (bits: 1 no chorus, 2 one filter, 4 two poles, 8 one saw, 16 two notes) */
 void gl_song_drums(int style);       /* song mode's drums leaving: 0 fade, 1 longer, 2 peel, 3 peel + a fill into the reverb */
 void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */

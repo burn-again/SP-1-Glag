@@ -34,6 +34,9 @@ int main(void)
 #ifdef DROPCAP
 	gl_drop_cap(DROPCAP);
 #endif
+#ifdef THIN
+	gl_thin(THIN, THIN_THR);
+#endif
 #ifdef STRTHIN
 	gl_str_thin(STRTHIN);
 #endif

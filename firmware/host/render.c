@@ -50,6 +50,10 @@ int main(int argc, char **argv)
 		for (int c = 0; c < GL_NCH; c++)
 			p.ch[c][CP_VERB] = p.ch[c][CP_VERB] * x > 1.0f ? 1.0f : p.ch[c][CP_VERB] * x;
 	}
+	if (getenv("THIN"))
+		gl_scope_on = 1;
+	if (getenv("THIN"))      /* THIN=cap[,thr]: thinning by importance past cap starts a step */
+		gl_thin(atoi(getenv("THIN")), strchr(getenv("THIN"), ',') ? (float)atof(strchr(getenv("THIN"), ',') + 1) : 0.35f);
 	if (getenv("DROPCAP"))   /* DROPCAP=n: at most n starts a step (glag_engine.h) */
 		gl_drop_cap(atoi(getenv("DROPCAP")));
 	if (getenv("STRTHIN"))   /* STRTHIN=bits: Strings thinned (glag_engine.h) */
@@ -209,5 +213,7 @@ int main(int argc, char **argv)
 	fclose(f);
 	printf("%s: piece %d (%s) rms %.1f dBFS peak %.1f dBFS clipped %d\n", argv[3], piece, gl_piece_name(piece),
 	       10 * __builtin_log10(sum2 / (frames * 2.0) / (32768.0 * 32768.0) + 1e-20), 20 * __builtin_log10(peak / 32768.0 + 1e-9), clip);
+	if (getenv("THIN"))
+		printf("  thinned: %u let go, %u played\n", (unsigned)gl_thin_dropped(), (unsigned)gl_scope.notes);
 	return 0;
 }

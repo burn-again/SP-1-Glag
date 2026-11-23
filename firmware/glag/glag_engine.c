@@ -546,6 +546,34 @@ static void shared_chorus(const float *in, float *L, float *R)
 static uint32_t step_nf0;
 void gl_drop_cap(int n) { drop_cap = n; }
 static inline int over_cap(void) { return drop_cap > 0 && (int)(notes_fired - step_nf0) >= drop_cap; }
+/* audition: thinning by importance (after Grids). Past thin_cap starts in a step, a note or hit
+ * plays only if it matters enough: where it falls in the bar, times what it is (bass and kick
+ * anchor, held chords next, plucks and ornaments last), times how hard it is played. The least
+ * important go first, whatever channel they are on; nothing changes below the cap */
+static int thin_cap;
+static float thin_thr = 0.35f;
+static uint32_t thin_dropped;
+void gl_thin(int cap, float thr) { thin_cap = cap; thin_thr = thr; }
+uint32_t gl_thin_dropped(void) { return thin_dropped; }
+static const float THIN_POS[16] = {1.0f, 0.15f, 0.4f, 0.2f, 0.7f, 0.15f, 0.45f, 0.25f,
+	0.9f, 0.15f, 0.4f, 0.2f, 0.7f, 0.15f, 0.5f, 0.3f};
+static inline int thin_drop(float what, float vel)
+{
+	if (thin_cap <= 0 || (int)(notes_fired - step_nf0) < thin_cap)
+		return 0;
+	const float v = vel < 0.0f ? 0.0f : vel > 1.0f ? 1.0f : vel;
+	if (THIN_POS[step_n & 15u] * what * (0.6f + 0.4f * v) >= thin_thr)
+		return 0;
+	thin_dropped++;
+	return 1;
+}
+static int voice_role(int v);
+static int thin_note(const nvoice *v, float vel);
+static float thin_what(int voice)
+{
+	const int r = voice_role(voice);
+	return r == 2 ? 1.0f : r == 0 ? 0.8f : r == 3 ? 0.9f : 0.55f;   /* bass, held, drums, plucks */
+}
 void gl_alt(int voice, int method)
 {
 	if ((unsigned)voice < GV_COUNT)
@@ -589,6 +617,8 @@ static int chan_of(const nvoice *v);
 static float ivl_note(int ch, float note);
 static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 {
+	if (thin_cap > 0 && thin_note(v, vel))
+		return;                                   /* (audition: thinned) */
 	v->note = ivl_note(chan_of(v), note);
 	v->mnote = 0;                  /* (MIDI tags its own notes after this) */
 	notes_fired++;
@@ -651,6 +681,7 @@ static int chan_of(const nvoice *v)
 			return c;
 	return -1;
 }
+static int thin_note(const nvoice *v, float vel) { return thin_drop(thin_what(CH[chan_of(v)].voice), vel); }
 /* the channel's interval (GL_CHX_IVL): the note moved up that many steps of the scale, a third,
  * fifth, seventh or ninth above, so a channel can play the harmony line to another */
 static float ivl_note(int ch, float note)

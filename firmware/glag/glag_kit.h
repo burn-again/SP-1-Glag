@@ -748,6 +748,11 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	/* (audition: a full step lets its least heard hits go) */
 	if (!kit_from_midi && over_cap() && (lane == 7 || lane == 4 || ((lane == 2 || lane == 3) && vel < 0.75f)))
 		return;
+	if (!kit_from_midi && thin_cap > 0) {          /* (audition: the kick anchors, ghosts go first) */
+		static const float LW[10] = {1.0f, 0.85f, 0.45f, 0.5f, 0.3f, 0.7f, 0.5f, 0.35f, 0.5f, 0.6f};
+		if (thin_drop(lane < 10 ? LW[lane] : 0.5f, vel))
+			return;
+	}
 	const int fillhat = lane == 22;
 	if (fillhat)
 		lane = 2;
