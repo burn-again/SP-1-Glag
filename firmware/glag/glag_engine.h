@@ -166,6 +166,15 @@ void gl_song_drums(int style);       /* song mode's drums leaving: 0 fade, 1 lon
 void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */
 void gl_kit_color(int method);        /* audition only: the Kit's colour (0 none, 1 comb, 2 chord resonators, 3 through-zero FM, 4 soggy, 5 metal, 6 soggy + Chebyshev: the default, 7 a comb's soggy + Chebyshev on the low end) */
 void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss);   /* audition only: the kick cache's hits */
+/* the CPU options, switchable while it plays: the space mixed into the voices at 24 kHz (one
+ * rate converter for both) and the control layer every ctl_n milliseconds (1 as before, 2 halves
+ * its cost) */
+void gl_cpu_opts(int space24, int ctl_n);
+/* a test build (GL_PROF): each block's cost by part against a cycle counter, and flash-cache misses.
+ * Parts: control, voices (but the Kit), the Kit, the space, the rest. Averages and worsts since the
+ * last take, in counter units per block */
+void gl_prof_hook(volatile const uint32_t *cycles, volatile const uint32_t *misses);
+void gl_prof_take(uint32_t avg[5], uint32_t worst[5], uint32_t *miss_avg, uint32_t *miss_worst, uint32_t *blocks);
 void gl_kit_cheap(int bits);          /* audition only: cheaper Kit (1 the Nord at the kit's rate, smoothed jumps; 2 the drum's burst drawn as read; 4 the canvas kick from a cache) */
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_kit_tune(int id, float v);    /* the Kit tuning page: one of its numbers (glag_kit.h, KT_*) */

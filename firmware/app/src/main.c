@@ -87,8 +87,58 @@
 #if defined(CONFIG_SP1_GLAG)
 #include "glag_engine.h"
 #include "glag_ui.h"
+
 /* What the Glag controls decided on the last tick: the LEDs, and what to log. */
 static gl_ui_out g_glag_out;
+
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+/* The CPU test build: after each AUD line, the last 5 s by part, and every 30 s the next setting. */
+static const char *const GLAG_TEST_NAME[5] = {
+	"0 as released",
+	"1 space mixed in at 24 kHz",
+	"2 + control every 2 ms",
+	"3 + cheaper Kit (Nord at kit rate, drum burst as read)",
+	"4 + Hall on four of its own lines",
+};
+static uint8_t glag_test_cfg = 0xFFu, glag_test_win, glag_test_rv = 0xFFu;
+static void glag_test_apply(unsigned k)
+{
+	gl_cpu_opts(k >= 1u, k >= 2u ? 2 : 1);
+	gl_kit_cheap(k >= 3u ? 3 : 0);
+	const uint8_t rv = k >= 4u ? 13u : 0u;
+	if (rv != glag_test_rv) {             /* (only on a change: it lays the reverb out again) */
+		glag_test_rv = rv;
+		gl_rv_cut(rv);
+	}
+}
+static void glag_cpu_test_tick(uint32_t budget)
+{
+	uint32_t avg[5], worst[5], ma, mw, nb;
+	gl_prof_take(avg, worst, &ma, &mw, &nb);
+	uint32_t a10[5], w10[5];
+	for (int i = 0; i < 5; i++) {
+		a10[i] = budget ? (uint32_t)(((uint64_t)avg[i] * 1000u) / budget) : 0u;
+		w10[i] = budget ? (uint32_t)(((uint64_t)worst[i] * 1000u) / budget) : 0u;
+	}
+	if (glag_test_cfg != 0xFFu) {
+		printk("GLAG cfg=%u ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
+		       " out=%u.%u/%u.%u  miss/blk avg=%u max=%u  blk=%u\n",
+		       glag_test_cfg,
+		       a10[0] / 10u, a10[0] % 10u, w10[0] / 10u, w10[0] % 10u,
+		       a10[1] / 10u, a10[1] % 10u, w10[1] / 10u, w10[1] % 10u,
+		       a10[2] / 10u, a10[2] % 10u, w10[2] / 10u, w10[2] % 10u,
+		       a10[3] / 10u, a10[3] % 10u, w10[3] / 10u, w10[3] % 10u,
+		       a10[4] / 10u, a10[4] % 10u, w10[4] / 10u, w10[4] % 10u,
+		       ma, mw, nb);
+	}
+	if (glag_test_cfg == 0xFFu || ++glag_test_win >= 6u) {
+		glag_test_win = 0;
+		glag_test_cfg = glag_test_cfg == 0xFFu ? 0u : (uint8_t)((glag_test_cfg + 1u) % 5u);
+		glag_test_apply(glag_test_cfg);
+		printk("GLAG TEST cfg=%s (piece %u)\n", GLAG_TEST_NAME[glag_test_cfg], (unsigned)g_glag_out.piece + 1u);
+	}
+}
+#endif
 static uint32_t g_vol_show_ms;            /* VOL's level bar on the play row */
 #define GLAG_FADER_FULL 3701.0f            /* the faders top out here (sp1_controls.c) */
 #endif
@@ -2601,6 +2651,9 @@ int main(void)
 				       sp1_synth_drive(), sp1_pui_scale()
 #endif
 				       );
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+				glag_cpu_test_tick(as.cyc_budget);
+#endif
 #if defined(CONFIG_SP1_PLAITS)
 				trig_print0 = sp1_synth_trig_edges();
 

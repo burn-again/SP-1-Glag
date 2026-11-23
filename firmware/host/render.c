@@ -50,6 +50,11 @@ int main(int argc, char **argv)
 		for (int c = 0; c < GL_NCH; c++)
 			p.ch[c][CP_VERB] = p.ch[c][CP_VERB] * x > 1.0f ? 1.0f : p.ch[c][CP_VERB] * x;
 	}
+	if (getenv("CPUOPTS")) {  /* CPUOPTS=space24,ctl_n: the CPU options (glag_engine.h) */
+		int a = 0, b = 1;
+		sscanf(getenv("CPUOPTS"), "%d,%d", &a, &b);
+		gl_cpu_opts(a, b);
+	}
 	if (getenv("THIN"))
 		gl_scope_on = 1;
 	if (getenv("THIN"))      /* THIN=cap[,thr]: thinning by importance past cap starts a step */

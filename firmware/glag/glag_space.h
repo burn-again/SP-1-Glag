@@ -54,60 +54,68 @@ const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 b
 static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.5f, 0.75f, 1.0f, 0.5f};
 const uint8_t GL_ECHO_ORDER[GL_NECHO] = {GL_ECHO_STRING, 5, 6, 7, 0, 1, 2, 3, 4};
 
-static inline float tape_rd(float d)     /* d 8 kHz samples ago, interpolated */
+/* the tape over a block: every 24 kHz sample in, and the two heads out (interpolated up from 8 kHz),
+ * its state held in locals (no call or reload per sample) */
+static float tp_wsc = 1.0f;                       /* the wow fades out as the loop is held (~125 ms) */
+static void tape_block(const float *X, float *EL, float *ER, uint32_t n)
 {
-	uint32_t k = (uint32_t)d;
-	float f = d - (float)k;
-	float a = TAPE_GET((tp.w - k) & (TAPE_N - 1u)), b = TAPE_GET((tp.w - k - 1u) & (TAPE_N - 1u));
-	return a + (b - a) * f;
+	float acc = tp.acc, wow = tp.wow, lp = tp.lp, hp = tp.hp, l0 = tp.l0, r0 = tp.r0, l1 = tp.l1, r1 = tp.r1;
+	float wsc = tp_wsc;
+	int ph = tp.ph;
+	uint32_t w = tp.w;
+	const float len = tp.len, fb = tp.fb;
+	const int hold = tp_hold, string = tp.string, pp = w_pingpong;
+	const int one = pp || string;
+	const float lpk = string ? 0.9f : 0.75f, hpk = string ? 0.015f : 0.1f, hd = pp ? 0.5f : 0.75f;
+	/* the wow, less on a short loop (on the string, a cycle's length, it would detune it) */
+	const float wl = len < 400.0f ? len * (1.0f / 400.0f) : 1.0f;
+#define TRD(d, out) {                                                                      \
+		const float dd = (d);                                                              \
+		const uint32_t k = (uint32_t)dd;                                                   \
+		const float f = dd - (float)k;                                                     \
+		const float a = TAPE_GET((w - k) & (TAPE_N - 1u)), b = TAPE_GET((w - k - 1u) & (TAPE_N - 1u)); \
+		out = a + (b - a) * f; }
+	for (uint32_t j = 0; j < n; j++) {
+		acc += X[j];
+		if (++ph >= 3) {
+			ph = 0;
+			wow += 0.4f / TAPE_SR;
+			wow -= wow >= 1.0f ? 1.0f : 0.0f;
+			wsc += ((hold ? 0.0f : 1.0f) - wsc) * 0.001f;
+			const float wv = 1.5f * wl * wsc * sin_u((uint32_t)(wow * 4294967296.0f));
+			float h1, h2;
+			TRD(len + wv, h1)
+			TRD(hd * len - wv, h2)
+			if (hold) {
+				/* frozen: the loop goes round as it is, nothing in, nothing lost */
+				w++;
+				TAPE_PUT(w & (TAPE_N - 1u), h1);
+			} else {
+				/* ping-pong and the string: only the long head feeds back */
+				float y = acc * (1.0f / 3.0f) + fb * (one ? h1 : 0.6f * h1 + 0.4f * h2);
+				lp += lpk * (y - lp);                   /* darker each pass */
+				hp += hpk * (lp - hp);                  /* and thinner */
+				y = lp - hp;
+				y = y / (1.0f + (y > 0.0f ? y : -y) * 0.4f);   /* tape saturation */
+				w++;
+				TAPE_PUT(w & (TAPE_N - 1u), y);
+			}
+			acc = 0.0f;
+			l0 = l1;
+			r0 = r1;
+			l1 = h1;
+			r1 = h2;
+		}
+		const float f = (float)ph * (1.0f / 3.0f);
+		EL[j] = l0 + (l1 - l0) * f;
+		ER[j] = r0 + (r1 - r0) * f;
+	}
+#undef TRD
+	tp.acc = acc; tp.wow = wow; tp.lp = lp; tp.hp = hp; tp.l0 = l0; tp.r0 = r0; tp.l1 = l1; tp.r1 = r1;
+	tp.ph = ph; tp.w = w;
+	tp_wsc = wsc;
 }
 
-/* every 24 kHz sample: in, and the two heads out (interpolated up from 8 kHz) */
-static inline void tape_tick(float in, float *el, float *er)
-{
-	tp.acc += in;
-	if (++tp.ph >= 3) {
-		tp.ph = 0;
-		tp.wow += 0.4f / TAPE_SR;
-		tp.wow -= tp.wow >= 1.0f ? 1.0f : 0.0f;
-		/* the wow, less on a short loop (on the string, a cycle's length, it would detune it) */
-		float wl = tp.len < 400.0f ? tp.len * (1.0f / 400.0f) : 1.0f;
-		static float wsc = 1.0f;                     /* the wow fades out as the loop is held (~125 ms) */
-		wsc += ((tp_hold ? 0.0f : 1.0f) - wsc) * 0.001f;
-		float w = 1.5f * wl * wsc * sin_u((uint32_t)(tp.wow * 4294967296.0f));
-		float h1 = tape_rd(tp.len + w), h2 = tape_rd((w_pingpong ? 0.5f : 0.75f) * tp.len - w);
-		if (tp_hold) {
-			/* frozen: the loop goes round as it is, nothing in, nothing lost, no wow to smear it */
-			tp.w++;
-			TAPE_PUT(tp.w & (TAPE_N - 1u), h1);
-			tp.acc = 0.0f;
-			tp.l0 = tp.l1;
-			tp.r0 = tp.r1;
-			tp.l1 = h1;
-			tp.r1 = h2;
-			goto out;
-		}
-		/* ping-pong (Playworld) and the string: only the long head feeds back, so each repeat
-		 * crosses sides (the string: one comb, its other head a fourth above) */
-		int one = w_pingpong || tp.string;
-		float y = tp.acc * (1.0f / 3.0f) + tp.fb * (one ? h1 : 0.6f * h1 + 0.4f * h2);
-		tp.lp += (tp.string ? 0.9f : 0.75f) * (y - tp.lp);   /* darker each pass (~1.8 kHz; the string brighter) */
-		tp.hp += (tp.string ? 0.015f : 0.1f) * (tp.lp - tp.hp);   /* and thinner (~140 Hz; the string keeps its root) */
-		y = tp.lp - tp.hp;
-		y = y / (1.0f + (y > 0.0f ? y : -y) * 0.4f);     /* tape saturation */
-		tp.w++;
-		TAPE_PUT(tp.w & (TAPE_N - 1u), y);
-		tp.acc = 0.0f;
-		tp.l0 = tp.l1;
-		tp.r0 = tp.r1;
-		tp.l1 = h1;
-		tp.r1 = h2;
-	}
-out:;
-	float f = (float)tp.ph * (1.0f / 3.0f);
-	*el = tp.l0 + (tp.l1 - tp.l0) * f;
-	*er = tp.r0 + (tp.r1 - tp.r0) * f;
-}
 
 static void tape_derive(float bpm, float dl, int echo)
 {
@@ -756,9 +764,10 @@ static void space_control(float dt, int freeze_changed)
 	}
 }
 
-/* one sub-block: E and V hold one echo and reverb send per pair of samples (24 kHz); the
- * result is interpolated back up and added into L and R (48 kHz) */
-static void space_block(const float *E, const float *V, float *L, float *R)
+/* one sub-block: E and V hold one echo and reverb send per pair of samples (24 kHz); the result
+ * is added into L and R: at 24 kHz into the voices' mix (GL_SPACE24: brought up to 48 kHz with
+ * it, by its half-band), or interpolated up on its own and added at 48 kHz (as it was) */
+static void space_block(const float *E, const float *V, float *L, float *R, int at24)
 {
 	float WL[GL_SUB / 2], WRr[GL_SUB / 2], EL[GL_SUB / 2], ER[GL_SUB / 2];
 	const float fi = freeze_in, fade = rv.fade * sp_duck;
@@ -768,8 +777,7 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 	 * 5907). The reverb does its own. */
 	float X[GL_SUB / 2];
 	tb4(X, E, 0.5f, sp_lp, GL_SUB / 2);
-	for (uint32_t j = 0; j < GL_SUB / 2; j++)
-		tape_tick(X[j], &EL[j], &ER[j]);
+	tape_block(X, EL, ER, GL_SUB / 2);
 	tb4(EL, EL, 1.0f, sp_lp + 4, GL_SUB / 2);
 	tb4(ER, ER, 1.0f, sp_lp + 8, GL_SUB / 2);
 	for (uint32_t j = 0; j < GL_SUB / 2; j++)
@@ -788,8 +796,15 @@ static void space_block(const float *E, const float *V, float *L, float *R)
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
 	}
-	/* back up to 48 kHz as the voices are: each new sample, and a 4-point midpoint before it */
 	const float emix = tp.mix * sp_duck;
+	if (at24) {
+		for (uint32_t j = 0; j < GL_SUB / 2; j++) {
+			L[j] += EL[j] * emix + WL[j] * fade;
+			R[j] += ER[j] * emix + WRr[j] * fade;
+		}
+		return;
+	}
+	/* back up to 48 kHz as the voices are: each new sample, and a 4-point midpoint before it */
 	float u0 = sp_up[0], u1 = sp_up[1], u2 = sp_up[2], u3 = sp_up[3], u4 = sp_up[4], u5 = sp_up[5];
 	for (uint32_t i = 0; i < GL_SUB; i += 2) {
 		float ol = EL[i >> 1] * emix + WL[i >> 1] * fade, or_ = ER[i >> 1] * emix + WRr[i >> 1] * fade;

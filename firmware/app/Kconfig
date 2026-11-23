@@ -236,6 +236,19 @@ config SP1_GLAG
 	  faders, buttons and LEDs. Wakes' power, watchdog, standby, battery and audio
 	  bring-up are used unchanged. n: Wakes' M2 test tone (the fallback).
 
+config SP1_GLAG_CPU_TEST
+	bool "Diagnostics: Glag's cost by part, flash-cache misses, a cycle through CPU settings"
+	default n
+	depends on SP1_GLAG
+	help
+	  A test build for measuring Glag on the SP-1. After each AUD line a GLAG line gives the
+	  last 5 s by part (control, voices but the Kit, the Kit, the space, the rest: avg/max
+	  percent of the block) and the flash cache's misses per block. Every 30 s it moves on to
+	  the next of five settings, announced as GLAG TEST: as released; the space mixed in at
+	  24 kHz; and the control layer every 2 ms; and the cheaper Kit (the Nord at the kit's rate,
+	  the Karplus drum's burst drawn as it is read); and the Hall on four of its own lines.
+	  Writes nothing anywhere. Off in release builds.
+
 config SP1_PLAITS
 	bool "Plaits voice as the audio source (M3)"
 	default n

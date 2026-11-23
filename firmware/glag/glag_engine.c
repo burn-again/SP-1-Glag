@@ -35,14 +35,43 @@ static float fexp2(float x)
 	u.i += i * (1 << 23);
 	return u.f;
 }
-static inline float mtof(float m) { return 440.0f * fexp2((m - 69.0f) * (1.0f / 12.0f)); }
+static inline float mtof_calc(float m) { return 440.0f * fexp2((m - 69.0f) * (1.0f / 12.0f)); }
+/* a note's frequency, remembered: most voices ask again every millisecond for a note that hasn't
+ * moved. A small table keyed on the note's exact bits, so it returns exactly what the sum does */
+static float mtof(float m)
+{
+	static uint32_t key[64];
+	static float val[64];
+	union { float f; uint32_t u; } b;
+	b.f = m;
+	const uint32_t h = (b.u ^ (b.u >> 11) ^ (b.u >> 19)) & 63u;
+	if (key[h] == b.u + 1u)                      /* (+1: an empty slot never matches) */
+		return val[h];
+	const float v = mtof_calc(m);
+	key[h] = b.u + 1u;
+	val[h] = v;
+	return v;
+}
 /* The instruments run at half rate (24 kHz) and are brought back up to 48 kHz after the mix:
  * nearly half the cost of every voice, for nothing above 12 kHz (heard in round 2 of the
  * reverb audition; only a fully buzzing Shimmer aliased noticeably, dry). */
 #ifndef VOICE_HALF
 #define VOICE_HALF 1                     /* 0: full rate, for measuring the half rate's cost on a computer */
+/* the control layer (envelopes, notes, macros, song mode) runs once every GL_CTL_N sub-blocks, its
+ * ramps spread over that many; 1: every millisecond, as it was */
+#ifndef GL_CTL_N
+#define GL_CTL_N 1
+#endif
+#ifndef GL_SPACE24
+#define GL_SPACE24 0
+#endif
+#define GL_SPACE24_DEF GL_SPACE24
 #endif
 #define VSUB (GL_SUB >> VOICE_HALF)
+/* (runtime, so a test build can switch them while it plays: the control layer's period in
+ * sub-blocks and its ramps' reciprocal length; and the space mixed in at 24 kHz) */
+static uint8_t opt_ctl_n = GL_CTL_N, opt_space24 = GL_SPACE24_DEF;
+static float ctl_inv = 1.0f / (float)(VSUB * GL_CTL_N);
 #define VSR (GL_SR / (float)(1 << VOICE_HALF))
 static inline uint32_t hz_inc(float hz) { return (uint32_t)(hz * (89478.485f * (float)(1 << VOICE_HALF))); }
 static inline uint32_t hz_inc48(float hz) { return (uint32_t)(hz * 89478.485f); }   /* 2^32 / 48000 */
@@ -818,8 +847,8 @@ static inline void ramp(nvoice *v, float a, float i)
 	if (a <= 0.0f && v->amp < 0.0002f && v->amp > -0.0002f)
 		v->amp = v->ainc = 0.0f;
 	else
-		v->ainc = (a - v->amp) * (1.0f / VSUB);
-	v->iinc = (i - v->idx) * (1.0f / VSUB);
+		v->ainc = (a - v->amp) * ctl_inv;
+	v->iinc = (i - v->idx) * ctl_inv;
 }
 
 static nvoice *alloc(chan *c, int n)
@@ -1537,7 +1566,7 @@ static void strings_control(chan *c, int ch, float sdt, float tone, float len)
 		}
 		v->idx = v->iinc = 0.0f;
 		float a = e * v->vel * GAIN[m];
-		v->ainc = (a - v->amp) * (1.0f / VSUB);
+		v->ainc = (a - v->amp) * ctl_inv;
 		if (v->stage == ST_IDLE && v->amp < 0.0002f)
 			v->amp = v->ainc = 0.0f;
 	}
@@ -1681,7 +1710,7 @@ static void ribbon_control(chan *c, int ch, float sdt, float tone, float len)
 			v->fq = 0.3f;
 			v->idx = v->iinc = 0.0f;
 			float a = e * v->vel * GAIN[1];
-			v->ainc = (a - v->amp) * (1.0f / VSUB);
+			v->ainc = (a - v->amp) * ctl_inv;
 			if (v->stage == ST_IDLE && v->amp < 0.0002f)
 				v->amp = v->ainc = 0.0f;
 		} else {
@@ -2220,7 +2249,7 @@ static void chan_control(chan *c, int ch, float dt)
 			v->fq = 0.25f;
 			v->idx = v->iinc = 0.0f;
 			float a = e * v->vel * 0.9f;
-			v->ainc = (a - v->amp) * (1.0f / VSUB);
+			v->ainc = (a - v->amp) * ctl_inv;
 			if (a <= 0.0f && v->amp < 0.0002f)
 				v->amp = v->ainc = 0.0f;
 		}
@@ -2324,7 +2353,7 @@ static void chan_control(chan *c, int ch, float dt)
 				v->idx = v->iinc = 0.0f;
 				/* level with the pad, a little less up high; super 4 dB under it: it overbears a mix */
 				float a = e * v->vel * (sup ? 0.366f : 0.58f) * clampf(1.0f - (v->note - 72.0f) * 0.025f, 0.6f, 1.0f);
-				v->ainc = (a - v->amp) * (1.0f / VSUB);
+				v->ainc = (a - v->amp) * ctl_inv;
 				if (a <= 0.0f && v->amp < 0.0002f)
 					v->amp = v->ainc = 0.0f;
 				continue;
@@ -2496,7 +2525,7 @@ static void chan_control(chan *c, int ch, float dt)
 		v->fk = clampf(1.0f - fexp2(-fc * (9.0647f / VSR)), 0.005f, 0.8f);   /* 1 - e^(-2 pi fc / sr) */
 		v->fq = 0.35f;                             /* a little resonance: a horn's body */
 		float a = v->env * v->vel * 0.8f;
-		v->ainc = (a - v->amp) * (1.0f / VSUB);
+		v->ainc = (a - v->amp) * ctl_inv;
 		if (v->stage == ST_IDLE && v->amp < 0.0002f)
 			v->amp = v->ainc = 0.0f;
 		break;
@@ -2539,7 +2568,7 @@ static void chan_control(chan *c, int ch, float dt)
 		v->fq = 1.3f - 0.85f * slap;
 		v->idx = v->iinc = 0.0f;
 		float a = v->env * v->vel * 0.9f;
-		v->ainc = (a - v->amp) * (1.0f / VSUB);
+		v->ainc = (a - v->amp) * ctl_inv;
 		if (v->stage == ST_IDLE && v->amp < 0.0002f)
 			v->amp = v->ainc = 0.0f;
 		break;
@@ -2714,7 +2743,7 @@ static void chan_control(chan *c, int ch, float dt)
 			        (0.3f + 2.2f * tone) * (0.5f + 0.6f * v->vel), dt);
 			v->menv2 *= dcoef(0.09f / speed, dt);
 			float i2 = idx_cap(v, P.ch[ch][CP_CHAR] * 2.6f * v->menv2 * v->vel * IDX_SCALE, 14.0f / (v->ratio > 0.1f ? v->ratio : 1.0f));
-			v->iinc2 = (i2 - v->idx2) * (1.0f / VSUB);
+			v->iinc2 = (i2 - v->idx2) * ctl_inv;
 			nv_pitch(v, v->note);
 			v->im2 = hz_inc(mtof(v->note) * speed * pbend * 14.0f);
 		}
@@ -2734,7 +2763,7 @@ static void chan_control(chan *c, int ch, float dt)
 			float b = v->t < 0.6f ? v->t * (1.0f / 0.6f)
 			                      : fexp2(-clampf(v->t - 0.6f, 0.0f, 60.0f) * (1.4427f / 5.0f));
 			float im = idx_cap(v, (0.4f + 2.4f * tone) * (0.25f + 0.75f * b) * IDX_SCALE, 1.0f);
-			v->iinc = (im - v->idx) * (1.0f / VSUB);
+			v->iinc = (im - v->idx) * ctl_inv;
 			v->ratio = ratio;
 			nv_pitch(v, v->note + 0.7f * fexp2(-clampf(v->t, 0.0f, 5.0f) * (1.4427f / 0.12f)));
 		}
@@ -2808,7 +2837,7 @@ static void chan_control(chan *c, int ch, float dt)
 			else
 				sh = 1.0f - fexp2(-x * 1.4427f);
 			float im = idx_cap(v, (0.1f + 2.6f * tone) * (0.08f + 0.92f * sh) * IDX_SCALE, 1.0f);
-			v->iinc = (im - v->idx) * (1.0f / VSUB);
+			v->iinc = (im - v->idx) * ctl_inv;
 			nv_pitch(v, v->note);
 		}
 		break;
@@ -4140,12 +4169,67 @@ static void scope_fill(uint32_t n)
 	}
 }
 
+/* the cost of each part of a block, against the device's cycle counter (a test build's GL_PROF):
+ * control, the voices (but the Kit), the Kit, the space, and the rest (mixing, rate conversion,
+ * the output); sums and worsts over a window, and the flash cache's misses */
+#ifdef GL_PROF
+static volatile const uint32_t *prof_cyc, *prof_miss;
+static uint32_t prof_sum[5], prof_max[5], prof_n, prof_miss_sum, prof_miss_max;
+void gl_prof_hook(volatile const uint32_t *cycles, volatile const uint32_t *misses) { prof_cyc = cycles; prof_miss = misses; }
+void gl_prof_take(uint32_t avg[5], uint32_t worst[5], uint32_t *miss_avg, uint32_t *miss_worst, uint32_t *blocks)
+{
+	const uint32_t n = prof_n ? prof_n : 1u;
+	for (int i = 0; i < 5; i++) {
+		avg[i] = prof_sum[i] / n;
+		worst[i] = prof_max[i];
+		prof_sum[i] = prof_max[i] = 0u;
+	}
+	*miss_avg = prof_miss_sum / n;
+	*miss_worst = prof_miss_max;
+	*blocks = prof_n;
+	prof_n = prof_miss_sum = prof_miss_max = 0u;
+}
+#define PROF_NOW() (prof_cyc ? *prof_cyc : 0u)
+#define PROF_MARK(v) const uint32_t v = PROF_NOW()
+#define PROF_ADD(acc, v) (acc += PROF_NOW() - (v))
+#else
+#define PROF_MARK(v) do { } while (0)
+#define PROF_ADD(acc, v) do { } while (0)
+#endif
+static volatile uint8_t pend_opts, pend_space24, pend_ctl_n;
+static uint32_t ctl_ph;
+/* (taken at the start of the next block, so a change from another thread never lands mid-tick) */
+void gl_cpu_opts(int space24, int ctl_n)
+{
+	pend_space24 = (uint8_t)(space24 != 0);
+	pend_ctl_n = (uint8_t)(ctl_n < 1 ? 1 : ctl_n > 4 ? 4 : ctl_n);
+	pend_opts = 1;
+}
+static void cpu_opts_take(void)
+{
+	if (!pend_opts)
+		return;
+	pend_opts = 0;
+	opt_space24 = pend_space24;
+	opt_ctl_n = pend_ctl_n;
+	ctl_inv = 1.0f / (float)(VSUB * opt_ctl_n);
+	ctl_ph = 0;
+}
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {
 	const float dt = (float)GL_SUB / GL_SR;
 	float peak = gl_peak * 0.9f;
+	cpu_opts_take();
+#ifdef GL_PROF
+	uint32_t p_ctl = 0, p_vox = 0, p_kit = 0, p_spc = 0;
+	const uint32_t p_t0 = PROF_NOW(), m_t0 = prof_miss ? *prof_miss : 0u;
+#endif
 	for (uint32_t base = 0; base + GL_SUB <= n; base += GL_SUB) {
-		control(dt);
+		PROF_MARK(p_a);
+		if (ctl_ph == 0u)
+			control(dt * (float)opt_ctl_n);
+		ctl_ph = ctl_ph + 1u >= (uint32_t)opt_ctl_n ? 0u : ctl_ph + 1u;
+		PROF_ADD(p_ctl, p_a);
 		/* The instruments at 24 kHz: the dry mix (HL, HR) and the sends. Plucked and struck
 		 * voices go into the reverb bright; held ones go in through a dark send (AMB-1 darkens its
 		 * pad the same way), and less of them the higher they sit above C4. */
@@ -4160,6 +4244,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		int pulses = 0;
 		const float pg = pump_gain(dt, gl_tempo_bpm(P.g[GP_TEMPO]) * speed);   /* Playworld's pump */
 		sp_duck = (1.0f - W.pspace * (1.0f - pg)) * form_space;
+		PROF_MARK(p_v);
 		for (int c = 0; c < GL_NCH; c++) {
 			/* the drums may be taken out while the pump goes on; bass and held voices spared */
 			int ro = voice_role(CH[c].voice);
@@ -4218,7 +4303,15 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			if (st)
 				for (uint32_t i = 0; i < VSUB; i++)
 					cb[i] = 0.0f;
+#ifdef GL_PROF
+			PROF_MARK(p_k);
+			const int rendered = chan_render(&CH[c], ca, cb);
+			if (CH[c].voice == GV_KIT)
+				PROF_ADD(p_kit, p_k);
+			if (!rendered) {
+#else
 			if (!chan_render(&CH[c], ca, cb)) {
+#endif
 				pump_prev[c] = pc;
 				continue;
 			}
@@ -4280,6 +4373,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			for (uint32_t i = 0; i < VSUB; i++)
 				shc_bus[i] = 0.0f;
 		}
+		PROF_ADD(p_vox, p_v);
 		texture_block(HL, HR, VSUB, VSR);           /* Playworld's bed, dry */
 		{	/* the dark send: 12 dB an octave from 1.5 kHz */
 			const float k = 0.3245f;              /* 1 - exp(-2 pi 1500 / 24000) */
@@ -4307,6 +4401,11 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			}
 			dist_block(E, GL_SUB / 2, 2);
 			dist_block(V, GL_SUB / 2, 3);
+		}
+		if (VOICE_HALF && opt_space24) {
+			PROF_MARK(p_s);
+			space_block(E, V, HL, HR, 1);           /* the space into the mix, at 24 kHz */
+			PROF_ADD(p_spc, p_s);
 		}
 		/* back up to 48 kHz: each sample, and a half-band midpoint before it */
 #if !VOICE_HALF
@@ -4350,7 +4449,11 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		}
 		/* the space, at half rate; its output interpolated back up (and, with distortion on
 		 * the reverb only, that happens in there) */
-		space_block(E, V, L, R);
+		if (!(VOICE_HALF && opt_space24)) {
+			PROF_MARK(p_s);
+			space_block(E, V, L, R, 0);
+			PROF_ADD(p_spc, p_s);
+		}
 		/* ...or after them, on everything (the DJ filter below can tame it) */
 		if (dist.amt && dist.post == 1) {
 			dist_block(L, GL_SUB, 0);
@@ -4424,6 +4527,20 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 	gl_peak = peak;
 	if (gl_scope_on)
 		scope_fill(n);
+#ifdef GL_PROF
+	if (prof_cyc) {
+		const uint32_t tot = PROF_NOW() - p_t0, miss = prof_miss ? *prof_miss - m_t0 : 0u;
+		const uint32_t vox = p_vox - p_kit, rest = tot - p_ctl - p_vox - p_spc;
+		const uint32_t part[5] = {p_ctl, vox, p_kit, p_spc, rest};
+		for (int i = 0; i < 5; i++) {
+			prof_sum[i] += part[i];
+			prof_max[i] = part[i] > prof_max[i] ? part[i] : prof_max[i];
+		}
+		prof_miss_sum += miss;
+		prof_miss_max = miss > prof_miss_max ? miss : prof_miss_max;
+		prof_n++;
+	}
+#endif
 }
 
 /* ================================================================ pieces */

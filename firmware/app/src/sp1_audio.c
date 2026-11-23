@@ -777,6 +777,14 @@ void sp1_audio_init(void)
 	 * symbol this build only reaches through a local Zephyr patch. */
 	st.cyc_budget = (uint32_t)((64000000ull * BLK_FRAMES) / SR_HZ);   /* 320 000 at 5 ms */
 	cyc_budget = st.cyc_budget;
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+	/* the test build: Glag times its parts against the cycle counter and counts the flash
+	 * cache's misses (profiling changes nothing about what the cache does) */
+	NRF_NVMC->ICACHECNF |= NVMC_ICACHECNF_CACHEPROFEN_Msk;
+	NRF_NVMC->IHIT = 0u;
+	NRF_NVMC->IMISS = 0u;
+	gl_prof_hook(&DWT->CYCCNT, &NRF_NVMC->IMISS);
+#endif
 #if defined(CONFIG_SP1_PLAITS)
 	sp1_synth_set_cycle_counter(&DWT->CYCCNT);
 #if defined(CONFIG_SP1_PROFILE_ICACHE)
