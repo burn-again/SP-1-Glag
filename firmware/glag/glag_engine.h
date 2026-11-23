@@ -214,6 +214,22 @@ extern volatile uint8_t gl_chord_root;   /* pitch class of the current chord */
 extern volatile uint8_t gl_playing, gl_frozen;
 extern volatile float gl_speed;          /* 1 = normal, less while slowing */
 extern volatile float gl_peak;           /* output peak, 0..1, decays */
+/* the scope: what is playing, for the emulator's track view (written only while gl_scope_on;
+ * reads nothing back, so it can't change the sound). The layout is read by offset in the page. */
+typedef struct {
+	float t, bpm, beat, arc, space, duck, filt, comp, peak;               /* 0 .. 32 */
+	float reverb, delay, filter, motion, autof, tex_lvl, pump;            /* 36 .. 60 */
+	uint8_t chord, root, mode, rv, echo, flags, dist_type, dist_amt;      /* 64 */
+	uint8_t dist_post, tex, song, kind, ending, key_off, cap, shim;       /* 72 */
+	uint32_t notes;                                                       /* 80 */
+	struct {                                                              /* 84, 60 bytes each */
+		float lvl, wlvl, wact, act, mac, tone, chr, len, echo, verb, reg, pan, glow;
+		int32_t note;
+		uint8_t voice, pad[3];
+	} ch[GL_NCH];
+} gl_scope_t;
+extern gl_scope_t gl_scope;
+extern uint8_t gl_scope_on;
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES

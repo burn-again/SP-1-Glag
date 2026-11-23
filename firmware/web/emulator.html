@@ -78,6 +78,32 @@ details summary { cursor: pointer; font-weight: 500; }
 .map { font-size: 13px; display: grid; gap: 4px; margin-top: 8px; }
 .map b { font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .led { transition: none; } }
+
+/* the track view: one lane per channel, its own colour; the space and song on a lane above */
+:root { --c1: #2f6fb3; --c2: #b8572a; --c3: #2f8a5f; --c4: #8a4fb3; --gl: #6b7280; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c1: #6aa6e8; --c2: #f0925f; --c3: #5cc69a; --c4: #c08ae8; --gl: #9aa0a8; } }
+:root[data-theme="dark"] { --c1: #6aa6e8; --c2: #f0925f; --c3: #5cc69a; --c4: #c08ae8; --gl: #9aa0a8; }
+.trackview { display: grid; gap: 14px; }
+.tvhead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: baseline; justify-content: space-between; }
+.tvhead h2 { font-family: var(--display); font-size: 1.25rem; margin: 0; }
+.tvtitle { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.tvbtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tvbtns .btn { min-height: 38px; display: inline-flex; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 12.5px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--fg); }
+.chip.off { color: var(--muted); border-style: dashed; }
+.lanes { display: grid; gap: 8px; }
+.lane { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.lanehead { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; font-size: 13px; }
+.lanehead b { font-weight: 600; }
+.lanehead .what { color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 11.5px var(--mono); color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid currentColor; vertical-align: middle; margin-right: 5px; }
+.legend i.dash { border-top-style: dashed; } .legend i.dot { border-top-style: dotted; } .legend i.thin { border-top-width: 1px; }
+.lane canvas { width: 100%; height: 64px; display: block; border-radius: 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.lane.glob canvas { height: 80px; }
+.tvnote { font-size: 13px; color: var(--muted); margin: 0; max-width: 80ch; }
+.tvreport { width: 100%; min-height: 160px; font: 12px/1.45 var(--mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; box-sizing: border-box; }
 </style>
 
 <main>
@@ -159,6 +185,20 @@ details summary { cursor: pointer; font-weight: 500; }
       </section>
     </div>
   </div>
+
+  <section class="panel trackview" id="trackview" aria-label="Track view">
+    <div class="tvhead">
+      <div><h2>Track view</h2><span class="tvtitle" id="tvtitle">Start the sound to see what each channel is doing.</span></div>
+      <div class="tvbtns">
+        <button class="btn" id="tvcopy" type="button">Copy track report</button>
+        <span class="note" id="tvcopied" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="chips" id="tvchips"></div>
+    <div class="lanes" id="tvlanes"></div>
+    <p class="tvnote">Each lane is the last two minutes of the track (its start, if sooner), newest on the right. The report holds everything needed to replay this exact track on a computer (its piece, both seeds, the settings dealt, the patch), plus what is playing now and when you copied it: paste it with a note of what you heard and roughly when.</p>
+    <details><summary>The report, to copy by hand</summary><textarea class="tvreport" id="tvreport" readonly aria-label="Track report"></textarea></details>
+  </section>
 </main>
 
 <script>
@@ -309,7 +349,9 @@ class GlagCore {
     this.sent = this.frames;
     const st = new Uint8Array(w.memory.buffer, w.wg_state(), 120).slice();
     const pt = new Uint8Array(w.memory.buffer, w.wg_patch(), w.wg_patch_size()).slice();
-    const msg = { t: "st", st: st.buffer, pt: pt.buffer };
+    const sc = new Uint8Array(w.memory.buffer, w.wg_scope(), 324).slice();
+    const tr = new Uint8Array(w.memory.buffer, w.wg_track(), 16).slice();
+    const msg = { t: "st", st: st.buffer, pt: pt.buffer, sc: sc.buffer, tr: tr.buffer };
     const slot = st[13];
     if (slot && slot !== this.lastSave) {
       this.lastSave = slot;
@@ -358,6 +400,7 @@ startBtn.addEventListener("click", async () => {
     patch = new DataView(data.pt);
     if (data.save) storeSaved(data.save.piece, data.save.bytes);
     draw();
+    if (data.sc) tvState(data.sc, data.tr, data.pt);
   };
   try {
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
@@ -526,4 +569,179 @@ function draw() {
   pill.textContent = est < 75 ? "comfortable" : est <= 90 ? "tight" : "over budget";
   pill.className = "pill " + (est < 75 ? "ok" : est <= 90 ? "warn" : "bad");
 }
+
+/* ---- the track view ---- */
+const BUILD = "@@BUILD@@";
+const ECHOS = ["1/4.", "1/2", "1/2.", "1 bar", "2 bars", "1/8", "1/8.", "1/4", "string"];
+const KINDS3 = ["breakdown and build", "waves", "slow build"], TEXS = ["", "rain", "vinyl", "tape hiss", "surf"];
+const PLACES = ["before the effects", "after the effects", "on the reverb only", "on the drums only"];
+const CH_KEYS = ["lvl", "wlvl", "wact", "act", "mac", "tone", "chr", "len", "echo", "verb", "reg", "pan", "glow"];
+const G_KEYS = ["t", "bpm", "beat", "arc", "space", "duck", "filt", "comp", "peak", "reverb", "delay", "filter", "motion", "autof", "tex_lvl", "pump"];
+const B_KEYS = ["chord", "root", "mode", "rv", "echo", "flags", "dist_type", "dist_amt", "dist_post", "tex", "song", "kind", "ending", "key_off", "cap", "shim"];
+function readScope(buf) {
+  const d = new DataView(buf), o = {};
+  G_KEYS.forEach((k, i) => { o[k] = d.getFloat32(i * 4, true); });
+  B_KEYS.forEach((k, i) => { o[k] = d.getUint8(64 + i); });
+  o.notes = d.getUint32(80, true);
+  o.ch = [0, 1, 2, 3].map((c) => {
+    const b = 84 + c * 60, x = {};
+    CH_KEYS.forEach((k, i) => { x[k] = d.getFloat32(b + i * 4, true); });
+    x.note = d.getInt32(b + 52, true); x.voice = d.getUint8(b + 56);
+    return x;
+  });
+  return o;
+}
+const noteName = (n) => n > 0 ? NOTES[n % 12] + (Math.floor(n / 12) - 1) : "–";
+const tv = { hist: [], key: "", last: null, track: null, patch: null, lastT: -1, drawAt: 0, laneEls: null };
+const CHANNEL_SERIES = [
+  ["lvl", "level", "", 2.2], ["act", "activity", "dash", 1.4], ["wlvl", "in the song", "dot", 1.4],
+  ["tone", "tone", "thin", 1], ["echo", "echo send", "thin", 1], ["verb", "reverb send", "thin", 1]];
+const GLOBAL_SERIES = [
+  ["reverb", "reverb", "", 1.8], ["delay", "delay", "dash", 1.6], ["filtd", "filter (off in the middle)", "dot", 1.4],
+  ["space", "space open", "thin", 1], ["arc", "build", "thin", 1], ["peak", "output peak", "fill", 1]];
+const ALPHA = { thin: 0.55, dot: 0.9, dash: 0.9, "": 1, fill: 0.18 };
+function buildLanes() {
+  const host = document.getElementById("tvlanes");
+  host.innerHTML = "";
+  const mk = (cls, colorVar, series) => {
+    const lane = document.createElement("div");
+    lane.className = "lane " + cls;
+    lane.innerHTML = `<div class="lanehead"></div><div class="legend" style="color:var(${colorVar})">${series.map((s) =>
+      `<span><i class="${s[2] === "fill" ? "thin" : s[2]}"></i>${s[1]}</span>`).join("")}</div><canvas></canvas>`;
+    host.appendChild(lane);
+    return { head: lane.querySelector(".lanehead"), cv: lane.querySelector("canvas"), color: colorVar, series };
+  };
+  tv.laneEls = { glob: mk("glob", "--gl", GLOBAL_SERIES), ch: [0, 1, 2, 3].map((c) => mk("", "--c" + (c + 1), CHANNEL_SERIES)) };
+}
+function plot(el, pick) {
+  const cv = el.cv, dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const x = cv.getContext("2d");
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h);
+  const H = tv.hist;
+  if (H.length < 2) return;
+  const cs = getComputedStyle(document.documentElement), col = cs.getPropertyValue(el.color).trim() || "#888", mut = cs.getPropertyValue("--line").trim();
+  const t1 = H[H.length - 1].t, t0 = Math.max(H[0].t, t1 - 120), span = Math.max(10, t1 - t0);
+  const X = (t) => (t - t0) / span * (w - 4) + 2, Y = (v) => h - 3 - Math.max(0, Math.min(1, v)) * (h - 8);
+  x.strokeStyle = mut; x.lineWidth = 1; x.globalAlpha = 1; x.setLineDash([]);
+  x.font = "10px " + (cs.getPropertyValue("--mono").trim() || "monospace"); x.fillStyle = cs.getPropertyValue("--muted").trim();
+  for (let s = Math.ceil(t0 / 15) * 15; s <= t1; s += 15) {
+    const px = X(s); x.beginPath(); x.moveTo(px, 0); x.lineTo(px, h); x.globalAlpha = 0.5; x.stroke();
+    x.globalAlpha = 0.9; x.fillText(Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0"), px + 3, 11);
+  }
+  el.series.forEach(([k, , style, lw]) => {
+    x.strokeStyle = col; x.fillStyle = col; x.lineWidth = lw; x.globalAlpha = ALPHA[style];
+    x.setLineDash(style === "dash" ? [6, 4] : style === "dot" ? [1.5, 3] : []);
+    x.beginPath();
+    let started = false;
+    for (const p of H) { if (p.t < t0) continue; const v = pick(p, k); const px = X(p.t), py = Y(v); if (!started) { x.moveTo(px, py); started = true; } else x.lineTo(px, py); }
+    if (style === "fill") { x.lineTo(X(t1), h); x.lineTo(X(Math.max(H[0].t, t0)), h); x.closePath(); x.fill(); } else x.stroke();
+  });
+  x.setLineDash([]);
+}
+function plotNotes(el, c) {
+  const cv = el.cv, w = cv.clientWidth, h = cv.clientHeight, x = cv.getContext("2d"), H = tv.hist;
+  if (H.length < 2) return;
+  const col = getComputedStyle(document.documentElement).getPropertyValue(el.color).trim();
+  const t1 = H[H.length - 1].t, t0 = Math.max(H[0].t, t1 - 120), span = Math.max(10, t1 - t0);
+  x.fillStyle = col; x.globalAlpha = 0.85;
+  for (const p of H) if (p.t >= t0 && p.ch[c].hit) x.fillRect((p.t - t0) / span * (w - 4) + 1, h - 3, 2, 3);
+  x.globalAlpha = 1;
+}
+function describeChannel(o, c, ago) {
+  const k = o.ch[c], was = ago ? ago.ch[c] : k, v = VOICES[k.voice] || "?";
+  const bits = [];
+  if (k.wlvl < 0.03) bits.push("out (song mode)");
+  else if (k.wlvl > was.wlvl + 0.05) bits.push("coming in");
+  else if (k.wlvl < was.wlvl - 0.05) bits.push("leaving");
+  else if (k.wlvl < 0.97) bits.push("partly in, " + pct(k.wlvl));
+  if (k.lvl < 0.01 && k.wlvl >= 0.03) bits.push("silent");
+  bits.push("activity " + pct(k.act));
+  if (k.glow > 0.05 && k.note > 0) bits.push("playing " + noteName(k.note));
+  else if (k.note > 0) bits.push("last note " + noteName(k.note));
+  if (k.mac > 0.001) bits.push("macro " + pct(k.mac));
+  return `<b>T${c + 1} ${v}</b><span class="what">${bits.join(" · ")}</span><span class="what">level ${pct(k.lvl)} · tone ${pct(k.tone)} · echo ${pct(k.echo)} · reverb ${pct(k.verb)}</span>`;
+}
+function chips(o, st) {
+  const out = [];
+  const on = (t) => out.push(`<span class="chip">${t}</span>`), off = (t) => out.push(`<span class="chip off">${t}</span>`);
+  on(Math.round(o.bpm) + " BPM");
+  on("key " + NOTES[(o.root) % 12] + " " + (MODES[o.mode] || "") + " · chord " + NOTES[o.chord % 12]);
+  o.song ? on("song mode: " + (KINDS3[o.kind] || "") + (o.ending ? ", ending" : "")) : off("song mode off");
+  on(REVERBS[o.rv & 3] + (o.rv === 2 ? " (" + SHIMS[o.shim % 3] + ")" : "") + " " + pct(o.reverb));
+  on("echo " + (ECHOS[o.echo] || "?") + " " + pct(o.delay) + ((o.flags & 2) ? ", ping-pong" : ""));
+  (o.flags & 1) ? on("reverse swells") : off("no reverse");
+  o.dist_amt ? on((DISTS[o.dist_type] || "?") + " " + o.dist_amt + " " + PLACES[o.dist_post % 4]) : off("no distortion");
+  o.tex ? on(TEXS[o.tex] + " " + pct(o.tex_lvl)) : off("no texture");
+  o.pump > 0 ? on("pump") : off("no pump");
+  st && st.getUint8(105) ? on("arp mode") : off("no arp");
+  o.autof > 0 ? on("auto filter " + pct(o.autof)) : off("no auto filter");
+  if (Math.abs(o.filter - 0.5) > 0.03) on("filter " + filterText(o.filter));
+  if (o.key_off) on("key moved " + (o.key_off > 6 ? o.key_off - 12 : "+" + o.key_off));
+  if (o.cap < 64) on("voice cap " + o.cap);
+  return out.join("");
+}
+function tvState(scBuf, trBuf, ptBuf) {
+  const o = readScope(scBuf), tr = new Int32Array(trBuf.slice(0)), pc = state.getUint8(10);
+  const key = tr[1] ? `${tr[0]}:${tr[3] >>> 0}` : `p${pc}`;
+  if (key !== tv.key || o.t + 0.05 < tv.lastT) { tv.key = key; tv.hist = []; tv.lastT = -1; }
+  tv.track = { piece: tr[1] ? tr[0] : pc, mode: tr[1], ui: tr[2] >>> 0, fresh: tr[3] >>> 0 };
+  tv.patch = new Uint8Array(ptBuf.slice(0));
+  tv.last = o;
+  if (!tv.laneEls) buildLanes();
+  if (o.t - tv.lastT >= 0.1) {
+    const p = { t: o.t, reverb: o.reverb, delay: o.delay, filtd: o.filter, space: o.space * o.duck, arc: Math.max(0, o.arc), peak: o.peak,
+      ch: o.ch.map((k, c) => ({ lvl: k.lvl, act: k.act, wlvl: k.wlvl, tone: k.tone, echo: k.echo, verb: k.verb,
+        hit: k.glow > 0.6 && (!tv.hist.length || tv.hist[tv.hist.length - 1].ch[c].g <= 0.6), g: k.glow })) };
+    tv.hist.push(p); tv.lastT = o.t;
+    while (tv.hist.length && tv.hist[0].t < o.t - 130) tv.hist.shift();
+  }
+  const now = performance.now();
+  if (now - tv.drawAt < 200) return;
+  tv.drawAt = now;
+  const mode = tr[1] === 2 ? "shuffle" : tr[1] === 1 ? "album" : "";
+  document.getElementById("tvtitle").textContent = `Piece ${tv.track.piece + 1}: ${PIECES[tv.track.piece] || "?"}` + (mode ? " · " + mode : "") +
+    ` · ${Math.floor(o.t / 60)}:${String(Math.floor(o.t % 60)).padStart(2, "0")} into the take`;
+  document.getElementById("tvchips").innerHTML = chips(o, state);
+  const ago = tv.hist.find((p) => p.t >= o.t - 2);
+  const agoO = ago ? { ch: ago.ch.map((k) => ({ wlvl: k.wlvl })) } : null;
+  const L = tv.laneEls;
+  L.glob.head.innerHTML = `<b>The space and the song</b><span class="what">reverb ${pct(o.reverb)} · delay ${pct(o.delay)} · filter ${filterText(o.filter)} · build ${pct(Math.max(0, o.arc))}</span>`;
+  plot(L.glob, (p, k) => p[k]);
+  for (let c = 0; c < 4; c++) {
+    L.ch[c].head.innerHTML = describeChannel(o, c, agoO);
+    plot(L.ch[c], (p, k) => p.ch[c][k]);
+    plotNotes(L.ch[c], c);
+  }
+  document.getElementById("tvreport").value = report();
+}
+function report() {
+  const o = tv.last, tr = tv.track;
+  if (!o || !tr) return "";
+  const pn = tr.piece, lines = [];
+  const t = `${Math.floor(o.t / 60)}:${String(Math.floor(o.t % 60)).padStart(2, "0")}`;
+  lines.push(`Glag track report · emulator build ${BUILD}`);
+  lines.push(`Piece ${pn + 1}: ${PIECES[pn] || "?"} (index ${pn})` + (tr.mode ? ` · ${tr.mode === 2 ? "shuffle" : "album"}` : " · played by hand") + ` · copied at ${t} into the take`);
+  if (tr.mode) lines.push(`Replay: ${tr.mode === 1 ? "ALBUM=1 " : ""}host/build/shuf ${pn} ${tr.ui} out.wav 120 ${tr.fresh}`);
+  else lines.push("Replay: not exact (played by hand: the faders and buttons you moved aren't recorded)");
+  lines.push(`Tempo ${Math.round(o.bpm)} BPM · key ${NOTES[o.root % 12]} ${MODES[o.mode] || ""} · chord ${NOTES[o.chord % 12]}` + (o.key_off ? ` · key moved ${o.key_off}` : ""));
+  lines.push(`Song mode ${o.song ? "on, " + (KINDS3[o.kind] || "") + (o.ending ? ", ending" : "") : "off"} · build ${pct(Math.max(0, o.arc))} · space open ${pct(o.space * o.duck)}`);
+  lines.push(`Reverb ${REVERBS[o.rv & 3]}${o.rv === 2 ? " (" + SHIMS[o.shim % 3] + ")" : ""} ${pct(o.reverb)} · echo ${ECHOS[o.echo] || "?"} ${pct(o.delay)}` +
+    `${o.flags & 2 ? " ping-pong" : ""}${o.flags & 1 ? " · reverse swells" : ""} · filter ${filterText(o.filter)}` + (o.autof > 0 ? ` · auto filter ${pct(o.autof)}` : ""));
+  lines.push(`Distortion ${o.dist_amt ? (DISTS[o.dist_type] || "?") + " " + o.dist_amt + " " + PLACES[o.dist_post % 4] : "off"} · texture ${o.tex ? TEXS[o.tex] + " " + pct(o.tex_lvl) : "none"} · pump ${o.pump > 0 ? "on" : "off"} · arp ${state && state.getUint8(105) ? "on" : "off"} · voice cap ${o.cap}`);
+  o.ch.forEach((k, c) => lines.push(`T${c + 1} ${VOICES[k.voice] || "?"}: level ${pct(k.lvl)} (in the song ${pct(k.wlvl)}) · activity ${pct(k.act)} · tone ${pct(k.tone)} · character ${pct(k.chr)} · length ${pct(k.len)} · register ${Math.round(k.reg * 4) - 2} · pan ${pct(k.pan)} · echo ${pct(k.echo)} · reverb ${pct(k.verb)} · macro ${pct(k.mac)} · last note ${noteName(k.note)}`));
+  let b = ""; if (tv.patch) for (const x of tv.patch) b += String.fromCharCode(x);
+  lines.push("Patch: " + btoa(b));
+  return lines.join("\n");
+}
+document.getElementById("tvcopy").addEventListener("click", async () => {
+  const txt = report(), msg = document.getElementById("tvcopied");
+  if (!txt) { msg.textContent = "Start the sound first."; return; }
+  document.getElementById("tvreport").value = txt;
+  try { await navigator.clipboard.writeText(txt); msg.textContent = "Copied. Paste it with what you heard."; }
+  catch (e) { const ta = document.getElementById("tvreport"); ta.closest("details").open = true; ta.focus(); ta.select(); msg.textContent = "Couldn't reach the clipboard: the report is selected below."; }
+});
+window.addEventListener("resize", () => { tv.drawAt = 0; });
 </script>

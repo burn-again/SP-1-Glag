@@ -19,6 +19,13 @@ if '$DEF':
     src = open('../glag/glag_engine.c').read()
     names = re.findall(r'\{\"([^\"]+)\", \{GV_', src[src.index('static const recipe PIECES'):])
     page = re.sub(r'const PIECES = \[[^\]]*\];', 'const PIECES = ' + json.dumps(names) + ';', page, count=1)
-open('build/glag-emulator.html', 'w').write(page.replace('@@WASM@@', wasm))
+import subprocess
+try:
+    rev = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(['git', 'status', '--porcelain', '--', '../glag'], capture_output=True, text=True).stdout.strip()
+    build = rev + ('+' if dirty else '')
+except Exception:
+    build = 'unknown'
+open('build/glag-emulator.html', 'w').write(page.replace('@@WASM@@', wasm).replace('@@BUILD@@', build))
 "
 echo "build/glag-emulator.html ($(wc -c < build/glag-emulator.html) bytes)"

@@ -76,6 +76,17 @@ EXPORT void wg_tick(uint32_t now_ms)
 	}
 }
 EXPORT void *wg_state(void) { return &st; }
+/* the track view: the engine's scope (switched on by asking for it) and the track's seeds */
+EXPORT void *wg_scope(void) { gl_scope_on = 1; return &gl_scope; }
+EXPORT void *wg_track(void)
+{
+	static int32_t t[4];
+	int piece, mode;
+	uint32_t a, b;
+	glui_track(&piece, &mode, &a, &b);
+	t[0] = piece; t[1] = mode; t[2] = (int32_t)a; t[3] = (int32_t)b;
+	return t;
+}
 /* MIDI in: one message (channels 1-4 are Glag's channels; clock is counted on the page) */
 EXPORT void wg_midi(int status, int d1, int d2)
 {

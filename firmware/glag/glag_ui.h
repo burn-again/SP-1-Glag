@@ -139,6 +139,8 @@ void glui_midi_program(int program);
 void glui_midi_tempo(float bpm);
 /* Call every few milliseconds. Posts to the engine itself. */
 void glui_tick(uint32_t now_ms, const gl_input *in, gl_ui_out *out);
+/* the album's or shuffle's track: piece (-1 none), mode (1 album, 2 shuffle) and its two seeds */
+void glui_track(int *piece, int *mode, uint32_t *ui_seed, uint32_t *fresh_seed);
 
 #ifdef __cplusplus
 }

@@ -4071,6 +4071,39 @@ static float vd_s[2];                     /* the dark send */
 static float pu_l[GL_SUB], pu_r[GL_SUB];   /* the pulse's noise, at 48 kHz, added after the upsampling */
 static int pu_on;
 
+gl_scope_t gl_scope;
+uint8_t gl_scope_on;
+static uint32_t scope_fresh;
+static void scope_fill(uint32_t n)
+{
+	gl_scope_t *o = &gl_scope;
+	if (scope_fresh != seen_fresh) {
+		scope_fresh = seen_fresh;
+		o->t = 0.0f;
+	}
+	o->t += (float)n / GL_SR;
+	o->bpm = gl_tempo_bpm(P.g[GP_TEMPO]) * speed;
+	o->beat = gl_beat; o->arc = arc; o->space = form_space; o->duck = sp_duck; o->filt = form_filt;
+	o->comp = comp_g; o->peak = gl_peak;
+	o->reverb = P.g[GP_REVERB]; o->delay = P.g[GP_DELAY]; o->filter = P.g[GP_FILTER]; o->motion = P.g[GP_MOTION];
+	o->autof = W.autof; o->tex_lvl = W.tex_lvl; o->pump = W.pump;
+	o->chord = gl_chord_root; o->root = (uint8_t)root_pc; o->mode = (uint8_t)(mode_cur < 0 ? 0 : mode_cur);
+	o->rv = (uint8_t)(rv.cur < 0 ? 0 : rv.cur); o->shim = (uint8_t)rv.shim;
+	o->echo = P.space[GL_SP_ECHO]; o->flags = P.space[GL_SP_FLAGS];
+	o->dist_type = dist.type; o->dist_amt = dist.amt; o->dist_post = dist.post;
+	o->tex = (uint8_t)W.tex; o->song = W.form > 0.0f; o->kind = (uint8_t)W.kind_eff; o->ending = (uint8_t)W.ending;
+	o->key_off = (uint8_t)(key_off + 12) % 12u; o->cap = (uint8_t)gov_cap;
+	o->notes = notes_fired;
+	for (int c = 0; c < GL_NCH; c++) {
+		o->ch[c].lvl = lvl_ch[c]; o->ch[c].wlvl = w_lvl[c]; o->ch[c].wact = w_act[c];
+		o->ch[c].act = eff_activity(c); o->ch[c].mac = mac_depth[c]; o->ch[c].tone = eff_tone(c);
+		o->ch[c].chr = P.ch[c][CP_CHAR]; o->ch[c].len = P.ch[c][CP_LENGTH];
+		o->ch[c].echo = P.ch[c][CP_ECHO]; o->ch[c].verb = P.ch[c][CP_VERB];
+		o->ch[c].reg = P.ch[c][CP_REGISTER]; o->ch[c].pan = P.ch[c][CP_PAN];
+		o->ch[c].glow = gl_glow[c]; o->ch[c].note = CH[c].last_note; o->ch[c].voice = (uint8_t)CH[c].voice;
+	}
+}
+
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {
 	const float dt = (float)GL_SUB / GL_SR;
@@ -4353,6 +4386,8 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		dc_x[0] = xl; dc_y[0] = yl; dc_x[1] = xr; dc_y[1] = yr;
 	}
 	gl_peak = peak;
+	if (gl_scope_on)
+		scope_fill(n);
 }
 
 /* ================================================================ pieces */

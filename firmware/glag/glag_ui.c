@@ -567,14 +567,26 @@ static void shuffle_settings(void)
 }
 /* the next track: its piece afresh (the album's as recorded; shuffle's with its own dice and
  * settings) */
+static uint32_t trk_ui_seed, trk_fresh_seed;
 static void demo_track(uint32_t now)
 {
+	trk_ui_seed = seed;                   /* (kept, so a track can be replayed exactly) */
 	load_piece(demo_list[demo_idx]);
 	if (demo_on == 2)
 		shuffle_settings();
 	gl_post_patch(&cur);
 	dirty = 0;
-	gl_fresh(demo_on == 1 ? DEMO_SEED : now * 2654435761u + 1u);
+	trk_fresh_seed = demo_on == 1 ? DEMO_SEED : now * 2654435761u + 1u;
+	gl_fresh(trk_fresh_seed);
+}
+/* the track playing in the album or shuffle: its piece, mode (0 none, 1 album, 2 shuffle) and the
+ * two seeds that make it (the UI's dice before the deal, the engine's take) */
+void glui_track(int *piece, int *mode, uint32_t *ui_seed, uint32_t *fresh_seed)
+{
+	*piece = demo_on ? demo_list[demo_idx] : -1;
+	*mode = demo_on;
+	*ui_seed = trk_ui_seed;
+	*fresh_seed = trk_fresh_seed;
 }
 
 /* ---- MIDI in: controllers, programs, tempo ---- */
