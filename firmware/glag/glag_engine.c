@@ -4563,6 +4563,23 @@ typedef struct {
 	uint8_t ktune;             /* the Kit's tuning (glag_kit.h; 0 the firmware's) */
 } recipe;
 
+/* (four heavy pieces, named so the CPU test build can carry them too: GL_TEST_PIECES) */
+#define R_SHIFTED_METAL {"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS}, \
+	 {{65, 60, 45, 50, 0, 0, 50, 55, 90}, {55, 45, 40, 50, 30, 35, 40, 45, 55}, \
+	  {45, 35, 60, 50, 0, 10, 50, 40, 69}, {30, 35, 75, 50, 15, 55, 60, 30, 40}}, \
+	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}, 0}
+#define R_WAREHOUSE {"Warehouse", {GV_KIT, GV_BASS, GV_STRINGS, GV_PAD}, \
+	 {{60, 55, 35, 50, 0, 0, 50, 25, 71}, {50, 35, 45, 50, 0, 10, 50, 40, 49}, \
+	  {55, 55, 30, 50, 20, 40, 45, 60, 35}, {35, 40, 70, 50, 10, 55, 60, 35, 27}}, \
+	 {100, 30, 40, 50, 7, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {20, 0, 0, 0}, 0}
+#define R_STRING_DRUM_MASS {"String Drum Mass", {GV_KIT, GV_HARPSI, GV_STRINGS, GV_DRONE}, \
+	 {{50, 45, 55, 50, 0, 0, 50, 40, 100}, {50, 45, 45, 50, 20, 45, 40, 45, 65}, \
+	  {30, 35, 75, 50, 15, 60, 60, 30, 45}, {25, 30, 90, 25, 0, 45, 50, 30, 39}}, \
+	 {50, 35, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {0, 0, 0, 0}, 8}
+#define R_HARPSI_DRILL {"Harpsi Drill", {GV_KIT, GV_HARPSI, GV_PIZZ, GV_BASS}, \
+	 {{60, 50, 40, 50, 0, 0, 50, 40, 96}, {40, 50, 50, 50, 25, 40, 35, 40, 45}, \
+	  {45, 45, 45, 50, 20, 40, 65, 40, 41}, {40, 30, 75, 50, 0, 10, 50, 40, 65}}, \
+	 {50, 40, 45, 50, 1, 2, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {3, 1, 0, 0}, 8, {4, 2, 2, 1}, 8, 0, {8, 0, 0, 0}, 0}
 static const recipe PIECES[GL_NPIECES] = {
 	/* ---- after AMB-1's eight stock pieces (Charles Vestal), in Glag's voices: its pad, bells,
 	 * bass and pulse are channels 1 to 4, its numbers mapped onto Glag's controls (the pad's
@@ -4947,10 +4964,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {35, 30, 80, 50, 5, 15, 50, 30, 60}, {40, 30, 70, 50, 10, 60, 60, 30, 42}},
 	 {64, 30, 45, 50, 2, 1, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {1, 1, 0, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
 	/* the shifted hats and the clank in front, a sequence and strings behind */
-	{"Shifted Metal", {GV_KIT, GV_SEQ, GV_BASS, GV_STRINGS},
-	 {{65, 60, 45, 50, 0, 0, 50, 55, 90}, {55, 45, 40, 50, 30, 35, 40, 45, 55},
-	  {45, 35, 60, 50, 0, 10, 50, 40, 69}, {30, 35, 75, 50, 15, 55, 60, 30, 40}},
-	 {75, 35, 50, 50, 9, 5, 15, 40}, {GR_HALL, GS_OCTAVE, 6}, {2, 1, 0, 1}, 8, {4, 3, 2, 2}, 8, 0, {0, 0, 0, 0}, 0},
+	R_SHIFTED_METAL,
 	/* the whole kit: crunch, the Nord hits, rolls into each phrase, open hats; Phrygian */
 	{"Crunch Roll", {GV_KIT, GV_GLOW, GV_DRONE, GV_SEQ},
 	 {{75, 55, 55, 50, 0, 0, 50, 85, 98}, {35, 35, 65, 50, 30, 55, 35, 40, 53},
@@ -4985,10 +4999,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {35, 30, 80, 50, 0, 10, 50, 35, 56}, {30, 35, 70, 50, 30, 55, 60, 40, 34}},
 	 {65, 35, 45, 50, 2, 1, 15, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {16, 0, 0, 0}, 0},
 	/* house at 120: four on the floor, claps on 2 and 4, open hats on the off-beats, string stabs */
-	{"Warehouse", {GV_KIT, GV_BASS, GV_STRINGS, GV_PAD},
-	 {{60, 55, 35, 50, 0, 0, 50, 25, 71}, {50, 35, 45, 50, 0, 10, 50, 40, 49},
-	  {55, 55, 30, 50, 20, 40, 45, 60, 35}, {35, 40, 70, 50, 10, 55, 60, 35, 27}},
-	 {100, 30, 40, 50, 7, 5, 15, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {1, 1, 1, 0}, 8, {3, 2, 3, 2}, 8, 0, {20, 0, 0, 0}, 0},
+	R_WAREHOUSE,
 	/* thrash at 95 (190 felt): the skank beat, double kicks into the turnaround, the kit's
 	 * crunch, saws for the guitars */
 	{"Thrash Hall", {GV_KIT, GV_SUPER, GV_BASS, GV_DRONE},
@@ -5053,10 +5064,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {35, 45, 60, 75, 40, 60, 60, 30, 38}, {30, 30, 90, 50, 0, 40, 50, 30, 29}},
 	 {70, 40, 50, 50, 4, 2, 25, 45}, {GR_BLOOM, GS_OCTAVE, 4}, {4, 1, 1, 0}, 8, {4, 3, 2, 2}, 8, 0, {40, 0, 0, 0}, 7},
 	/* a Karplus-Strong drum (toms and snare from one string) and a shaker, a harpsichord, strings */
-	{"String Drum Mass", {GV_KIT, GV_HARPSI, GV_STRINGS, GV_DRONE},
-	 {{50, 45, 55, 50, 0, 0, 50, 40, 100}, {50, 45, 45, 50, 20, 45, 40, 45, 65},
-	  {30, 35, 75, 50, 15, 60, 60, 30, 45}, {25, 30, 90, 25, 0, 45, 50, 30, 39}},
-	 {50, 35, 60, 50, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 5}, {2, 1, 0, 1}, 8, {3, 2, 2, 2}, 8, 0, {0, 0, 0, 0}, 8},
+	R_STRING_DRUM_MASS,
 	/* the rungler in the Nord's place, long 15-bit hats swelling, a comb; downtempo, Lydian */
 	{"Rungler Rain", {GV_KIT, GV_GLOW, GV_PAD, GV_SHIMMER},
 	 {{45, 50, 50, 50, 0, 0, 50, 60, 86}, {35, 40, 60, 50, 30, 55, 35, 40, 38},
@@ -5116,10 +5124,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {45, 30, 70, 50, 0, 10, 50, 40, 58}, {25, 45, 80, 75, 25, 70, 50, 30, 30}},
 	 {100, 35, 50, 50, 5, 5, 25, 40}, {GR_HALL, GS_FIFTH, 3}, {3, 1, 1, 0}, 8, {4, 2, 2, 1}, 8, 0, {4, 0, 0, 0}, 0},
 	/* drill: harpsichord and pizzicato over a sliding bass; C# Phrygian, 70 */
-	{"Harpsi Drill", {GV_KIT, GV_HARPSI, GV_PIZZ, GV_BASS},
-	 {{60, 50, 40, 50, 0, 0, 50, 40, 96}, {40, 50, 50, 50, 25, 40, 35, 40, 45},
-	  {45, 45, 45, 50, 20, 40, 65, 40, 41}, {40, 30, 75, 50, 0, 10, 50, 40, 65}},
-	 {50, 40, 45, 50, 1, 2, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 2}, {3, 1, 0, 0}, 8, {4, 2, 2, 1}, 8, 0, {8, 0, 0, 0}, 0},
+	R_HARPSI_DRILL,
 	/* house: marimba and an EP, four on the floor; G Mixolydian, 118 */
 	{"Marimba House", {GV_KIT, GV_MARIMBA, GV_EP, GV_BASS},
 	 {{65, 45, 35, 50, 0, 0, 50, 35, 78}, {45, 50, 45, 50, 30, 40, 40, 40, 39},
@@ -5234,6 +5239,9 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 68},
 	  {30, 35, 75, 50, 15, 55, 60, 35, 58}, {35, 30, 75, 50, 5, 30, 50, 35, 86}},
 	 {64, 40, 50, 50, 0, 5, 25, 40}, {GR_HALL, GS_OCTAVE, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+#elif defined(GL_TEST_PIECES)
+	/* the CPU test build: the four heaviest audition pieces, as 17 to 20 */
+	R_SHIFTED_METAL, R_WAREHOUSE, R_STRING_DRUM_MASS, R_HARPSI_DRILL,
 #endif
 };
 

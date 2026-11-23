@@ -246,8 +246,10 @@ config SP1_GLAG_CPU_TEST
 	  percent of the block) and the flash cache's misses per block. Every 30 s it moves on to
 	  the next of five settings, announced as GLAG TEST: as released; the space mixed in at
 	  24 kHz; and the control layer every 2 ms; and the cheaper Kit (the Nord at the kit's rate,
-	  the Karplus drum's burst drawn as it is read); and the Hall on four of its own lines.
-	  Writes nothing anywhere. Off in release builds.
+	  the Karplus drum's burst drawn as it is read); and the Hall on four of its own lines. It
+	  plays Garden through all five, then the four heaviest audition pieces (carried as pieces
+	  17-20 in this build only), 12.5 minutes a round, and round again. Writes nothing anywhere.
+	  Off in release builds.
 
 config SP1_PLAITS
 	bool "Plaits voice as the audio source (M3)"

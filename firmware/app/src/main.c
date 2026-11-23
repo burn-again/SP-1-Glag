@@ -100,7 +100,10 @@ static const char *const GLAG_TEST_NAME[5] = {
 	"3 + cheaper Kit (Nord at kit rate, drum burst as read)",
 	"4 + Hall on four of its own lines",
 };
-static uint8_t glag_test_cfg = 0xFFu, glag_test_win, glag_test_rv = 0xFFu;
+/* each piece through all five settings, 30 s each: Garden (the Hall, no Kit), then the four
+ * heaviest audition pieces, which this build carries as 17-20 (GL_TEST_PIECES) */
+static const uint8_t GLAG_TEST_PIECE[5] = {0u, 16u, 17u, 18u, 19u};
+static uint8_t glag_test_step = 0xFFu, glag_test_cfg, glag_test_win, glag_test_rv = 0xFFu;
 static void glag_test_apply(unsigned k)
 {
 	gl_cpu_opts(k >= 1u, k >= 2u ? 2 : 1);
@@ -120,7 +123,7 @@ static void glag_cpu_test_tick(uint32_t budget)
 		a10[i] = budget ? (uint32_t)(((uint64_t)avg[i] * 1000u) / budget) : 0u;
 		w10[i] = budget ? (uint32_t)(((uint64_t)worst[i] * 1000u) / budget) : 0u;
 	}
-	if (glag_test_cfg != 0xFFu) {
+	if (glag_test_step != 0xFFu) {
 		printk("GLAG cfg=%u ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
 		       " out=%u.%u/%u.%u  miss/blk avg=%u max=%u  blk=%u\n",
 		       glag_test_cfg,
@@ -131,11 +134,16 @@ static void glag_cpu_test_tick(uint32_t budget)
 		       a10[4] / 10u, a10[4] % 10u, w10[4] / 10u, w10[4] % 10u,
 		       ma, mw, nb);
 	}
-	if (glag_test_cfg == 0xFFu || ++glag_test_win >= 6u) {
+	if (glag_test_step == 0xFFu || ++glag_test_win >= 6u) {
 		glag_test_win = 0;
-		glag_test_cfg = glag_test_cfg == 0xFFu ? 0u : (uint8_t)((glag_test_cfg + 1u) % 5u);
+		const uint8_t prev = glag_test_step;
+		glag_test_step = glag_test_step == 0xFFu ? 0u : (uint8_t)((glag_test_step + 1u) % 25u);
+		glag_test_cfg = (uint8_t)(glag_test_step % 5u);
+		const uint8_t piece = GLAG_TEST_PIECE[glag_test_step / 5u];
+		if (prev == 0xFFu || prev / 5u != glag_test_step / 5u)
+			glui_midi_program(piece);             /* (as a MIDI program change would) */
 		glag_test_apply(glag_test_cfg);
-		printk("GLAG TEST cfg=%s (piece %u)\n", GLAG_TEST_NAME[glag_test_cfg], (unsigned)g_glag_out.piece + 1u);
+		printk("GLAG TEST piece=%s cfg=%s\n", gl_piece_name(piece), GLAG_TEST_NAME[glag_test_cfg]);
 	}
 }
 #endif

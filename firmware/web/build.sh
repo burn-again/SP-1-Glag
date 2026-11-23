@@ -17,7 +17,11 @@ page = open('emulator.html').read()
 wasm = base64.b64encode(open('build/glag.wasm', 'rb').read()).decode()
 if '$DEF':
     src = open('../glag/glag_engine.c').read()
-    names = re.findall(r'\{\"([^\"]+)\", \{GV_', src[src.index('static const recipe PIECES'):])
+    tbl = src[src.index('static const recipe PIECES'):]
+    tbl = tbl[:tbl.index('#elif defined(GL_TEST_PIECES)')]
+    for m, n in re.findall(r'#define (R_[A-Z_]+) \{\"([^\"]+)\"', src):   # (the named recipes, in their places)
+        tbl = tbl.replace(m + ',', '{\"' + n + '\", {GV_')
+    names = re.findall(r'\{\"([^\"]+)\", \{GV_', tbl)
     page = re.sub(r'const PIECES = \[[^\]]*\];', 'const PIECES = ' + json.dumps(names) + ';', page, count=1)
 import subprocess
 try:

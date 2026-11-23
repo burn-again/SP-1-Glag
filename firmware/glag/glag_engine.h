@@ -247,6 +247,8 @@ extern uint8_t gl_scope_on;
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
 #define GL_NPIECES 118                  /* an audition build: a hundred and two more (five of them labs) */
+#elif defined(GL_TEST_PIECES)
+#define GL_NPIECES 20                   /* the CPU test build: the sixteen and the four heaviest auditions */
 #else
 #define GL_NPIECES 16
 #endif

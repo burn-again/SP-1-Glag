@@ -266,6 +266,28 @@ audio thread's load: `cyc avg=` and `max=` are percent of the 2 ms block. Glag l
 
 If a combination runs over, `FM_CAP` in `glag/glag_engine.c` (18 half-voices, i.e. 9 voices) is the knob.
 
+### The CPU test build
+
+`release/test/glag-sp1-cputest-*.bin` (or build with `-DEXTRA_CONF_FILE=cputest.conf`) plays a
+fixed round by itself: Garden, then Shifted Metal, Warehouse, String Drum Mass and Harpsi Drill
+(carried as pieces 17-20 in this build only), each through five settings for 30 s apiece, 12.5
+minutes a round, round after round:
+
+| cfg | Setting |
+|---|---|
+| 0 | as released |
+| 1 | the space (echo and reverb) mixed into the voices at 24 kHz, one rate converter for both |
+| 2 | and the control layer (notes, envelopes, macros, song mode) every 2 ms instead of every 1 |
+| 3 | and the cheaper Kit (the Nord at the kit's rate, the Karplus drum's burst drawn as it is read) |
+| 4 | and the Hall on four of its own lines (the pieces on the Hall: Garden, Shifted Metal, String Drum Mass) |
+
+Each switch is announced (`GLAG TEST piece=... cfg=...`), and after every `AUD` line a `GLAG` line
+gives the same 5 s by part, as average/worst percent of the block: `ctl` the control layer, `vox`
+the voices but the Kit, `kit` the Kit, `spc` the echo and reverb, `out` the rest (mixing, rate
+conversion, the output), then the flash cache's misses per block. Let it run a full round with
+the console open and keep the log; it writes nothing anywhere, and any button press works as
+usual (the round carries on). `host/build/cputest_sim` plays the same round on a computer.
+
 ## CPU
 
 From `host/cpu`: the engine cross-compiled with the SP-1's compiler and run under an emulated
