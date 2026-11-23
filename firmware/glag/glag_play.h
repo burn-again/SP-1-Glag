@@ -819,7 +819,7 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			const float low = th * 0.4f + s[8] * 0.9f * warp * (0.4f + 0.6f * tp[2]);
 			s[1] += 0.25f * (a - s[1]);
 			s[2] += 0.004f * (s[1] - s[2]);
-			float hiss = (s[1] - s[2]) * 0.09f * tp[2] * wash;
+			float hiss = (s[1] - s[2]) * 0.054f * tp[2] * wash;   /* (the surface: 40 % under what it was) */
 			l = pop * 1.1f + hiss + low;
 			r = pop * 0.95f + hiss + low;
 			break;
