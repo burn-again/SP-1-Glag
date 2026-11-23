@@ -215,6 +215,11 @@ int main(int argc, char **argv)
 	fclose(f);
 	printf("%s: piece %d (%s) rms %.1f dBFS peak %.1f dBFS clipped %d\n", argv[3], piece, gl_piece_name(piece),
 	       10 * __builtin_log10(sum2 / (frames * 2.0) / (32768.0 * 32768.0) + 1e-20), 20 * __builtin_log10(peak / 32768.0 + 1e-9), clip);
+	if (getenv("KCHEAP") && (atoi(getenv("KCHEAP")) & 4)) {
+		uint32_t h, m;
+		gl_kit_cache_stats(&h, &m);
+		printf("  kick cache: %u kicks played back, %u made live\n", (unsigned)h, (unsigned)m);
+	}
 	if (getenv("THIN"))
 		printf("  thinned: %u let go, %u played\n", (unsigned)gl_thin_dropped(), (unsigned)gl_scope.notes);
 	return 0;

@@ -791,6 +791,94 @@ static int kit_rot_always;
  * Karplus drum's burst drawn as it is first read, on its own dice, instead of all at the hit) */
 static uint8_t kit_cheap;
 static uint32_t kit_r3 = 0x7F4A7C15u;   /* (the audition's own dice for the drum's burst) */
+#ifdef KIT_CACHE_AUDITION   /* (host builds only: its 29 KB of buffers stay out of the firmware) */
+/* audition (bit 4): the canvas kick played like a sampler. Three buffers, each one kick drawn at a
+ * reference pitch, level and decay; a kick of the same character (firmness, glide, the modes'
+ * spread and level, all rounded) plays a buffer back at its own pitch (the read rate), level (a
+ * gain) and decay (an envelope that shortens the recorded one); any other is made as before while
+ * a buffer draws it in quiet slices, a few milliseconds' worth a block */
+#define KCC_N 4800u                             /* 0.6 s, stored at 8 kHz (its modes stay under 700 Hz) */
+#define KCC_S 3                                 /* buffers */
+#define KCC_BG 32u                              /* drawn a block (in quiet ones) */
+typedef struct { float firm, glide, gk, spread, modes; } kc_key;
+static int16_t kc_buf[KCC_S][KCC_N];
+static kc_key kc_keys[KCC_S];
+static uint8_t kc_ready[KCC_S];
+static uint16_t kc_len[KCC_S];
+static float kc_scale[KCC_S], kc_f0[KCC_S], kc_tau[KCC_S];
+static uint32_t kc_used[KCC_S], kc_clock;
+static int kc_bg = -1;                          /* the buffer being drawn */
+static uint32_t kc_hits, kc_miss;
+void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss) { *hits = kc_hits; *miss = kc_miss; }
+static float kc_e[5], kc_dec[5], kc_bx[5], kc_by[5], kc_ba[5], kc_bglide;
+static uint32_t kc_bi;
+static int kc_same(const kc_key *a, const kc_key *b)
+{
+	return a->firm == b->firm && a->glide == b->glide && a->gk == b->gk && a->spread == b->spread && a->modes == b->modes;
+}
+/* drawn at the hit's own pitch and decay, at level 1 for the main mode */
+static void kc_start(int b, const kc_key *key, float f0, float tau)
+{
+	kc_keys[b] = *key;
+	kc_ready[b] = 0;
+	kc_f0[b] = f0;
+	kc_tau[b] = tau;
+	kc_bg = b;
+	kc_bi = 0;
+	float sum = 0.0f;
+	for (int m = 0; m < 5; m++) {
+		kc_e[m] = f0 * (1.0f + (K_MEM[m] - 1.0f) * key->spread) * (6.2832f / KSR);
+		kc_dec[m] = kexp(tau / kit_mem_div(m));
+		kc_bx[m] = 0.0f;
+		kc_by[m] = 1.0f;
+		kc_ba[m] = (m ? key->modes : 1.0f) * K_MEMA[m] * kit_firm_w(key->firm, m) * 1.3f;
+		sum += kc_ba[m];
+	}
+	kc_scale[b] = sum > 1e-6f ? 32000.0f / sum : 1.0f;
+	kc_bglide = key->glide;
+}
+/* a block's share of the drawing: the same recursive sines as the live kick, its glide a step a ms */
+static void kc_step(void)
+{
+	if (kc_bg < 0 || blk_since_step < 6)
+		return;                                       /* (not in the blocks right after a step) */
+	const kc_key *key = &kc_keys[kc_bg];
+	int16_t *buf = kc_buf[kc_bg];
+	const float sc = kc_scale[kc_bg];
+	float live = 1.0f;
+	for (uint32_t done = 0; done < KCC_BG && kc_bi < KCC_N && live >= 1e-3f; done += KSUB) {
+		const float g = 1.0f + kc_bglide;
+		kc_bglide *= key->gk;
+		float acc[KIT_KSUB];
+		for (uint32_t i = 0; i < KSUB; i++)
+			acc[i] = 0.0f;
+		live = 0.0f;
+		for (int m = 0; m < 5; m++) {
+			float x = kc_bx[m], y = kc_by[m], a = kc_ba[m];
+			if (a < 1e-3f)
+				continue;
+			const float e = kc_e[m] * g, dk = kc_dec[m];
+			for (uint32_t i = 0; i < KSUB; i++) {
+				x += e * y;
+				y -= e * x;
+				acc[i] += a * x;
+				a *= dk;
+			}
+			kc_bx[m] = x; kc_by[m] = y; kc_ba[m] = a;
+			live += a;
+		}
+		for (uint32_t i = 0; i < KSUB && kc_bi < KCC_N; i += 2)
+			buf[kc_bi++] = (int16_t)((acc[i] + acc[i + 1]) * 0.5f * sc);   /* (every two kit samples: one) */
+	}
+	if (kc_bi >= KCC_N || live < 1e-3f) {
+		kc_len[kc_bg] = (uint16_t)kc_bi;
+		kc_ready[kc_bg] = 1;
+		kc_bg = -1;
+	}
+}
+#else
+void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss) { *hits = *miss = 0; }
+#endif
 void gl_kit_cheap(int bits) { kit_cheap = (uint8_t)bits; }
 void gl_kit_rotate(int always) { kit_rot_always = always; }
 /* the rotation: the kick's hits played by the snare, the snare's by the hat, the hat's by the
@@ -924,7 +1012,8 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 	switch (lane) {
 	case 0: {   /* canvas kick: tension (REGISTER), damping (LENGTH), firmness (TONE), slack (CHARACTER) */
 		/* tuned: the chord's root, the one nearest D2 (73 Hz) */
-		float f0 = clampf((KT[KT_K_TUNED] >= 0.5f ? kit_hz(38 + ((chord_pc[0] - 38 + 66) % 12) - 6) : 73.4f) * oct * fexp2(KT[KT_K_PITCH] * (1.0f / 12.0f)), 30.0f, 200.0f) * (1.0f + 0.004f * kn());
+		float f0n = clampf((KT[KT_K_TUNED] >= 0.5f ? kit_hz(38 + ((chord_pc[0] - 38 + 66) % 12) - 6) : 73.4f) * oct * fexp2(KT[KT_K_PITCH] * (1.0f / 12.0f)), 30.0f, 200.0f);
+		float f0 = f0n * (1.0f + 0.004f * kn());
 		float damp = 0.8f - 0.6f * l, firm = 0.2f + 0.6f * t, slack = 0.1f + 0.7f * x;
 		float tau1 = (0.7f - damp * 0.6f) * (big ? 1.3f : 0.8f) * (press ? 0.55f : 1.0f) * KT[KT_K_DECAY];
 		/* fitted to the gap since the last kick: four on the floor rings short, a lone kick booms */
@@ -932,7 +1021,7 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 			tau1 = 1.0f / (1.0f / tau1 + KT[KT_K_FIT] / k->k_since);
 		k->k_since = 0.0f;
 		if (press)
-			f0 *= 1.15f;
+			f0 *= 1.15f, f0n *= 1.15f;
 		for (int m = 0; m < 5; m++) {
 			k->k_e[m] = f0 * (1.0f + (K_MEM[m] - 1.0f) * KT[KT_K_SPREAD]) * (6.2832f / KSR);
 			if (k->k_x[m] * k->k_x[m] + k->k_y[m] * k->k_y[m] < 0.5f)
@@ -942,6 +1031,52 @@ static void kit_fire(chan *c, int ch, int lane, float vel)
 		}
 		k->k_glide = press ? -0.18f : slack * 0.25f * KT[KT_K_SLACK];   /* (pressed: from below, rising) */
 		k->k_gk = kit_x2(-1.4427f / (0.03f * 1000.0f));   /* (once a millisecond) */
+		k->kc_play = 0;
+#ifdef KIT_CACHE_AUDITION
+		if ((kit_cheap & 4) && KT[KT_LICH_KICK] < 0.5f) {
+			/* (audition: its character rounded; pitch, level and decay played live) */
+			kc_key key;
+			key.firm = (float)(int)(firm * 5.0f + 0.5f) * 0.2f;
+			key.glide = (float)(int)(k->k_glide * 50.0f + (k->k_glide >= 0.0f ? 0.5f : -0.5f)) * 0.02f;
+			key.gk = k->k_gk;
+			key.spread = (float)(int)(KT[KT_K_SPREAD] * 20.0f + 0.5f) * 0.05f;
+			key.modes = (float)(int)(KT[KT_K_MODES] * 20.0f + 0.5f) * 0.05f;
+			int hitb = -1;
+			kc_clock++;
+			for (int b = 0; b < KCC_S; b++)
+				if (kc_ready[b] && kc_same(&kc_keys[b], &key) && f0n > kc_f0[b] * 0.944f && f0n < kc_f0[b] * 1.059f &&
+				    tau1 <= kc_tau[b] * 1.02f && tau1 > kc_tau[b] * 0.4f)
+					hitb = b;
+			if (hitb >= 0) {
+				kc_hits++;
+				kc_used[hitb] = kc_clock;
+				k->kc_play = 1;
+				k->kc_b = (uint8_t)hitb;
+				k->kc_pos = 0;
+				k->kc_fr = 0.0f;
+				k->kc_rate = 0.5f * f0 / kc_f0[hitb];           /* (the store at half the kit's rate) */
+				k->kc_g = vel * KT[KT_L_KICK] / kc_scale[hitb];
+				/* the recorded decay shortened to this one's (its main mode's) */
+				k->kc_dk = tau1 < kc_tau[hitb] ? fexp2(-6.644f * (1.0f / tau1 - 1.0f / kc_tau[hitb]) / KSR) : 1.0f;
+				for (int m = 0; m < 5; m++)
+					k->k_amp[m] = 0.0f;
+			} else {
+				kc_miss++;
+				if (kc_bg < 0) {
+					/* (drawn for next time, over the buffer longest unused and not playing, a
+					 * little longer than this one so shorter kicks can share it) */
+					int b = -1;
+					for (int j = 0; j < KCC_S; j++)
+						if (!(k->kc_play && k->kc_b == j) && (b < 0 || !kc_ready[j] || (kc_ready[b] && kc_used[j] < kc_used[b])))
+							b = j;
+					if (b >= 0) {
+						kc_used[b] = kc_clock;
+						kc_start(b, &key, f0n, tau1 * 1.5f);
+					}
+				}
+			}
+		}
+#endif
 		k->k_att = 0.0f;
 		k->k_ai = 1.0f / ((0.008f - firm * 0.007f) * KSR);
 		k->k_nz = vel * (press ? 0.35f : 0.75f) * KT[KT_K_CLICK] * KT[KT_L_KICK];
@@ -2031,6 +2166,33 @@ static int kit_render12(chan *c, float *A)
 		k->k_nz *= 0.5f;
 	}
 	/* canvas kick */
+#ifdef KIT_CACHE_AUDITION
+	if (kit_cheap & 4) {
+		kc_step();                                      /* (audition: the cache drawn a little) */
+		if (k->kc_play && !k->k_lich) {
+			any = 1;
+			const int16_t *buf = kc_buf[k->kc_b];
+			const uint32_t len = kc_len[k->kc_b];
+			uint32_t pos = k->kc_pos;
+			float fr = k->kc_fr, g = k->kc_g;
+			const float rate = k->kc_rate, dk = k->kc_dk;
+			for (uint32_t i = 0; i < KSUB && pos + 1u < len; i++) {
+				const float a0 = (float)buf[pos], a1 = (float)buf[pos + 1u];
+				A[i] += (a0 + (a1 - a0) * fr) * g * KE(0);
+				g *= dk;
+				fr += rate;
+				const uint32_t w = (uint32_t)fr;
+				pos += w;
+				fr -= (float)w;
+			}
+			k->kc_pos = (uint16_t)pos;
+			k->kc_fr = fr;
+			k->kc_g = g;
+			if (pos + 1u >= len || g * 32000.0f < 1e-3f)
+				k->kc_play = 0;
+		}
+	}
+#endif
 	if (!k->k_lich && (k->k_amp[0] > 1e-3f || k->k_nz > 1e-3f)) {
 		any = 1;
 		/* the five modes, recursive sines (the slack's glide once a block), into A */

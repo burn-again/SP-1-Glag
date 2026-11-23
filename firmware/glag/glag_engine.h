@@ -165,7 +165,8 @@ void gl_str_thin(int mask);          /* audition only: Strings thinned (bits: 1 
 void gl_song_drums(int style);       /* song mode's drums leaving: 0 fade, 1 longer, 2 peel, 3 peel + a fill into the reverb */
 void gl_kit_solo(int lanes);          /* audition only: the kit's lanes to play (bits; 0 all) */
 void gl_kit_color(int method);        /* audition only: the Kit's colour (0 none, 1 comb, 2 chord resonators, 3 through-zero FM, 4 soggy, 5 metal, 6 soggy + Chebyshev: the default, 7 a comb's soggy + Chebyshev on the low end) */
-void gl_kit_cheap(int bits);          /* audition only: cheaper Kit (1 the Nord at the kit's rate, smoothed jumps) */
+void gl_kit_cache_stats(uint32_t *hits, uint32_t *miss);   /* audition only: the kick cache's hits */
+void gl_kit_cheap(int bits);          /* audition only: cheaper Kit (1 the Nord at the kit's rate, smoothed jumps; 2 the drum's burst drawn as read; 4 the canvas kick from a cache) */
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_kit_tune(int id, float v);    /* the Kit tuning page: one of its numbers (glag_kit.h, KT_*) */
 int gl_kit_tunes(void);               /* how many there are */

@@ -218,6 +218,9 @@ typedef struct {
 	/* the Lich models (after TINY): which are on for the hit sounding, and their states */
 	uint8_t k_lich, h_lich, d_lich, t_lich, n_lich, ksd_on, rg_reg;
 	uint16_t ksd_fill;              /* (audition: how much of the drum's burst is drawn) */
+	uint8_t kc_play, kc_b;          /* (audition: the canvas kick played from its cache) */
+	uint16_t kc_pos;
+	float kc_g, kc_fr, kc_rate, kc_dk;
 	float ksd_amp;
 	uint16_t lf_reg, ksd_n, ksd_i;
 	uint32_t kl_ph;
