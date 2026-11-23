@@ -266,29 +266,51 @@ audio thread's load: `cyc avg=` and `max=` are percent of the 2 ms block. Glag l
 
 If a combination runs over, `FM_CAP` in `glag/glag_engine.c` (18 half-voices, i.e. 9 voices) is the knob.
 
-### The CPU test build
+### The hardware test build
 
 `release/test/glag-sp1-cputest-*.bin` (or build with `-DEXTRA_CONF_FILE=cputest.conf`) plays a
-fixed round by itself: Garden, then Shifted Metal, Warehouse, String Drum Mass and Harpsi Drill
-(carried as pieces 17-20 in this build only), each through five settings for 30 s apiece, 12.5
-minutes a round, round after round:
+script of 14 scenarios by itself, through the controls as a hand would (`glag/glag_test.h`), about
+15 minutes a round, round after round:
 
-| cfg | Setting |
-|---|---|
-| 0 | as released |
-| 1 | the space (echo and reverb) mixed into the voices at 24 kHz, one rate converter for both |
-| 2 | and the control layer (notes, envelopes, macros, song mode) every 2 ms instead of every 1 |
-| 3 | and the cheaper Kit (the Nord at the kit's rate, the Karplus drum's burst drawn as it is read) |
-| 4 | and the Hall on four of its own lines (the pieces on the Hall: Garden, Shifted Metal, String Drum Mass) |
+| # | Scenario | What it does |
+|---|---|---|
+| 1 | idle | Garden as it is, 20 s: the reference |
+| 2 | voices | every voice on all four channels at once, busiest and longest, 6 s each |
+| 3 | space | each reverb (and Shimmer's three intervals) all the way up from every channel, then with its reverse swells |
+| 4 | echo | the echo and reverb all the way up, at each echo time (the string's too), ping-pong every other |
+| 5 | hold | freeze, three cranks and the slow record, by FFWD and RWD |
+| 6 | dist | every distortion at every amount in every place, 2 s each, on Shifted Metal |
+| 7 | textures | rain, vinyl, tape hiss and surf at full, their controls swept |
+| 8 | playworld | song mode at its most random, the arp through its patterns, the pump and compressor at full, vinyl |
+| 9 | macros | every channel's macro at its deepest, quick then slow |
+| 10 | faders | the four faders swept on every page (Home, each channel, extended, Harmony, every Playworld page) |
+| 11 | midi | ~750 controllers a second, then a program every 1.5 s, then the tempo every 200 ms |
+| 12 | spikes | the piece, reverb, voice, distortion and echo time changed in quick succession |
+| 13 | album | 20 s tracks, one skipped by FFWD |
+| 14 | shuffle | 16 s tracks, some skipped: a fuzz test, every deal logged with the seeds that replay it |
 
-Each switch is announced (`GLAG TEST piece=... cfg=...`), and after every `AUD` line a `GLAG` line
-gives the load governor's state (`lean`: 0, or 1 when it has turned the two CPU options on by
-itself, 2 when it has also put the Hall on four lines and the Kit on its cheaper paths; `cap`: the
-voice cap in half-voices) and the same 5 s by part, as average/worst percent of the block: `ctl` the control layer, `vox`
-the voices but the Kit, `kit` the Kit, `spc` the echo and reverb, `out` the rest (mixing, rate
-conversion, the output), then the flash cache's misses per block. Let it run a full round with
-the console open and keep the log; it writes nothing anywhere, and any button press works as
-usual (the round carries on). `host/build/cputest_sim` plays the same round on a computer.
+Every line starts `GLAG T3`: `>` a scenario starts, `-` one of its steps (a voice, a reverb, a page)
+with its load and counts, and four `=` lines at its end:
+
+- the load: average and worst block, how many blocks ran past 90, 100, 150 and 200 % of their time,
+  and the governor (`lean`, `cap`: its leanest step and lowest voice cap);
+- what came out, before VOL: peak, level, DC, samples at the rail, clicks (a lone step much bigger than
+  the steps either side of it: a bright tone takes big steps too, but each like the last), the longest
+  silence, NaN, and the sample rate against the clock;
+- the engine: steps played against the steps the tempo asked for, notes, the most in one step, steals,
+  how far the reverb's input guard stepped in, and what the checks themselves cost;
+- the device: stream failures and restarts, every thread's free stack, the TX blocks left free.
+
+The load leaves the checks' own cost out (about 2 % of a block, shown on its own), so the governor
+sees what the release would. After every `AUD` line a `GLAG` line still gives the last 5 s by part.
+The script presses only FFWD and RWD, never ••, VOL or PLAY, so never a power gesture or a save; any
+real button (VOL aside) or a moved fader stops it at once, and it carries on 30 s after the last touch
+with the next scenario. The output is capped 6 dB under what VOL gives. It writes nothing anywhere.
+
+`host/build/hwtest` is its twin: the same script through the same controls and engine on a computer
+(`hwtest [ROUNDS] [OUT.wav] [SEED]`, `ONLY=name` for one scenario), the same lines with the load left
+at 0. What the twin shows too is the music; what only the device shows is the device. `run_tests.sh`
+runs one round of it (no NaN, 48 kHz throughout).
 
 ## CPU
 

@@ -719,8 +719,46 @@ static int fm_cap = FM_CAP, fm_dist = FM_CAP;   /* the cap now; the cap the dist
 static int gov_cap = FM_CAP, gov_cool;
 static uint8_t gov_lean;                    /* the governor's last resort (opts_eff, below) */
 static uint16_t gov_hot, gov_calm;
+#ifdef GL_PROF
+/* the hardware test's checks over a scenario (glag_test.h, gl_check_take) */
+static gl_check_t chk = {.ig_min = 1.0f, .cap_min = 99};
+static uint32_t chk_pw, chk_e[2], chk_last_cyc;   /* the last frame; the last two steps' energies */
+#if defined(__ARM_FEATURE_SIMD32)
+#include <arm_acle.h>
+#define chk_qsub16(a, b) ((uint32_t)__qsub16((int16x2_t)(a), (int16x2_t)(b)))
+#define chk_smuad(a, b) __smuad((int16x2_t)(a), (int16x2_t)(b))
+#define chk_smlad(a, b, c) __smlad((int16x2_t)(a), (int16x2_t)(b), (c))
+#define chk_smlald(a, b, c) ((uint64_t)__smlald((int16x2_t)(a), (int16x2_t)(b), (int64_t)(c)))
+static inline uint32_t chk_max16(uint32_t a, uint32_t b) { (void)__ssub16((int16x2_t)a, (int16x2_t)b); return (uint32_t)__sel((uint8x4_t)a, (uint8x4_t)b); }
+static inline uint32_t chk_min16(uint32_t a, uint32_t b) { (void)__ssub16((int16x2_t)b, (int16x2_t)a); return (uint32_t)__sel((uint8x4_t)a, (uint8x4_t)b); }
+#else
+static inline int32_t chk_lo(uint32_t w) { return (int16_t)(w & 0xFFFFu); }
+static inline int32_t chk_hi(uint32_t w) { return (int16_t)(w >> 16); }
+static inline uint32_t chk_pack(int32_t lo, int32_t hi) { return ((uint32_t)hi << 16) | ((uint32_t)lo & 0xFFFFu); }
+static inline int32_t chk_sat(int32_t x) { return x > 32767 ? 32767 : x < -32768 ? -32768 : x; }
+static inline uint32_t chk_qsub16(uint32_t a, uint32_t b) { return chk_pack(chk_sat(chk_lo(a) - chk_lo(b)), chk_sat(chk_hi(a) - chk_hi(b))); }
+static inline int32_t chk_smuad(uint32_t a, uint32_t b) { return (int32_t)((uint32_t)(chk_lo(a) * chk_lo(b)) + (uint32_t)(chk_hi(a) * chk_hi(b))); }
+static inline int32_t chk_smlad(uint32_t a, uint32_t b, int32_t c) { return c + chk_smuad(a, b); }
+static inline uint64_t chk_smlald(uint32_t a, uint32_t b, uint64_t c) { return c + (uint64_t)((int64_t)chk_lo(a) * chk_lo(b) + (int64_t)chk_hi(a) * chk_hi(b)); }
+static inline uint32_t chk_max16(uint32_t a, uint32_t b) { return chk_pack(chk_lo(a) > chk_lo(b) ? chk_lo(a) : chk_lo(b), chk_hi(a) > chk_hi(b) ? chk_hi(a) : chk_hi(b)); }
+static inline uint32_t chk_min16(uint32_t a, uint32_t b) { return chk_pack(chk_lo(a) < chk_lo(b) ? chk_lo(a) : chk_lo(b), chk_hi(a) < chk_hi(b) ? chk_hi(a) : chk_hi(b)); }
+#endif
+static uint32_t chk_silent, chk_nf0, chk_notes0;
+#define CHK(x) (x)
+#else
+#define CHK(x) ((void)0)
+#endif
 void gl_load(float frac)
 {
+#ifdef GL_PROF
+	chk.loads++;
+	chk.load_sum += frac;
+	chk.load_worst = frac > chk.load_worst ? frac : chk.load_worst;
+	chk.over90 += frac > 0.9f;
+	chk.over100 += frac > 1.0f;
+	chk.over150 += frac > 1.5f;
+	chk.over200 += frac > 2.0f;
+#endif
 	if (frac > 0.88f) {
 		gov_cap = gov_cap - 2 > 8 ? gov_cap - 2 : 8;
 		gov_cool = 0;
@@ -747,6 +785,10 @@ void gl_load(float frac)
 		}
 	} else
 		gov_calm = 0;
+#ifdef GL_PROF
+	chk.lean_max = gov_lean > chk.lean_max ? gov_lean : chk.lean_max;
+	chk.cap_min = gov_cap < chk.cap_min ? gov_cap : chk.cap_min;
+#endif
 }
 static chan CH[GL_NCH];
 static int chan_of(const nvoice *v)
@@ -855,6 +897,7 @@ static void make_room_w(const nvoice *keep, int w)
 	if (n + w > fm_cap && q) {
 		q->stage = ST_IDLE;                    /* its amplitude ramps to 0 in the next ms */
 		q->env = 0.0f;
+		CHK(chk.steals++);
 	}
 }
 static void make_room(const nvoice *keep) { make_room_w(keep, 2); }
@@ -3980,6 +4023,11 @@ static inline float macro_trem(int c)
 static void clock_step(int play)
 {
 	blk_since_step = 0;
+#ifdef GL_PROF
+	if (notes_fired - chk_nf0 > chk.step_notes_max)
+		chk.step_notes_max = notes_fired - chk_nf0;     /* (the step before's, crank included) */
+	chk_nf0 = notes_fired;
+#endif
 	step_nf0 = notes_fired;
 	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
 		chord_pending = 0;
@@ -4140,6 +4188,7 @@ static void control(float dt)
 	gl_beat = (float)(step_n & 3) * 0.25f + step_acc * 0.25f;
 	while (step_acc >= 1.0f) {
 		step_acc -= 1.0f;
+		CHK(chk.steps++);                     /* (the tempo's steps; the crank's are its own) */
 		clock_step(playing && !frozen);
 	}
 	/* the crank (RWD on Home while resting or frozen): on to the next step where something
@@ -4282,6 +4331,76 @@ static void cpu_opts_take(void)
 	user_ctl_n = pend_ctl_n;
 	opts_eff();
 }
+#ifdef GL_PROF
+/* the hardware test's checks on a block as it leaves (its own function: inlined, it changed how
+ * the compiler laid out the rest of gl_render, the reverb's loops among it) */
+static void __attribute__((noinline)) chk_block(const int16_t *lr, uint32_t n)
+{
+	/* what came out, before VOL: clicks, peak and clipping, DC, level, silence, NaN. A
+	 * click: one step (the two sides' together, as energy) over 2000 with the steps either
+	 * side of it under a quarter of it; a bright loud tone takes big steps too, but each
+	 * like the last. A stereo frame is one word, its two sides handled at once (the M4's
+	 * dual 16-bit instructions; the same sums in C elsewhere); DC and level from every fourth
+	 * frame: ~1 % of a block */
+	PROF_MARK(p_c);
+	uint32_t pw = chk_pw, e1 = chk_e[0], e2 = chk_e[1], emax = 0, clicks = 0;
+	uint32_t mx = 0x80008000u, mn = 0x7FFF7FFFu;
+	for (uint32_t i = 0; i < n; i++) {               /* every frame: clicks, the peak */
+		uint32_t w;
+		__builtin_memcpy(&w, &lr[2u * i], 4);   /* (one load, even where memcpy is a call) */
+		const uint32_t e0 = (uint32_t)chk_smuad(chk_qsub16(w, pw), chk_qsub16(w, pw));
+		if (__builtin_expect(e1 > 4000000u, 0) && (e1 >> 4) > e0 && (e1 >> 4) > e2) {
+			clicks++;
+			emax = e1 > emax ? e1 : emax;
+		}
+		e2 = e1;
+		e1 = e0;
+		mx = chk_max16(w, mx);
+		mn = chk_min16(w, mn);
+		pw = w;
+	}
+	int32_t sl = 0, sr = 0;
+	uint64_t sq = 0;
+	for (uint32_t i = 0; i < n; i += 4) {            /* every fourth: DC and level */
+		uint32_t w;
+		__builtin_memcpy(&w, &lr[2u * i], 4);
+		sl = chk_smlad(w, 0x00000001u, sl);
+		sr = chk_smlad(w, 0x00010000u, sr);
+		sq = chk_smlald(w, w, sq);
+	}
+	chk_pw = pw;
+	chk_e[0] = e1;
+	chk_e[1] = e2;
+	int32_t big = (int16_t)mx;
+	big = (int16_t)(mx >> 16) > big ? (int16_t)(mx >> 16) : big;
+	big = -(int16_t)mn > big ? -(int16_t)mn : big;
+	big = -(int16_t)(mn >> 16) > big ? -(int16_t)(mn >> 16) : big;
+	if (big >= 32500)                          /* (rare: the exact count) */
+		for (uint32_t i = 0; i < 2u * n; i++)
+			chk.clips += lr[i] >= 32500 || lr[i] <= -32500;
+	const float inv = 1.0f / (float)((n + 3u) >> 2 ? (n + 3u) >> 2 : 1u);   /* (the frames summed) */
+	chk.blocks++;
+	chk.samples += n;
+	chk.jumps += clicks;
+	chk.jump_max = emax > chk.jump_max ? emax : chk.jump_max;
+	chk.dc[0] += (float)sl * inv;
+	chk.dc[1] += (float)sr * inv;
+	chk.ms += (float)sq * 0.5f * inv;
+	chk.peak = (uint32_t)big > chk.peak ? (uint32_t)big : chk.peak;
+	if (big < 8) {
+		if (++chk_silent > chk.silent_max)
+			chk.silent_max = chk_silent;
+	} else
+		chk_silent = 0;
+	if (dc_y[0] != dc_y[0] || dc_y[1] != dc_y[1] || dc24_s[1] != dc24_s[1] || dc24_s[3] != dc24_s[3] ||
+	    svf_s[0][0] != svf_s[0][0] || svf_s[1][0] != svf_s[1][0] || rv.ig != rv.ig)
+		chk.nan++;
+	chk.ig_min = rv.ig < chk.ig_min ? rv.ig : chk.ig_min;
+	chk.beats += gl_tempo_bpm(P.g[GP_TEMPO]) * speed * (float)n * (1.0f / (60.0f * GL_SR));
+	chk_last_cyc = PROF_NOW() - p_c;
+	chk.cyc += chk_last_cyc;
+}
+#endif
 void gl_render(int16_t *lr, uint32_t n, float gain)
 {
 	const float dt = (float)GL_SUB / GL_SR;
@@ -4637,8 +4756,21 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		prof_miss_max = miss > prof_miss_max ? miss : prof_miss_max;
 		prof_n++;
 	}
+	chk_block(lr, n);
 #endif
 }
+#ifdef GL_PROF
+uint32_t gl_check_cost(void) { return chk_last_cyc; }
+void gl_check_take(gl_check_t *o)
+{
+	*o = chk;
+	o->notes = notes_fired - chk_notes0;
+	chk_notes0 = notes_fired;
+	const gl_check_t z = {.ig_min = 1.0f, .cap_min = 99};
+	chk = z;
+	chk_silent = 0;
+}
+#endif
 
 /* ================================================================ pieces */
 

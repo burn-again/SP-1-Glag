@@ -77,7 +77,12 @@ static uint8_t play_world_done;
 /* ---- demo mode: the album ---- */
 #define DEMO_HOLD_MS 10000u
 #define SHUF_HOLD_MS 20000u
+#ifdef GL_TEST_HOOKS
+static uint32_t demo_piece_ms = 120000u;        /* (the hardware test plays shorter tracks) */
+#define DEMO_PIECE_MS demo_piece_ms
+#else
 #define DEMO_PIECE_MS 120000u
+#endif
 #define DEMO_FADE_MS 4000u
 #define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
 #define DEMO_SEED 1234u                         /* the seed the clips were rendered with */
@@ -579,6 +584,33 @@ static void demo_track(uint32_t now)
 	trk_fresh_seed = demo_on == 1 ? DEMO_SEED : now * 2654435761u + 1u;
 	gl_fresh(trk_fresh_seed);
 }
+/* the album (1) or shuffle (2) from its first track */
+static void demo_start(int mode, uint32_t now, const gl_input *in)
+{
+	demo_on = mode;
+	if (demo_on == 2) {                      /* what shuffle will change, to put back after */
+		shuf_was[0] = (uint8_t)w_song; shuf_was[1] = (uint8_t)w_arp;
+		shuf_was[2] = (uint8_t)w_pump; shuf_was[3] = (uint8_t)w_tex;
+	}
+	demo_idx = 0;
+	if (demo_on == 1) {                          /* the album: the AMB-1 pieces, each in its key */
+		demo_n = DEMO_COUNT;
+		for (int i = 0; i < demo_n; i++)
+			demo_list[i] = (uint8_t)i;
+		gl_world(GW_KEY_HOLD, 1.0f);
+	} else {
+		shuffle_list(now);
+		gl_world(GW_KEY_HOLD, 0.0f);
+	}
+	demo_track(now);
+	uncatch_all(in);
+	demo_t0 = now;
+	demo_gain = 0.0f;
+	if (!playing) {
+		playing = 1;
+		gl_play(1);
+	}
+}
 /* the track playing in the album or shuffle: its piece, mode (0 none, 1 album, 2 shuffle) and the
  * two seeds that make it (the UI's dice before the deal, the engine's take) */
 void glui_track(int *piece, int *mode, uint32_t *ui_seed, uint32_t *fresh_seed)
@@ -824,29 +856,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	if (RELEASED(GB_PLAY) && play_world_done == 1 && !(prev_btn & (1u << GB_FN)) &&
 	    now - down_at[GB_PLAY] >= DEMO_HOLD_MS && !demo_on) {
 		go(play_prev_page, chan, in);                 /* (the Playworld step on the way is undone) */
-		demo_on = now - down_at[GB_PLAY] >= SHUF_HOLD_MS ? 2 : 1;
-		if (demo_on == 2) {                      /* what shuffle will change, to put back after */
-			shuf_was[0] = (uint8_t)w_song; shuf_was[1] = (uint8_t)w_arp;
-			shuf_was[2] = (uint8_t)w_pump; shuf_was[3] = (uint8_t)w_tex;
-		}
-		demo_idx = 0;
-		if (demo_on == 1) {                          /* the album: the AMB-1 pieces, each in its key */
-			demo_n = DEMO_COUNT;
-			for (int i = 0; i < demo_n; i++)
-				demo_list[i] = (uint8_t)i;
-			gl_world(GW_KEY_HOLD, 1.0f);
-		} else {
-			shuffle_list(now);
-			gl_world(GW_KEY_HOLD, 0.0f);
-		}
-		demo_track(now);
-		uncatch_all(in);
-		demo_t0 = now;
-		demo_gain = 0.0f;
-		if (!playing) {
-			playing = 1;
-			gl_play(1);
-		}
+		demo_start(now - down_at[GB_PLAY] >= SHUF_HOLD_MS ? 2 : 1, now, in);
 	}
 	if (RELEASED(GB_PLAY))
 		play_world_done = 0;
@@ -1283,3 +1293,87 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	(void)world_any_on;
 	prev_btn = btn;
 }
+
+#ifdef GL_TEST_HOOKS
+/* ---- the hardware test's hooks (glag_test.h): each scenario starts from a known state, set the
+ * way the gestures set it. The test build and its host twin only; nothing here saves. ---- */
+static void test_world(int sec, int st)
+{
+	int *w = sec == 0 ? &w_song : sec == 1 ? &w_arp : sec == 2 ? &w_pump : &w_tex;
+	*w = st;
+	if (sec == 0)
+		gl_world(GW_SONG, st ? 1.0f : 0.0f);
+	else if (sec == 1)
+		gl_world(GW_ARP, st ? 1.0f : 0.0f);
+	else if (sec == 2 && !st)
+		gl_world(GW_PUMP, 0.0f);
+	else if (sec == 3)
+		gl_world(GW_TEXTURE, (float)st);
+	if (st) {
+		world_apply_all(sec);
+		w_focus = sec;
+	} else
+		w_focus = w_song ? 0 : w_arp ? 1 : w_pump ? 2 : w_tex ? 3 : -1;
+}
+void glui_test(int op, int a, int b, float v, uint32_t now)
+{
+	gl_input in;
+	for (int f = 0; f < 4; f++)
+		in.fader[f] = last_pos[f];
+	in.buttons = 0;
+	switch (op) {
+	case GT_RESET:                                   /* as at power-on, on piece a */
+		demo_on = 0;
+		demo_gain = 1.0f;
+		demo_piece_ms = 120000u;
+		for (int k = 0; k < 4; k++)
+			test_world(k, 0);
+		gl_world(GW_AUTOF, 0.0f);
+		gl_world(GW_KEY_HOLD, 0.0f);
+		dist_type = dist_amt = dist_post = 0;
+		gl_dist(0, 0, 0);
+		freeze_on = freeze_latched = slow_on = 0;
+		gl_freeze(0);
+		gl_slow(0);
+		if (!playing) {
+			playing = 1;
+			gl_play(1);
+		}
+		load_piece(a);
+		go(PG_HOME, 0, &in);
+		break;
+	case GT_PIECE: load_piece(a); break;
+	case GT_VOICE: cur.voice[a & 3] = (uint8_t)((unsigned)b % GV_COUNT); dirty = 1; break;
+	case GT_CH: cur.ch[a & 3][b] = clampf_ui(v); dirty = 1; break;
+	case GT_G: cur.g[b] = clampf_ui(v); dirty = 1; break;
+	case GT_SPACE: cur.space[a] = (uint8_t)b; dirty = 1; break;
+	case GT_DIST:
+		dist_type = a;
+		dist_amt = b;
+		dist_post = (int)v;
+		gl_dist(dist_type, dist_amt, dist_post);
+		break;
+	case GT_WORLD: test_world(a & 3, b); break;
+	case GT_WORLDV: {                                /* a: the section, b: page * 4 + fader */
+		const int pg = (b >> 2) & 3, f = b & 3;
+		float *p = a == 0 ? &wv_song[pg][f] : a == 1 ? &wv_arp[f] : a == 2 ? &wv_pump[pg & 1][f] : &wv_tex[w_tex][f];
+		*p = clampf_ui(v);
+		world_apply(a, pg, f);
+		break;
+	}
+	case GT_FREEZE: freeze_on = freeze_latched = a != 0; gl_freeze(a != 0); break;
+	case GT_SLOW: slow_on = a != 0; gl_slow(a != 0); break;
+	case GT_MACRO: mac_step[a & 3] = b; mac_period[a & 3] = v; macro_post(a & 3); break;
+	case GT_DEMO:                                    /* a: 1 the album, 2 shuffle; b: each track, ms */
+		demo_piece_ms = (uint32_t)b;
+		demo_start(a, now, &in);
+		break;
+	case GT_PAGE:                                    /* a: the page, b: the channel (Playworld: the section) */
+		if (a == PG_WORLD)
+			w_focus = b;
+		go(a, a == PG_WORLD ? chan : b & 3, &in);
+		break;
+	case GT_SEED: seed = (uint32_t)a; break;
+	}
+}
+#endif

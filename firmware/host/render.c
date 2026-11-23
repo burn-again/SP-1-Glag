@@ -29,6 +29,8 @@ int main(int argc, char **argv)
 		for (int c = 0; c < GL_NCH && argv[5][c]; c++)
 			if (argv[5][c] == '0')
 				p.ch[c][CP_LEVEL] = 0.0f;
+	if (getenv("SPFLAGS"))   /* SPFLAGS=n: the space flags (1 reverse swells, 2 ping-pong; glag_engine.h) */
+		p.space[GL_SP_FLAGS] = (uint8_t)atoi(getenv("SPFLAGS"));
 	if (getenv("DRY")) { p.g[GP_REVERB] = 0; p.g[GP_DELAY] = 0; for (int c = 0; c < GL_NCH; c++) p.ch[c][CP_VERB] = p.ch[c][CP_ECHO] = 0; }
 	/* channel 1's activity, tone and character, for auditioning a voice */
 	if (getenv("ACT"))

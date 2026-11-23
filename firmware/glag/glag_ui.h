@@ -141,6 +141,20 @@ void glui_midi_tempo(float bpm);
 void glui_tick(uint32_t now_ms, const gl_input *in, gl_ui_out *out);
 /* the album's or shuffle's track: piece (-1 none), mode (1 album, 2 shuffle) and its two seeds */
 void glui_track(int *piece, int *mode, uint32_t *ui_seed, uint32_t *fresh_seed);
+#ifdef GL_TEST_HOOKS
+/* The hardware test's script (glag_test.h) sets the controls' state the way their gestures would,
+ * so each scenario starts from a known place. The test build and its host twin only; never saves.
+ *   GT_RESET a=piece              as at power-on (Playworld, distortion, freeze, slow, album off)
+ *   GT_PIECE a=piece              GT_VOICE a=ch b=voice      GT_CH a=ch b=CP_* v
+ *   GT_G b=GP_* v                 GT_SPACE a=GL_SP_* b       GT_DIST a=type b=amount v=placement
+ *   GT_WORLD a=section b=state    GT_WORLDV a=section b=page*4+fader v
+ *   GT_FREEZE a  GT_SLOW a        GT_MACRO a=ch b=step v=period s
+ *   GT_DEMO a=1 album|2 shuffle b=track ms     GT_PAGE a=page b=ch (Playworld: section)
+ *   GT_SEED a=the dice's seed */
+enum gl_test_op { GT_RESET, GT_PIECE, GT_VOICE, GT_CH, GT_G, GT_SPACE, GT_DIST, GT_WORLD, GT_WORLDV,
+                  GT_FREEZE, GT_SLOW, GT_MACRO, GT_DEMO, GT_PAGE, GT_SEED };
+void glui_test(int op, int a, int b, float v, uint32_t now);
+#endif
 
 #ifdef __cplusplus
 }

@@ -140,6 +140,16 @@ static volatile bool started;
 static K_SEM_DEFINE(start_sem, 0, 1);
 
 static struct sp1_audio_stats st;
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+static uint32_t t3_slab_min = 0xFFFFFFFFu;
+void sp1_audio_t3_slab(uint32_t *free_now, uint32_t *free_min, uint32_t *total)
+{
+	*free_now = k_mem_slab_num_free_get(&tx_slab);
+	*free_min = t3_slab_min;
+	*total = TX_QUEUE + 4u;
+	t3_slab_min = 0xFFFFFFFFu;
+}
+#endif
 static bool thread_made;
 
 static void jack_reset(void);   /* headphone detect, defined with its poll below */
@@ -348,7 +358,13 @@ static void tone_render(int16_t *out)
  * envelopes and effects keep running whatever the level. */
 static void fill_block(int16_t *b)
 {
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+	/* the test build: never louder than 6 dB under what VOL would give (its scenarios push
+	 * the distortion, the echo and the reverb all the way up) */
+	const int32_t target = TONE_AMP[tone_step] >> 1;
+#else
 	const int32_t target = TONE_AMP[tone_step];
+#endif
 
 	gl_render(b, BLK_FRAMES, 1.0f);
 
@@ -530,6 +546,12 @@ static void audio_thread(void *a, void *b, void *c)
 			if (k_mem_slab_alloc(&tx_slab, &blk, K_MSEC(100)) != 0) {
 				continue;                     /* slept 100 ms; re-check stop */
 			}
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+			{	/* the TX blocks left free (a leak would show as this creeping down) */
+				const uint32_t fr = k_mem_slab_num_free_get(&tx_slab);
+				t3_slab_min = fr < t3_slab_min ? fr : t3_slab_min;
+			}
+#endif
 
 #if defined(CONFIG_SP1_USB_AUDIO)
 			/* M5c: this block's place on the audio clock, taken as its render starts --
@@ -542,7 +564,13 @@ static void audio_thread(void *a, void *b, void *c)
 			const uint32_t m0 = NRF_NVMC->IMISS;
 #endif
 			fill_block((int16_t *)blk);
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+			/* the test build's output checks are left out (shown on their own): the load,
+			 * and the governor, as the release would see them */
+			const uint32_t cyc = DWT->CYCCNT - c0 - gl_check_cost();
+#else
 			const uint32_t cyc = DWT->CYCCNT - c0;
+#endif
 #if defined(CONFIG_SP1_GLAG)
 			gl_load((float)cyc / (float)cyc_budget);   /* Glag sounds fewer notes if it runs hot */
 #endif

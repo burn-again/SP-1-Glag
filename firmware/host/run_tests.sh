@@ -43,3 +43,17 @@ else
 	echo "(if meant: listen, then UPDATE_GOLDEN=1 sh host/run_tests.sh)"
 	exit 1
 fi
+
+# the hardware test's twin: one round of its script (glag/glag_test.h) through the controls and the
+# engine; no NaN anywhere, and every scenario at 48 kHz
+$CC -O2 -Wall -Wextra -Wno-unused-parameter -DGL_PROF -DGL_TEST_PIECES -DGL_TEST_HOOKS -I../glag \
+	-o "$OUT/hwtest" hwtest.c ../glag/glag_ui.c ../glag/glag_engine.c -lm
+"$OUT/hwtest" 1 > "$OUT/hwtest.log"
+n=$(grep -c '^GLAG T3 = .*: out ' "$OUT/hwtest.log")
+bad=$(grep '^GLAG T3 = .*: out ' "$OUT/hwtest.log" | grep -v 'nan 0 | 48000 Hz' || true)
+if [ "$n" -lt 14 ] || [ -n "$bad" ]; then
+	echo "hardware test twin: FAILED ($n scenarios)"
+	echo "$bad"
+	exit 1
+fi
+echo "hardware test twin: $n scenarios, no NaN, 48 kHz throughout ($OUT/hwtest.log)"

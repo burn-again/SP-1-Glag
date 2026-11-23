@@ -178,6 +178,24 @@ void gl_gov_state(int *cap, int *lean);
  * last take, in counter units per block */
 void gl_prof_hook(volatile const uint32_t *cycles, volatile const uint32_t *misses);
 void gl_prof_take(uint32_t avg[5], uint32_t worst[5], uint32_t *miss_avg, uint32_t *miss_worst, uint32_t *blocks);
+/* The hardware test's checks (glag_test.h), since the last take: how full the blocks ran (gl_load's
+ * shares: the device only), what came out (the render's own output, before the firmware's VOL)
+ * and the engine's counts. gl_check_take copies them and starts again. */
+typedef struct {
+	uint32_t loads, over90, over100, over150, over200;  /* gl_load calls; blocks past 90/100/150/200 % */
+	float load_sum, load_worst;
+	int lean_max, cap_min;                 /* the governor: its leanest step, its lowest voice cap */
+	uint32_t blocks, samples;              /* rendered */
+	uint32_t clips, jumps, jump_max, peak; /* samples at the rail (|s| >= 32500); clicks (a lone step > 2000), the biggest one's L² + R² */
+	uint32_t silent_max, nan;              /* the longest run of silent blocks (|s| < 8); blocks with a NaN */
+	float dc[2], ms;                       /* sums of each block's mean (L, R) and mean square */
+	uint32_t steps, step_notes_max, notes, steals;
+	float beats;                           /* beats the tempo asked for, over the samples rendered */
+	float ig_min;                          /* the reverb's input guard at its lowest (1: never stepped in) */
+	uint32_t cyc;                          /* counter units the checks themselves took */
+} gl_check_t;
+void gl_check_take(gl_check_t *o);
+uint32_t gl_check_cost(void);             /* the last block's checks, in counter units (left out of its load) */
 void gl_kit_cheap(int bits);          /* audition only: cheaper Kit (1 the Nord at the kit's rate, smoothed jumps; 2 the drum's burst drawn as read; 4 the canvas kick from a cache) */
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_kit_tune(int id, float v);    /* the Kit tuning page: one of its numbers (glag_kit.h, KT_*) */

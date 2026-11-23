@@ -176,5 +176,9 @@ struct sp1_audio_stats {
 	bool     hp_ok;          /* CS42L42 identified and configured            */
 };
 void sp1_audio_stats(struct sp1_audio_stats *out);
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+/* The test build: the TX blocks free now, the fewest free since the last call, how many there are. */
+void sp1_audio_t3_slab(uint32_t *free_now, uint32_t *free_min, uint32_t *total);
+#endif
 
 #endif /* SP1_AUDIO_H */

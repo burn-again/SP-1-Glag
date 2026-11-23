@@ -92,28 +92,10 @@
 static gl_ui_out g_glag_out;
 
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
-/* The CPU test build: after each AUD line, the last 5 s by part, and every 30 s the next setting. */
-static const char *const GLAG_TEST_NAME[5] = {
-	"0 as released",
-	"1 space mixed in at 24 kHz",
-	"2 + control every 2 ms",
-	"3 + cheaper Kit (Nord at kit rate, drum burst as read)",
-	"4 + Hall on four of its own lines",
-};
-/* each piece through all five settings, 30 s each: Garden (the Hall, no Kit), then the four
- * heaviest audition pieces, which this build carries as 17-20 (GL_TEST_PIECES) */
-static const uint8_t GLAG_TEST_PIECE[5] = {0u, 16u, 17u, 18u, 19u};
-static uint8_t glag_test_step = 0xFFu, glag_test_cfg, glag_test_win, glag_test_rv = 0xFFu;
-static void glag_test_apply(unsigned k)
-{
-	gl_cpu_opts(k >= 1u, k >= 2u ? 2 : 1);
-	gl_kit_cheap(k >= 3u ? 3 : 0);
-	const uint8_t rv = k >= 4u ? 13u : 0u;
-	if (rv != glag_test_rv) {             /* (only on a change: it lays the reverb out again) */
-		glag_test_rv = rv;
-		gl_rv_cut(rv);
-	}
-}
+/* The hardware test build (v3): the scenario script (glag_test.h, its twin host/hwtest.c) runs
+ * from the controls' tick below; after each AUD line, the last 5 s by part. */
+#define GLT_PRINTF printk
+#include "glag_test.h"
 static void glag_cpu_test_tick(uint32_t budget)
 {
 	uint32_t avg[5], worst[5], ma, mw, nb;
@@ -123,30 +105,65 @@ static void glag_cpu_test_tick(uint32_t budget)
 		a10[i] = budget ? (uint32_t)(((uint64_t)avg[i] * 1000u) / budget) : 0u;
 		w10[i] = budget ? (uint32_t)(((uint64_t)worst[i] * 1000u) / budget) : 0u;
 	}
-	if (glag_test_step != 0xFFu) {
-		int cap, lean;
-		gl_gov_state(&cap, &lean);
-		printk("GLAG cfg=%u lean=%d cap=%d ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
-		       " out=%u.%u/%u.%u  miss/blk avg=%u max=%u  blk=%u\n",
-		       glag_test_cfg, lean, cap,
-		       a10[0] / 10u, a10[0] % 10u, w10[0] / 10u, w10[0] % 10u,
-		       a10[1] / 10u, a10[1] % 10u, w10[1] / 10u, w10[1] % 10u,
-		       a10[2] / 10u, a10[2] % 10u, w10[2] / 10u, w10[2] % 10u,
-		       a10[3] / 10u, a10[3] % 10u, w10[3] / 10u, w10[3] % 10u,
-		       a10[4] / 10u, a10[4] % 10u, w10[4] / 10u, w10[4] % 10u,
-		       ma, mw, nb);
+	int cap, lean;
+	gl_gov_state(&cap, &lean);
+	printk("GLAG sc=%d lean=%d cap=%d ctl=%u.%u/%u.%u vox=%u.%u/%u.%u kit=%u.%u/%u.%u spc=%u.%u/%u.%u"
+	       " out=%u.%u/%u.%u  miss/blk avg=%u max=%u  blk=%u\n",
+	       glt_i + 1, lean, cap,
+	       a10[0] / 10u, a10[0] % 10u, w10[0] / 10u, w10[0] % 10u,
+	       a10[1] / 10u, a10[1] % 10u, w10[1] / 10u, w10[1] % 10u,
+	       a10[2] / 10u, a10[2] % 10u, w10[2] / 10u, w10[2] % 10u,
+	       a10[3] / 10u, a10[3] % 10u, w10[3] / 10u, w10[3] % 10u,
+	       a10[4] / 10u, a10[4] % 10u, w10[4] / 10u, w10[4] % 10u,
+	       ma, mw, nb);
+}
+/* a hand on the controls: a button held, or a fader moved past its noise since the last tick
+ * (VOL alone does not count: it is the output level, outside the script) */
+static float t3_fad[4];
+static bool t3_have_fad;
+static int glag_t3_real(const gl_input *gi)
+{
+	int moved = 0;
+	for (int f = 0; f < 4; f++) {
+		const float d = gi->fader[f] - t3_fad[f];
+		if (t3_have_fad && (d > 0.02f || d < -0.02f))
+			moved = 1;
+		t3_fad[f] = gi->fader[f];
 	}
-	if (glag_test_step == 0xFFu || ++glag_test_win >= 6u) {
-		glag_test_win = 0;
-		const uint8_t prev = glag_test_step;
-		glag_test_step = glag_test_step == 0xFFu ? 0u : (uint8_t)((glag_test_step + 1u) % 25u);
-		glag_test_cfg = (uint8_t)(glag_test_step % 5u);
-		const uint8_t piece = GLAG_TEST_PIECE[glag_test_step / 5u];
-		if (prev == 0xFFu || prev / 5u != glag_test_step / 5u)
-			glui_midi_program(piece);             /* (as a MIDI program change would) */
-		glag_test_apply(glag_test_cfg);
-		printk("GLAG TEST piece=%s cfg=%s\n", gl_piece_name(piece), GLAG_TEST_NAME[glag_test_cfg]);
+	t3_have_fad = true;
+	const uint16_t vol = (uint16_t)((1u << GB_VOLUP) | (1u << GB_VOLDN));
+	return moved || (gi->buttons & (uint16_t)~vol) != 0u;
+}
+/* after each scenario: what only the device can say. The stream, each thread's stack, the TX blocks */
+static uint32_t t3_fail0, t3_rst0, t3_blk0;
+static char t3_line[200];
+static int t3_n;
+static void t3_stack(const struct k_thread *t, void *user)
+{
+	ARG_UNUSED(user);
+	size_t unused = 0;
+	if (k_thread_stack_space_get(t, &unused) != 0 || t3_n > (int)sizeof(t3_line) - 32) {
+		return;
 	}
+	const char *nm = k_thread_name_get((k_tid_t)t);
+	t3_n += snprintk(t3_line + t3_n, sizeof(t3_line) - (size_t)t3_n, " %s %u/%u",
+			 (nm != NULL && nm[0] != '\0') ? nm : "?", (unsigned)unused,
+			 (unsigned)t->stack_info.size);
+}
+static void glag_t3_device(void)
+{
+	struct sp1_audio_stats as;
+	sp1_audio_stats(&as);
+	uint32_t fr, fmin, tot;
+	sp1_audio_t3_slab(&fr, &fmin, &tot);
+	printk("GLAG T3 = %s: stream fail %u rst %u blocks %u | tx free %u (fewest %u) of %u\n", glt_name,
+	       as.write_fails - t3_fail0, as.restarts - t3_rst0, as.blocks - t3_blk0, fr, fmin, tot);
+	t3_fail0 = as.write_fails;
+	t3_rst0 = as.restarts;
+	t3_blk0 = as.blocks;
+	t3_n = snprintk(t3_line, sizeof(t3_line), "GLAG T3 = %s: stack free", glt_name);
+	k_thread_foreach_unlocked(t3_stack, NULL);
+	printk("%s\n", t3_line);
 }
 #endif
 static uint32_t g_vol_show_ms;            /* VOL's level bar on the play row */
@@ -2415,6 +2432,13 @@ int main(void)
 				b |= sp1_button_held(SP1_BTN_VOL_DOWN) ? (1u << GB_VOLDN) : 0u;
 				b |= fnc ? (1u << GB_FN) : 0u;
 				gi.buttons = b;
+#if defined(CONFIG_SP1_GLAG_CPU_TEST)
+				/* the test's script: after the power gesture above (which never reads gi),
+				 * through the controls as a hand would; out of the way the moment a hand is on them */
+				if (glt_tick(k_uptime_get_32(), &gi, glag_t3_real(&gi)) == GLT_END) {
+					glag_t3_device();
+				}
+#endif
 
 				const gl_ui_out was = g_glag_out;
 				glui_tick(k_uptime_get_32(), &gi, &g_glag_out);
