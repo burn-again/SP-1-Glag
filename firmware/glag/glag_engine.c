@@ -77,12 +77,14 @@ static float mtof(float m)
 #ifndef VOICE_HALF
 #define VOICE_HALF 1                     /* 0: full rate, for measuring the half rate's cost on a computer */
 /* the control layer (envelopes, notes, macros, song mode) runs once every GL_CTL_N sub-blocks, its
- * ramps spread over that many; 1: every millisecond, as it was */
+ * ramps spread over that many (2: every 2 ms, measured on the SP-1 at 6.5 points cheaper than every
+ * millisecond and not heard); and the space mixed into the voices at 24 kHz, one half-band bringing
+ * both up (1.5 points; its own converter's images gone). Both the default since 0.7 */
 #ifndef GL_CTL_N
-#define GL_CTL_N 1
+#define GL_CTL_N 2
 #endif
 #ifndef GL_SPACE24
-#define GL_SPACE24 0
+#define GL_SPACE24 1
 #endif
 #define GL_SPACE24_DEF GL_SPACE24
 #endif
@@ -4173,6 +4175,7 @@ static float hb_l[11], hb_r[11];
 static const float HB[6] = {0.619623f, -0.166023f, 0.062933f, -0.021032f, 0.004843f, -0.000343f};
 #endif
 static float vd_s[2];                     /* the dark send */
+static float dc24_s[4];                   /* the DC blocker at 24 kHz: x and y, left and right */
 static float pu_l[GL_SUB], pu_r[GL_SUB];   /* the pulse's noise, at 48 kHz, added after the upsampling */
 static int pu_on;
 
@@ -4471,6 +4474,10 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			space_block(E, V, HL, HR, 1);           /* the space into the mix, at 24 kHz */
 			PROF_ADD(p_spc, p_s);
 		}
+		/* the ~10 Hz high-pass (DC blocker) at 24 kHz, on everything but the Pulse's noise (no
+		 * DC in it): half the work it took at 48 kHz. With distortion after the effects (it can
+		 * make DC) or the space added at 48 kHz, it stays at 48 kHz below */
+		const int dc24 = VOICE_HALF && opt_space24 && !(dist.amt && dist.post == 1);   /* (done as the half-band takes the samples in) */
 		/* back up to 48 kHz: each sample, and a half-band midpoint before it */
 #if !VOICE_HALF
 		for (uint32_t i = 0; i < GL_SUB; i++) {
@@ -4484,9 +4491,21 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				wl[k] = hb_l[k];
 				wr[k] = hb_r[k];
 			}
-			for (uint32_t i = 0; i < VSUB; i++) {
-				wl[11 + i] = HL[i];
-				wr[11 + i] = HR[i];
+			if (dc24) {
+				float xl = dc24_s[0], yl = dc24_s[1], xr = dc24_s[2], yr = dc24_s[3];
+				for (uint32_t i = 0; i < VSUB; i++) {
+					const float l = HL[i], r = HR[i];
+					yl = l - xl + 0.99740f * yl; xl = l;
+					yr = r - xr + 0.99740f * yr; xr = r;
+					wl[11 + i] = yl;
+					wr[11 + i] = yr;
+				}
+				dc24_s[0] = xl; dc24_s[1] = yl; dc24_s[2] = xr; dc24_s[3] = yr;
+			} else {
+				for (uint32_t i = 0; i < VSUB; i++) {
+					wl[11 + i] = HL[i];
+					wr[11 + i] = HR[i];
+				}
 			}
 			for (uint32_t i = 0; i < VSUB; i++) {
 				const float *a = wl + i, *b = wr + i;      /* a[0..11]: the 12 around this midpoint */
@@ -4568,17 +4587,31 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			comp_g = tgt;
 		}
 		int16_t *o = lr + 2u * base;
-		for (uint32_t i = 0; i < GL_SUB; i++) {
-			float l = L[i], r = R[i];
-			yl = l - xl + 0.9987f * yl; xl = l;      /* ~10 Hz high-pass */
-			yr = r - xr + 0.9987f * yr; xr = r;
-			l = clampf(yl * gain * cg, -1.0f, 1.0f);
-			r = clampf(yr * gain * cg, -1.0f, 1.0f);
-			cg += cgi;
-			l *= 1.5f - 0.5f * l * l;                 /* soft clip, 1.0 at full scale */
-			r *= 1.5f - 0.5f * r * r;
-			o[2u * i] = (int16_t)(l * 32000.0f);
-			o[2u * i + 1u] = (int16_t)(r * 32000.0f);
+		float gc = gain * cg;
+		const float gci = gain * cgi;                /* (the volume and the compressor as one gain) */
+		if (dc24) {
+			for (uint32_t i = 0; i < GL_SUB; i++) {
+				float l = clampf(L[i] * gc, -1.0f, 1.0f);
+				float r = clampf(R[i] * gc, -1.0f, 1.0f);
+				gc += gci;
+				l *= 1.5f - 0.5f * l * l;             /* soft clip, 1.0 at full scale */
+				r *= 1.5f - 0.5f * r * r;
+				o[2u * i] = (int16_t)(l * 32000.0f);
+				o[2u * i + 1u] = (int16_t)(r * 32000.0f);
+			}
+		} else {
+			for (uint32_t i = 0; i < GL_SUB; i++) {
+				float l = L[i], r = R[i];
+				yl = l - xl + 0.9987f * yl; xl = l;  /* ~10 Hz high-pass */
+				yr = r - xr + 0.9987f * yr; xr = r;
+				l = clampf(yl * gc, -1.0f, 1.0f);
+				r = clampf(yr * gc, -1.0f, 1.0f);
+				gc += gci;
+				l *= 1.5f - 0.5f * l * l;
+				r *= 1.5f - 0.5f * r * r;
+				o[2u * i] = (int16_t)(l * 32000.0f);
+				o[2u * i + 1u] = (int16_t)(r * 32000.0f);
+			}
 		}
 		for (uint32_t i = 0; i < GL_SUB; i += 8) {   /* a peak for the LEDs, sampled */
 			float a = L[i] > 0.0f ? L[i] : -L[i];
