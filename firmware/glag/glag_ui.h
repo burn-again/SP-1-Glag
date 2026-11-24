@@ -103,6 +103,8 @@ typedef struct {
 	uint8_t led_t[4];        /* track LEDs T1..T4, 0..255 */
 	uint8_t led_p[4];        /* play row, from the •• end to the PLAY end, 0..255 */
 	float volume;            /* 0..1: pass to gl_render() */
+	float fade;              /* 0..1: the album's and shuffle's fades alone (in volume already), for a
+	                          * firmware whose VOL is its own: pass this to gl_render() instead */
 	uint8_t save_slot;       /* 1..16: persist glui_saved(save_slot - 1) now; 0 = nothing */
 	uint8_t page, channel;   /* where the UI is (enum gl_page, 0..3) */
 	uint8_t piece;           /* 0..15 */
@@ -141,6 +143,10 @@ void glui_midi_tempo(float bpm);
 void glui_tick(uint32_t now_ms, const gl_input *in, gl_ui_out *out);
 /* the album's or shuffle's track: piece (-1 none), mode (1 album, 2 shuffle) and its two seeds */
 void glui_track(int *piece, int *mode, uint32_t *ui_seed, uint32_t *fresh_seed);
+/* As at power-on, on piece i (saved pieces kept): for every ON after standby. */
+void glui_restart(int i);
+/* The device's raw faders, smoothed and held still until a hand moves them; hold: keep them. */
+void glui_faders_condition(gl_input *in, int hold);
 #ifdef GL_TEST_HOOKS
 /* The hardware test's script (glag_test.h) sets the controls' state the way their gestures would,
  * so each scenario starts from a known place. The test build and its host twin only; never saves.

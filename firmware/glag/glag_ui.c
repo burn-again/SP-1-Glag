@@ -83,13 +83,17 @@ static uint32_t demo_piece_ms = 120000u;        /* (the hardware test plays shor
 #else
 #define DEMO_PIECE_MS 120000u
 #endif
-#define DEMO_FADE_MS 4000u
+#define DEMO_FADE_MS 16000u                     /* each side of a track: out, the switch in the quiet, in */
+#define DEMO_SKIP_MS 1500u                      /* FFWD / RWD: out this quickly ... */
+#define DEMO_SKIPIN_MS 4000u                    /* ... and the next in over this (and the first track) */
 #define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
 #define DEMO_SEED 1234u                         /* the seed the clips were rendered with */
 static int demo_on, demo_idx, demo_n, play_prev_page;   /* demo_on: 1 the album, 2 shuffle */
 static uint8_t demo_list[GL_NPIECES];
 static uint32_t demo_t0;
 static float demo_gain = 1.0f;
+static uint32_t demo_in = DEMO_SKIPIN_MS, demo_out = DEMO_FADE_MS, demo_end;   /* this track's fades; when it ends */
+static uint8_t demo_skipped;
 static int show = SH_MUSIC;
 static uint32_t show_until;
 static float show_val;
@@ -606,6 +610,10 @@ static void demo_start(int mode, uint32_t now, const gl_input *in)
 	uncatch_all(in);
 	demo_t0 = now;
 	demo_gain = 0.0f;
+	demo_in = DEMO_SKIPIN_MS;
+	demo_out = DEMO_FADE_MS;
+	demo_end = DEMO_PIECE_MS;
+	demo_skipped = 0;
 	if (!playing) {
 		playing = 1;
 		gl_play(1);
@@ -685,11 +693,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	/* ---- demo mode: its own rocker; any other press ends it (and does nothing else) ---- */
 	if (demo_on) {
 		uint32_t t = now - demo_t0;
-		if (PRESSED(GB_FFWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS)
-			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);     /* to the next: fading out now */
-		if (PRESSED(GB_RWD) && t < DEMO_PIECE_MS - DEMO_FADE_MS) {
-			demo_idx = (demo_idx + 2 * demo_n - 2) % demo_n;   /* the one before (the fade's switch adds one) */
-			demo_t0 = now - (DEMO_PIECE_MS - DEMO_FADE_MS);
+		if ((PRESSED(GB_FFWD) || PRESSED(GB_RWD)) && t + DEMO_SKIP_MS < demo_end) {
+			if (PRESSED(GB_RWD))
+				demo_idx = (demo_idx + 2 * demo_n - 2) % demo_n;   /* the one before (the switch adds one) */
+			demo_end = t + DEMO_SKIP_MS;                  /* to the next: out quickly, from where it is */
+			demo_out = DEMO_SKIP_MS;
+			demo_skipped = 1;
 		}
 		int stop = 0;
 		for (int b = GB_T1; b <= GB_PLAY; b++)
@@ -720,7 +729,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		                              (1u << GB_PLAY) | (1u << GB_FFWD) | (1u << GB_RWD)));
 		if (demo_on) {
 			t = now - demo_t0;
-			if (t >= DEMO_PIECE_MS) {                 /* the switch, in the quiet */
+			if (t >= demo_end) {                      /* the switch, in the quiet */
 				demo_idx = (demo_idx + 1) % demo_n;
 				if (demo_on == 2 && demo_idx == 0)
 					shuffle_list(now);               /* the whole list played: a new order */
@@ -728,9 +737,15 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				uncatch_all(in);
 				demo_t0 = now;
 				t = 0;
+				demo_in = demo_skipped ? DEMO_SKIPIN_MS : DEMO_FADE_MS;
+				demo_out = DEMO_FADE_MS;
+				demo_end = DEMO_PIECE_MS;
+				demo_skipped = 0;
 			}
-			float g = t < DEMO_FADE_MS ? (float)t / DEMO_FADE_MS :
-			          t > DEMO_PIECE_MS - DEMO_FADE_MS ? (float)(DEMO_PIECE_MS - t) / DEMO_FADE_MS : 1.0f;
+			/* in, and out toward the end: whichever is lower (a skip mid-fade carries on from there) */
+			const float gi = t < demo_in ? (float)t / (float)demo_in : 1.0f;
+			const float go = t >= demo_end ? 0.0f : demo_end - t < demo_out ? (float)(demo_end - t) / (float)demo_out : 1.0f;
+			const float g = gi < go ? gi : go;
 			demo_gain = g * g * (3.0f - 2.0f * g);
 		}
 	}
@@ -1271,6 +1286,7 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->volume = (float)vol / VOL_STEPS;
 	out->volume *= out->volume;                     /* steps that sound even */
 	out->volume *= demo_gain;                       /* the demo's fades */
+	out->fade = demo_gain;
 	out->page = (uint8_t)page;
 	out->channel = (uint8_t)chan;
 	out->piece = (uint8_t)piece;
@@ -1292,6 +1308,59 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->demo_ms = demo_on ? now - demo_t0 : 0;
 	(void)world_any_on;
 	prev_btn = btn;
+}
+
+/* As at power-on, on piece i: the album and shuffle, Playworld, the distortion, freeze, slow and
+ * rest all off, the piece as stock (or as saved), Home. The saved pieces stay. The firmware calls
+ * it on every ON: with USB in, "off" is only standby (the chip cannot power off on USB), and every
+ * change made would otherwise carry over, where on battery off is off. */
+void glui_restart(int i)
+{
+	demo_on = 0;
+	demo_gain = 1.0f;
+	w_song = w_arp = w_pump = w_tex = 0;
+	w_focus = -1;
+	gl_world(GW_SONG, 0.0f);
+	gl_world(GW_ARP, 0.0f);
+	gl_world(GW_PUMP, 0.0f);
+	gl_world(GW_TEXTURE, 0.0f);
+	gl_world(GW_AUTOF, 0.0f);
+	gl_world(GW_KEY_HOLD, 0.0f);
+	dist_type = dist_amt = dist_post = 0;
+	gl_dist(0, 0, 0);
+	freeze_on = freeze_latched = slow_on = 0;
+	gl_freeze(0);
+	gl_slow(0);
+	if (!playing) {
+		playing = 1;
+		gl_play(1);
+	}
+	load_piece(i);
+	undo_valid = 0;
+	page = PG_HOME;
+	show = SH_MUSIC;
+	dirty = 1;
+}
+
+/* The SP-1's faders come raw from its ADC, and the controls take a change of 0.8 % as a hand
+ * (a value shown, a light flashing). Each is smoothed (~25 ms) and held still until it moves more
+ * than 0.4 %: noise never gets through, a hand does at once. `hold`: keep them where they are (the
+ * firmware's readings while FFWD or RWD is held are corrected for the rail's sag, not clean). */
+void glui_faders_condition(gl_input *in, int hold)
+{
+	static float y[4], o[4];
+	static int have;
+	for (int f = 0; f < 4; f++) {
+		if (!have)
+			y[f] = o[f] = in->fader[f];
+		else if (!hold) {
+			y[f] += 0.35f * (in->fader[f] - y[f]);
+			if (y[f] - o[f] > 0.004f || o[f] - y[f] > 0.004f)
+				o[f] = y[f];
+		}
+		in->fader[f] = o[f];
+	}
+	have = 1;
 }
 
 #ifdef GL_TEST_HOOKS
@@ -1323,23 +1392,8 @@ void glui_test(int op, int a, int b, float v, uint32_t now)
 	in.buttons = 0;
 	switch (op) {
 	case GT_RESET:                                   /* as at power-on, on piece a */
-		demo_on = 0;
-		demo_gain = 1.0f;
 		demo_piece_ms = 120000u;
-		for (int k = 0; k < 4; k++)
-			test_world(k, 0);
-		gl_world(GW_AUTOF, 0.0f);
-		gl_world(GW_KEY_HOLD, 0.0f);
-		dist_type = dist_amt = dist_post = 0;
-		gl_dist(0, 0, 0);
-		freeze_on = freeze_latched = slow_on = 0;
-		gl_freeze(0);
-		gl_slow(0);
-		if (!playing) {
-			playing = 1;
-			gl_play(1);
-		}
-		load_piece(a);
+		glui_restart(a);
 		go(PG_HOME, 0, &in);
 		break;
 	case GT_PIECE: load_piece(a); break;

@@ -1654,6 +1654,10 @@ int main(void)
 			sp1_controls_scan();
 			k_msleep(SP1_TICK_MS);
 		}
+		/* every ON a fresh start, as on battery (where off is off): on USB, "off" is standby
+		 * and everything would carry over -- a tempo change, the album, rest, a stuck state */
+		glui_restart(0);
+		gl_fresh(k_cycle_get_32() | 1u);
 		glui_enter();
 		g_vol_show_ms = 0u;
 #endif
@@ -2409,6 +2413,7 @@ int main(void)
 					const float f = (float)sp1_fader_raw(i) * (1.0f / GLAG_FADER_FULL);
 					gi.fader[i] = f > 1.0f ? 1.0f : f;
 				}
+				glui_faders_condition(&gi, sp1_faders_compensated());   /* (raw ADC: noise held out) */
 				uint16_t b = 0u;
 				b |= sp1_button_held(SP1_BTN_T1) ? (1u << GB_T1) : 0u;
 				b |= sp1_button_held(SP1_BTN_T2) ? (1u << GB_T2) : 0u;
@@ -2433,6 +2438,7 @@ int main(void)
 
 				const gl_ui_out was = g_glag_out;
 				glui_tick(k_uptime_get_32(), &gi, &g_glag_out);
+				sp1_audio_glag_fade(g_glag_out.fade);   /* the album's fades */
 				const gl_patch *gp = glui_patch();
 				if (g_glag_out.page != was.page || g_glag_out.channel != was.channel) {
 					static const char *const pg[4] = { "HOME", "CHANNEL", "EXTENDED", "HARMONY" };

@@ -717,6 +717,7 @@ static int fm_cap = FM_CAP, fm_dist = FM_CAP;   /* the cap now; the cap the dist
  * 88 % the cap comes down a voice at a time (the quietest decaying notes give way), and after a
  * second under 72 % it goes back up. A safety net under the worst cases, never heard otherwise. */
 static int gov_cap = FM_CAP, gov_cool;
+static float gov_avg = 0.5f;            /* the load, averaged over ~16 blocks */
 static uint8_t gov_lean;                    /* the governor's last resort (opts_eff, below) */
 static uint16_t gov_hot, gov_calm;
 #ifdef GL_PROF
@@ -759,17 +760,26 @@ void gl_load(float frac)
 	chk.over150 += frac > 1.5f;
 	chk.over200 += frac > 2.0f;
 #endif
-	if (frac > 0.88f) {
+	/* on the load's ~32 ms average, not single blocks: one busy block is absorbed by the queue,
+	 * and on hardware Garden, at 82 % on average, crossed 88 % in single blocks all the time,
+	 * held the cap at its lowest and cut a ringing note every few seconds. Down a step while the
+	 * average is past 88 % or when one block runs past its time; up a step after 0.4 s with the
+	 * average under 84 % */
+	gov_avg += 0.0625f * (frac - gov_avg);
+	if (gov_avg > 0.88f || frac > 1.0f) {
 		gov_cap = gov_cap - 2 > 8 ? gov_cap - 2 : 8;
 		gov_cool = 0;
-	} else if (frac < 0.72f && gov_cap < FM_CAP && ++gov_cool >= (int)(GL_SR / 240.0f)) {
+	} else if (gov_avg < 0.84f) {
+		if (gov_cap < FM_CAP && ++gov_cool >= (int)(GL_SR / 240.0f)) {
+			gov_cool = 0;
+			gov_cap += 2;
+		}
+	} else
 		gov_cool = 0;
-		gov_cap += 2;
-	}
 	fm_cap = fm_dist < gov_cap ? fm_dist : gov_cap;
 	/* the last resort: still over with the cap down, for 25 blocks (50 ms at 2 ms): a step leaner
 	 * (taken at the start of the next block); 5 s under 0.7: a step back */
-	if (frac > 0.94f && gov_cap <= 12) {
+	if (gov_avg > 0.94f && gov_cap <= 12) {
 		if (++gov_hot >= 25u) {
 			gov_hot = 0;
 			gov_calm = 0;
@@ -778,7 +788,7 @@ void gl_load(float frac)
 		}
 	} else if (gov_hot)
 		gov_hot--;
-	if (frac < 0.70f && gov_lean) {
+	if (gov_avg < 0.70f && gov_lean) {
 		if (++gov_calm >= 2500u) {
 			gov_calm = 0;
 			gov_lean--;

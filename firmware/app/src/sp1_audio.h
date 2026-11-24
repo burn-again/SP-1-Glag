@@ -176,6 +176,12 @@ struct sp1_audio_stats {
 	bool     hp_ok;          /* CS42L42 identified and configured            */
 };
 void sp1_audio_stats(struct sp1_audio_stats *out);
+#if defined(CONFIG_SP1_GLAG)
+/* Glag's album and shuffle fades (gl_ui_out.fade), 0..1, taken by the next block. VOL stays
+ * the output level; until this the device ignored the fades (they were only in the controls'
+ * own volume, which the device does not use) and the album cut from track to track. */
+void sp1_audio_glag_fade(float g);
+#endif
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
 /* The test build: the TX blocks free now, the fewest free since the last call, how many there are. */
 void sp1_audio_t3_slab(uint32_t *free_now, uint32_t *free_min, uint32_t *total);

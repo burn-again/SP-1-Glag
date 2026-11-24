@@ -353,6 +353,8 @@ static void tone_render(int16_t *out)
 #endif
 
 #if defined(CONFIG_SP1_GLAG)
+static volatile float glag_fade = 1.0f;        /* the album's fades (main, from the controls) */
+void sp1_audio_glag_fade(float g) { glag_fade = g < 0.0f ? 0.0f : g > 1.0f ? 1.0f : g; }
 /* Glag: the engine renders stereo straight into the I2S block, then the same slewed output
  * gain (VOL) and peak meter as the other sources. The engine renders every block, so its
  * envelopes and effects keep running whatever the level. */
@@ -366,7 +368,7 @@ static void fill_block(int16_t *b)
 	const int32_t target = TONE_AMP[tone_step];
 #endif
 
-	gl_render(b, BLK_FRAMES, 1.0f);
+	gl_render(b, BLK_FRAMES, glag_fade);
 
 	const int32_t g0 = gain_cur;
 	int32_t d = target - g0;
