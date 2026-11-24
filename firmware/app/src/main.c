@@ -120,8 +120,8 @@ static void glag_cpu_test_tick(uint32_t budget)
 	 * governor, notes taken away, clicks, silences (to match a hiccup heard to a cause) */
 	gl_check_t w;
 	glt_window(&w);
-	printk("GLAG win >90=%u >100=%u >150=%u capmin=%d leanmax=%d notes=%u steals=%u clicks=%u max=%u silent=%ums nan=%u peak=%u\n",
-	       w.over90, w.over100, w.over150, w.cap_min, w.lean_max, w.notes, w.steals, w.jumps,
+	printk("GLAG win >90=%u >100=%u >150=%u capmin=%d leanmax=%d ducks=%u/%d notes=%u steals=%u clicks=%u max=%u silent=%ums nan=%u peak=%u\n",
+	       w.over90, w.over100, w.over150, w.cap_min, w.lean_max, w.ducks, w.duck_max, w.notes, w.steals, w.jumps,
 	       (unsigned)sqrtf((float)w.jump_max), w.blocks ? w.silent_max * (w.samples / w.blocks) / 48u : 0u,
 	       w.nan, w.peak);
 }

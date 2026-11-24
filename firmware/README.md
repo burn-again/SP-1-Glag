@@ -293,7 +293,7 @@ Every line starts `GLAG T3`: `>` a scenario starts, `-` one of its steps (a voic
 with its load and counts, and four `=` lines at its end:
 
 - the load: average and worst block, how many blocks ran past 90, 100, 150 and 200 % of their time,
-  and the governor (`lean`, `cap`: its leanest step and lowest voice cap);
+  and the governor (`lean`, `cap`, `duck`: its leanest step, lowest voice cap, and the channels it faded out and the most out at once);
 - what came out, before VOL: peak, level, DC, samples at the rail, clicks (a lone step much bigger than
   the steps either side of it: a bright tone takes big steps too, but each like the last), the longest
   silence, NaN, and the sample rate against the clock;
@@ -360,7 +360,9 @@ Harp and Harpsichord rows are the stress case (every channel at full activity an
 
 **A master compressor** (Playworld's `GW_COMP`, render with `WORLD=comp=0.5`; not yet on a control) glues the mix: a stereo-linked peak detector (10 ms in, 250 ms out) read once a millisecond, a threshold of -10 to -22 dBFS, a ratio of 1.5:1 to 6:1, a soft knee, a quarter of the reduction made up. It costs about 1 % of the CPU in the model and 12 bytes.
 
-A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools.
+A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools. Still over with the cap down, it leans (control every 2 ms and the space at 24 kHz; then the four-line Hall and the cheaper Kit). Still past 97 % with all that, the last resort: the heaviest channel sounding fades out over 0.15 s (a silent channel's voices are not rendered at all), then another if needed, one always playing on. A channel comes back, fading in over 2 s, after 3 calm seconds and only if the load has room for it; each time the same channel has to go again it waits twice as long (6, 12, 24 s), so a piece just past the line loses a channel for good rather than in and out. A new voice on a channel starts it afresh. So no setting can run the stream dry: the worst a player hears is a channel ducking out.
+
+What each voice costs, over the 49.5 % the space and output take on the model (one channel of it, at Garden's settings; the device runs about 1.3 times the model): Strings 15, Kit 14.5 (spikes to 29), Super 11, Harpsichord 5.5, Pad, Swell and Harp 5, Bells 4.5, Drone, Arp and Seq 4, Bass 3, Gong 2.5, Pulse 2 (spikes to 9), Ribbon 2, the rest 0.5 to 1.5. The extras: the surf texture 9, distortion 6 (any type or place), reverse 5, rain or tape hiss 5, the pump 2, the compressor 1; song mode 4 less, arp 2 less; Chamber 7 less than the Hall, Bloom 2.5, Shimmer 1.5. `gl_cost_est` sums these (the sixteen pieces come within 4 points of what they measure), and **shuffle keeps to 68** (about 88 % of the device, room left for the faders and macros): past it, what it dealt goes again, the texture first, then the distortion, the reverse swell, the pump, and a reverb heavier than the piece's own. On the sixteen that leaves distortion on about one track in five and a texture on one in six (from one in three each).
 
 The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). Among the FM voices, the heaviest case is four
 Bells channels at full activity with distortion on, under the Hall. If it

@@ -70,6 +70,8 @@ static void glt_merge(gl_check_t *a, const gl_check_t *c)
 	a->load_worst = c->load_worst > a->load_worst ? c->load_worst : a->load_worst;
 	a->lean_max = c->lean_max > a->lean_max ? c->lean_max : a->lean_max;
 	a->cap_min = c->cap_min < a->cap_min ? c->cap_min : a->cap_min;
+	a->ducks += c->ducks;
+	a->duck_max = c->duck_max > a->duck_max ? c->duck_max : a->duck_max;
 	a->blocks += c->blocks; a->samples += c->samples; a->clips += c->clips; a->jumps += c->jumps;
 	a->jump_max = c->jump_max > a->jump_max ? c->jump_max : a->jump_max;
 	a->peak = c->peak > a->peak ? c->peak : a->peak;
@@ -109,8 +111,8 @@ static void glt_step_end(void)
 	if (glt_step[0]) {
 		const gl_check_t *s = &glt_sub;
 		const float avg = s->loads ? s->load_sum / (float)s->loads * 100.0f : 0.0f;
-		GLT_PRINTF("GLAG T3 - %s %s: load %s%d.%d/%s%d.%d%% >100 %u lean %d cap %d | steals %u clip %u clicks %u (max %u) nan %u\n",
-		           glt_name, glt_step, T10(avg), T10(s->load_worst * 100.0f), s->over100, s->lean_max, s->cap_min,
+		GLT_PRINTF("GLAG T3 - %s %s: load %s%d.%d/%s%d.%d%% >100 %u lean %d cap %d duck %u/%d | steals %u clip %u clicks %u (max %u) nan %u\n",
+		           glt_name, glt_step, T10(avg), T10(s->load_worst * 100.0f), s->over100, s->lean_max, s->cap_min, s->ducks, s->duck_max,
 		           s->steals, s->clips, s->jumps, (uint32_t)sqrtf((float)s->jump_max), s->nan);
 	}
 	glt_merge(&glt_acc, &glt_sub);
@@ -422,9 +424,9 @@ static void glt_summary(void)
 	const gl_check_t *a = &glt_acc;
 	const char *nm = glt_name;
 	const float avg = a->loads ? a->load_sum / (float)a->loads * 100.0f : 0.0f;
-	GLT_PRINTF("GLAG T3 = %s: load avg %s%d.%d worst %s%d.%d%% | blocks %u >90 %u >100 %u >150 %u >200 %u | lean %d cap %d\n",
+	GLT_PRINTF("GLAG T3 = %s: load avg %s%d.%d worst %s%d.%d%% | blocks %u >90 %u >100 %u >150 %u >200 %u | lean %d cap %d duck %u/%d\n",
 	           nm, T10(avg), T10(a->load_worst * 100.0f), a->loads, a->over90, a->over100, a->over150, a->over200,
-	           a->lean_max, a->cap_min);
+	           a->lean_max, a->cap_min, a->ducks, a->duck_max);
 	const float nb = a->blocks ? (float)a->blocks : 1.0f;
 	const float rms = glt_db(sqrtf(a->ms / nb) * (1.0f / 32768.0f));
 	const float pk = glt_db((float)a->peak * (1.0f / 32768.0f));

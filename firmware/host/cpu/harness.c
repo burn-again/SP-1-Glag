@@ -46,6 +46,13 @@ int main(void)
 #ifdef KCOL
 	gl_kit_color(KCOL);
 #endif
+#ifdef WORLD1
+	gl_world(WORLD1, WORLD1V);
+#endif
+#ifdef WORLD2
+	gl_world(WORLD2, WORLD2V);
+#endif
+/* WORLDS: WORLD1/2 = a gl_world setting and its value */
 #ifdef COMP
 	gl_world(GW_COMP, 1.0f);
 #endif

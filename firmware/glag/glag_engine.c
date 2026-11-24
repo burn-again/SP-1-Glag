@@ -724,6 +724,24 @@ static int gov_cap = FM_CAP, gov_cool;
 static float gov_avg = 0.5f;            /* the load, averaged over ~16 blocks */
 static uint8_t gov_lean;                    /* the governor's last resort (opts_eff, below) */
 static uint16_t gov_hot, gov_calm;
+/* Past the leanest step, the very last resort: while the load stays past 97 % on average with
+ * everything already lean, the heaviest channel sounding fades out over 0.15 s (a silent channel's
+ * voices are not rendered, so its whole cost goes), and another after it if that was not enough
+ * (one always plays on). It comes back, fading in over 2 s, after 3 calm seconds and only if the
+ * load has room for it; each time the same channel has to go again it waits twice as long (up to
+ * 48 s), so a piece just past the line ducks a channel for good rather than in and out. A new
+ * voice on a channel starts it afresh. What each voice costs (GL_VCOST, half-points of the CPU,
+ * measured on the M4 model; gl_cost_est sums them) picks the channel. */
+const uint8_t GL_VCOST[GV_COUNT] = {
+	10, 9, 6, 2, 1, 8, 3, 2, 8,           /* pad bells bass piano marimba drone kalimba flute arp */
+	10, 2, 5, 2, 3, 2, 4,                 /* swell ep gong pizz shimmer tails pulse */
+	30, 2, 8, 22,                         /* strings glow seq super */
+	4, 3, 10, 11, 29                      /* ribbon funk harp harpsichord kit */
+};
+static float duck_g[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
+static uint8_t duck_mask, duck_order[GL_NCH], duck_n, duck_strike[GL_NCH];
+static uint16_t duck_hot;
+static uint32_t duck_calm;
 #ifdef GL_PROF
 /* the hardware test's checks over a scenario (glag_test.h, gl_check_take) */
 static gl_check_t chk = {.ig_min = 1.0f, .cap_min = 99};
@@ -753,6 +771,8 @@ static uint32_t chk_silent, chk_nf0, chk_notes0;
 #else
 #define CHK(x) ((void)0)
 #endif
+static float lvl_ch[GL_NCH];
+static void duck_gov(void);
 void gl_load(float frac)
 {
 #ifdef GL_PROF
@@ -799,6 +819,7 @@ void gl_load(float frac)
 		}
 	} else
 		gov_calm = 0;
+	duck_gov();
 #ifdef GL_PROF
 	chk.lean_max = gov_lean > chk.lean_max ? gov_lean : chk.lean_max;
 	chk.cap_min = gov_cap < chk.cap_min ? gov_cap : chk.cap_min;
@@ -3965,12 +3986,74 @@ static void dist_block(float *x, uint32_t n, int path)
 	}
 }
 
+/* the duck (above gl_load): which channel goes, and whether the last to go may come back */
+static int duck_fading(void)
+{
+	for (int c = 0; c < GL_NCH; c++)
+		if (duck_g[c] != ((duck_mask >> c) & 1u ? 0.0f : 1.0f))
+			return 1;
+	return 0;
+}
+static void duck_gov(void)
+{
+	int on = 0;
+	for (int c = 0; c < GL_NCH; c++)
+		on += !((duck_mask >> c) & 1u) && lvl_ch[c] > 0.0f;
+	if (gov_lean >= 2 && gov_avg > 0.97f && on > 1 && !duck_fading()) {
+		if (++duck_hot >= 50u) {                  /* 0.1 s of it */
+			duck_hot = 0;
+			duck_calm = 0;
+			int best = -1;
+			for (int c = 0; c < GL_NCH; c++)
+				if (!((duck_mask >> c) & 1u) && lvl_ch[c] > 0.0f &&
+				    (best < 0 || GL_VCOST[CH[c].voice] > GL_VCOST[CH[best].voice]))
+					best = c;
+			duck_mask |= (uint8_t)(1u << best);
+			duck_order[duck_n++] = (uint8_t)best;
+			if (duck_strike[best] < 4)
+				duck_strike[best]++;
+			CHK(chk.ducks++);
+		}
+	} else if (duck_hot)
+		duck_hot--;
+	if (duck_n && gov_avg < 0.80f && !duck_fading()) {
+		const int c = duck_order[duck_n - 1];
+		if (++duck_calm >= (1500u << (duck_strike[c] - 1u))) {   /* 3 s, 6, 12, 24 */
+			duck_calm = 0;
+			/* only if it fits: its cost, as a share of the block (the model's half-points, x1.3 on hardware) */
+			if (gov_avg + (float)GL_VCOST[CH[c].voice] * 0.0065f < 0.88f) {
+				duck_mask &= (uint8_t)~(1u << c);
+				duck_n--;
+			}
+		}
+	} else
+		duck_calm = 0;
+#ifdef GL_PROF
+	chk.duck_max = duck_n > chk.duck_max ? duck_n : chk.duck_max;
+#endif
+}
+/* a new voice on a channel: whatever its last voice did, it starts afresh */
+static void duck_clear(int c)
+{
+	if (!((duck_mask >> c) & 1u)) {
+		duck_strike[c] = 0;
+		return;
+	}
+	duck_mask &= (uint8_t)~(1u << c);
+	duck_strike[c] = 0;
+	int k = 0;
+	for (int i = 0; i < duck_n; i++)
+		if (duck_order[i] != c)
+			duck_order[k++] = duck_order[i];
+	duck_n = (uint8_t)k;
+}
+int gl_ducked(void) { return duck_mask; }
+
 static void reverse_block(float *WL, float *WR, uint32_t n);
 #include "glag_space.h"
 
 /* ================================================================ render */
 
-static float lvl_ch[GL_NCH];
 
 static void derive(void)
 {
@@ -4223,6 +4306,7 @@ static void control(float dt)
 			ch->fade -= dt / 0.03f;
 			if (ch->fade <= 0.0f) {
 				chan_reset(ch, P.voice[c] < GV_COUNT ? P.voice[c] : GV_PAD);
+				duck_clear(c);
 				if (ch->voice == GV_BELLS)
 					bells_fill(ch, c);
 			}
@@ -4254,7 +4338,9 @@ static void control(float dt)
 		chan_control(&CH[c], c, dt);
 		gl_glow[c] = CH[c].glow;
 		float l = P.ch[c][CP_LEVEL];
-		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c];
+		const float dg = (duck_mask >> c) & 1u ? -dt / 0.15f : dt / 2.0f;   /* the duck (duck_gov) */
+		duck_g[c] = clampf(duck_g[c] + dg, 0.0f, 1.0f);
+		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c] * duck_g[c];
 	}
 
 	/* the space (the patch-dependent parts are in derive()) */
@@ -4361,6 +4447,22 @@ static void opts_eff(void)
 	kit_lean_set(gov_lean >= 2 ? 3 : 0);
 }
 void gl_gov_state(int *cap, int *lean) { *cap = gov_cap; *lean = gov_lean; }
+/* (measured on the M4 model, each against Garden with the Hall: the 16 pieces come within about
+ * 2.5 points of what they measure as they play) */
+float gl_cost_est(const gl_patch *p, int dist, int tex, int pump)
+{
+	static const int8_t RV[GR_COUNT] = {0, -14, -3, -5};   /* hall, chamber, shimmer, bloom */
+	static const uint8_t TX[5] = {0, 10, 0, 10, 18};       /* rain, (vinyl), tape hiss, surf */
+	int h = 99 + RV[p->space[GL_SP_REVERB] < GR_COUNT ? p->space[GL_SP_REVERB] : 0];
+	for (int c = 0; c < GL_NCH; c++)
+		if (p->voice[c] < GV_COUNT && p->ch[c][CP_LEVEL] > 0.01f)
+			h += GL_VCOST[p->voice[c]];
+	h += p->space[GL_SP_FLAGS] & GL_FLAG_REVERSE ? 10 : 0;
+	h += dist ? 12 : 0;
+	h += tex > 0 && tex < 5 ? TX[tex] : 0;
+	h += pump ? 4 : 0;
+	return 0.5f * (float)h;
+}
 /* (taken at the start of the next block, so a change from another thread never lands mid-tick) */
 void gl_cpu_opts(int space24, int ctl_n)
 {

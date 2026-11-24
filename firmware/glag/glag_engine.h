@@ -173,6 +173,13 @@ void gl_cpu_opts(int space24, int ctl_n);
 /* the load governor's state: the voice cap (half-voices) and how lean it has gone (0 none, 1 the
  * CPU options, 2 and the four-line Hall and cheaper Kit) */
 void gl_gov_state(int *cap, int *lean);
+/* the governor's very last resort: the channels it has faded out (bits), until the load has room */
+int gl_ducked(void);
+/* what each voice costs, in half-points of the CPU (the M4 model; hardware runs about 1.3x), and
+ * a patch's estimated load in model points: 49.5 for the space and output, the voices, the reverb,
+ * the reverse swell, and the extras the caller names (distortion, a Playworld texture 1-4, pump) */
+extern const uint8_t GL_VCOST[];
+float gl_cost_est(const gl_patch *p, int dist, int tex, int pump);
 /* a test build (GL_PROF): each block's cost by part against a cycle counter, and flash-cache misses.
  * Parts: control, voices (but the Kit), the Kit, the space, the rest. Averages and worsts since the
  * last take, in counter units per block */
@@ -185,6 +192,8 @@ typedef struct {
 	uint32_t loads, over90, over100, over150, over200;  /* gl_load calls; blocks past 90/100/150/200 % */
 	float load_sum, load_worst;
 	int lean_max, cap_min;                 /* the governor: its leanest step, its lowest voice cap */
+	uint32_t ducks;                        /* channels the governor faded out (its very last resort) */
+	int duck_max;                          /* the most out at once */
 	uint32_t blocks, samples;              /* rendered */
 	uint32_t clips, jumps, jump_max, peak; /* samples at the rail (|s| >= 32500); clicks (a lone step > 2000), the biggest one's L² + R² */
 	uint32_t silent_max, nan;              /* the longest run of silent blocks (|s| < 8); blocks with a NaN */

@@ -487,8 +487,12 @@ static void shuffle_list(uint32_t now)
 	}
 }
 static uint8_t shuf_was[4];             /* Playworld's modes before shuffle: song, arp, pump, texture */
+/* what shuffle may add to a piece, in the engine's estimate (gl_cost_est, model points): 68 is
+ * about 88 % of the device, room left for the faders and the macros */
+#define SHUF_BUDGET 68.0f
 static void shuffle_settings(void)
 {
+	const uint8_t rv_own = cur.space[GL_SP_REVERB];
 	/* song mode, always, with an arrangement of its own */
 	for (int c = 0; c < 4; c++) {
 		wv_song[0][c] = 0.6f * urand();
@@ -570,6 +574,27 @@ static void shuffle_settings(void)
 	cur.g[GP_DELAY] = clampf_ui(cur.g[GP_DELAY] + 0.3f * (urand() - 0.5f));
 	cur.g[GP_REVERB] = clampf_ui(cur.g[GP_REVERB] + 0.3f * (urand() - 0.5f));
 	gl_world(GW_AUTOF, urand() < 0.2f ? 0.3f + 0.5f * urand() : 0.0f);
+	/* past the budget the heaviest extras go again: the texture, the distortion, the reverse
+	 * swell, the pump, then a reverb heavier than the piece's own. (On a piece already past it,
+	 * nothing is added at all.) */
+	for (int k = 0; k < 5 && gl_cost_est(&cur, dist_amt, w_tex, w_pump) > SHUF_BUDGET; k++)
+		if (k == 0 && w_tex) {
+			w_tex = 0;
+			gl_world(GW_TEXTURE, 0.0f);
+		} else if (k == 1 && dist_amt) {
+			dist_amt = 0;
+			gl_dist(dist_type, 0, dist_post);
+		} else if (k == 2)
+			cur.space[GL_SP_FLAGS] &= (uint8_t)~GL_FLAG_REVERSE;
+		else if (k == 3 && w_pump) {
+			w_pump = 0;
+			gl_world(GW_PUMP, 0.0f);
+		} else if (k == 4) {
+			gl_patch own = cur;
+			own.space[GL_SP_REVERB] = rv_own;
+			if (gl_cost_est(&own, dist_amt, w_tex, w_pump) < gl_cost_est(&cur, dist_amt, w_tex, w_pump))
+				cur.space[GL_SP_REVERB] = rv_own;
+		}
 	/* macros: about half the channels, at their own depth and pace */
 	for (int c = 0; c < 4; c++) {
 		mac_step[c] = urand() < 0.5f ? 1 + irand(MAC_STEPS) : 0;
