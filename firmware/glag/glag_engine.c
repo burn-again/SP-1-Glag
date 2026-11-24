@@ -208,6 +208,7 @@ typedef struct {
 	uint32_t pc3, pc4, ic3, ic4;
 	float f1, f2, fk, fq;
 	uint8_t mnote;                 /* the MIDI note it is playing, + 1 (0: none) */
+	float sfade;                   /* taken by the budget: fading out (1 .. 0; 0 not taken) */
 } nvoice;
 enum { ST_IDLE, ST_ATT, ST_DEC, ST_REL };
 
@@ -690,6 +691,7 @@ static void nv_trigger(nvoice *v, float note, float vel, float ratio, int side)
 		return;                                   /* (audition: thinned) */
 	v->note = ivl_note(chan_of(v), note);
 	v->mnote = 0;                  /* (MIDI tags its own notes after this) */
+	v->sfade = 0.0f;               /* (taken and fading: a new note keeps it) */
 	notes_fired++;
 	v->vel = vel;
 	v->ratio = ratio;
@@ -930,8 +932,8 @@ static void make_room_w(const nvoice *keep, int w)
 		int ns = nslots(ch->voice), st = stealable(ch->voice), cw = weight(ch->voice);
 		for (int i = 0; i < ns; i++) {
 			nvoice *v = &ch->v[i];
-			if (!sounding(v))
-				continue;
+			if (!sounding(v) || v->sfade > 0.0f)
+				continue;                          /* (one already fading is as good as gone) */
 			n += cw;
 			if (st && v != keep && v->amp < qa) {
 				qa = v->amp;
@@ -940,12 +942,36 @@ static void make_room_w(const nvoice *keep, int w)
 		}
 	}
 	if (n + w > fm_cap && q) {
-		q->stage = ST_IDLE;                    /* its amplitude ramps to 0 in the next ms */
-		q->env = 0.0f;
+		/* with the CPU at ease (the cap at its top), a note still ringing past a quarter is
+		 * left ringing and the new one plays a little over (a cap of FM_CAP + 4 at most): cut,
+		 * even over 10 ms, a loud bell was the skip in Tears in Rain, whose Super and Strings
+		 * fill the budget by themselves */
+		if (q->amp > 0.25f && fm_cap >= FM_CAP && n + w <= FM_CAP + 4)
+			return;
+		q->sfade = 1.0f;                       /* fades out over 10 ms (steal_fade) */
 		CHK(chk.steals++);
 	}
 }
 static void make_room(const nvoice *keep) { make_room_w(keep, 2); }
+/* a note the budget took: whatever its voice's control asked for this tick, scaled down, -60 dB
+ * in 10 ms, then silent and free (taken in 1 ms, a loud note clicked) */
+static void steal_fade(chan *c, float dt)
+{
+	for (int i = 0; i < NV; i++) {
+		nvoice *v = &c->v[i];
+		if (v->sfade <= 0.0f)
+			continue;
+		const float end = v->amp + v->ainc / ctl_inv;   /* where its control is taking it */
+		v->sfade *= dcoef(0.010f, dt);
+		if (v->sfade < 0.001f) {
+			v->sfade = 0.0f;
+			v->stage = ST_IDLE;
+			v->env = 0.0f;
+			v->ainc = -v->amp * ctl_inv;
+		} else
+			v->ainc = (end * v->sfade - v->amp) * ctl_inv;
+	}
+}
 
 /* set this sub-block's ramps toward amplitude `a` and index `i`. A voice that has faded
  * is snapped to exactly zero, or float rounding would leave it rendering forever. */
@@ -4489,6 +4515,7 @@ static void control(float dt)
 	}
 	for (int c = 0; c < GL_NCH; c++) {
 		chan_control(&CH[c], c, dt);
+		steal_fade(&CH[c], dt);
 		gl_glow[c] = CH[c].glow;
 		float l = P.ch[c][CP_LEVEL];
 		const float dg = (duck_mask >> c) & 1u ? -dt / 0.15f : dt / 2.0f;   /* the duck (duck_gov) */
@@ -5238,7 +5265,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	{"Long Haul", {GV_PIZZ, GV_TAILS, GV_SWELL, GV_GONG},
 	 {{55, 40, 25, 75, 60, 55, 40, 100, 70}, {30, 50, 75, 50, 40, 75, 60, 50, 68},
 	  {40, 40, 80, 25, 20, 80, 50, 70, 62}, {25, 45, 75, 50, 10, 70, 50, 0, 65}},
-	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},
+	 {50, 55, 75, 50, 9, 7, 40, 60}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 0, {0, 0, 0, 0}, 0, 0, {0, 0, 0, 0}, 0},   /* (on the Chamber: about 9 % less of the device than the Hall, which the first eight keep) */
 #ifdef GL_DEMO_PIECES
 	/* ---- audition only: six in styles (not in the firmware yet) ---- */
 	/* Berlin school: three Arp loops against each other in sixteenths, on the chord's root,
