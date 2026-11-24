@@ -2642,6 +2642,32 @@ static int kit_render(chan *c, float *A, float *B)
 #elif KIT_KSUB * 3 == 48
 	/* 16 to 24 kHz: three out for every two in (at 2/3 and 1/3 of the way, then on the sample) */
 	float p = c->kt.up_prev, lp = c->kt.up_lp;
+	static float sp_prev;
+	int sides_done = 0;
+	if (kit_side_on) {
+		/* with the chorus's spread: the sides in the same pass, the same sums in the same order
+		 * as the two passes they replace (the kit in both at half, the spread added to the left
+		 * and taken from the right, brought up from the kit's rate the same way) */
+		const float o = 0.5f * KT[KT_OUT], dk = kit_cho_duck;
+		float q = sp_prev;
+		for (uint32_t i = 0, j = 0; i < KSUB; i += 2, j += 3) {
+			const float b0 = b[i], b1 = b[i + 1], s0 = kit_side[i], s1 = kit_side[i + 1];
+			float m, d;
+			lp += 0.62f * (p + 0.6667f * (b0 - p) - lp);
+			m = 0.5f * dk * (A[j] + lp); d = (q + 0.6667f * (s0 - q)) * o * dk;
+			A[j] = m + d; B[j] = m - d;
+			lp += 0.62f * (b0 + 0.3333f * (b1 - b0) - lp);
+			m = 0.5f * dk * (A[j + 1] + lp); d = (s0 + 0.3333f * (s1 - s0)) * o * dk;
+			A[j + 1] = m + d; B[j + 1] = m - d;
+			lp += 0.62f * (b1 - lp);
+			m = 0.5f * dk * (A[j + 2] + lp); d = s1 * o * dk;
+			A[j + 2] = m + d; B[j + 2] = m - d;
+			p = b1;
+			q = s1;
+		}
+		sp_prev = kit_side[KSUB - 1];
+		sides_done = 1;
+	} else
 	for (uint32_t i = 0, j = 0; i < KSUB; i += 2, j += 3) {
 		const float b0 = b[i], b1 = b[i + 1];
 		lp += 0.62f * (p + 0.6667f * (b0 - p) - lp);
@@ -2668,8 +2694,12 @@ static int kit_render(chan *c, float *A, float *B)
 #endif
 	/* the two sides: the kit in both at half (a stereo voice's level), the chorus's spread added to
 	 * the left and taken from the right (brought up from the kit's rate like the rest) */
+#if KIT_KSUB * 3 != 48
 	static float sp_prev;
-	if (kit_side_on) {
+	const int sides_done = 0;
+#endif
+	if (sides_done) {
+	} else if (kit_side_on) {
 		const float o = 0.5f * KT[KT_OUT];
 		float sd[VSUB];
 #if KIT_KSUB * 3 == 48
