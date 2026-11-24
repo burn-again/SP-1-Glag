@@ -559,15 +559,19 @@ static int drop_cap;
 /* audition: one chorus for the Strings and the Kit (1 the Juno's way, 2 the Kit's two swaying taps),
  * fed from both channels after their levels, instead of one each */
 static uint8_t cho_share;
-/* The light versions, for a patch past the CPU budget (lite_update): the Strings' whole channel at
- * 12 kHz (its notes, filter and chorus; then back to 24), the Super's outer pair of saws plain
- * (their steps not smoothed: the same level, a little more alias under its filter), the Kit as
- * it plays under the load governor (its colour lanes, ghosts, fills and chorus out) and its morph
- * table recomputed only when its macro moves. Decided when a patch, a voice
- * or the distortion changes, never by the load, so a piece does not change sound as it plays. */
-static uint8_t lite_mask, lite_mode = 1;   /* channels light; 0 by the budget, 1 never (for now: until the light versions are heard), 2 every one it can */
+/* The light Strings and Super (on by default): the Strings' whole channel at 12 kHz (its notes,
+ * filter and chorus; then back to 24), the Super's outer pair of saws plain (their steps not
+ * smoothed: the same level, a little more alias under its filter). They cost 4.6 and 2.2 points
+ * of a channel less. The full ones are kept: GL_LITE_DEFAULT=1 (or gl_lite(1)) brings them back,
+ * gl_lite(0) uses the light ones only past the CPU budget (lite_update). (A light Kit was tried,
+ * as it plays under the governor, and dropped: by ear it was much worse.) */
+#ifndef GL_LITE_DEFAULT
+#define GL_LITE_DEFAULT 2
+#endif
+static uint8_t lite_mask, lite_mode = GL_LITE_DEFAULT;   /* channels light; 0 by the budget, 1 never (the full ones), 2 every one it can */
 void gl_lite(int mode) { lite_mode = (uint8_t)mode; }
 int gl_lite_mask(void) { return lite_mask; }
+int gl_lite_default(void) { return GL_LITE_DEFAULT; }
 #define LITE(c) ((lite_mask >> (c)) & 1u)
 void gl_cho_share(int m) { cho_share = (uint8_t)m; }
 static float shc_ring[512], shc_hp, shc_ph, shc_bus[GL_SUB];
@@ -4303,7 +4307,7 @@ static inline float macro_trem(int c)
 /* which channels play light (above, LITE): past the budget (the same 68 model points shuffle keeps
  * to, about 88 % of the device) the voice that saves most goes light first, then the next, until
  * the estimate fits or none is left that can. LITE_SAVE: what each saves, in half-points */
-static const uint8_t LITE_SAVE[GV_COUNT] = {[GV_STRINGS] = 9, [GV_SUPER] = 4, [GV_KIT] = 9};   /* (measured: 4.6, 2.2, 4.5) */
+static const uint8_t LITE_SAVE[GV_COUNT] = {[GV_STRINGS] = 9, [GV_SUPER] = 4};   /* (measured: 4.6, 2.2) */
 #define LITE_BUDGET 68.0f
 static void lite_update(void)
 {

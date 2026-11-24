@@ -384,19 +384,19 @@ static void sc_album(uint32_t t)
 }
 /* shuffle, 16 s tracks, now and then one skipped by FFWD: a fuzz test, every deal logged */
 static uint32_t glt_skip_at;
-/* the light versions against the full: Strings, Kit and Super four at a time (every channel busy
- * and long), full then light; then the three heaviest pieces full, light by the budget, and every
- * channel light that can be. 10 s each, the governor's ducks cleared at each (so each reading
- * starts from the same place); the light versions back off at the end */
+/* the light Strings and Super against the full: each four at a time (every channel busy and long),
+ * full then light; then the three heaviest pieces full, light by the budget, and every channel
+ * light that can be. 10 s each, the governor's ducks cleared at each (so each reading starts from
+ * the same place); the build's own mode back at the end */
 static void sc_light(uint32_t t)
 {
-	static const struct { uint8_t piece, voice, mode; } L[15] = {
-		{0, GV_STRINGS, 1}, {0, GV_STRINGS, 2}, {0, GV_KIT, 1}, {0, GV_KIT, 2}, {0, GV_SUPER, 1}, {0, GV_SUPER, 2},
+	static const struct { uint8_t piece, voice, mode; } L[13] = {
+		{0, GV_STRINGS, 1}, {0, GV_STRINGS, 2}, {0, GV_SUPER, 1}, {0, GV_SUPER, 2},
 		{16, 0xFF, 1}, {16, 0xFF, 0}, {16, 0xFF, 2}, {17, 0xFF, 1}, {17, 0xFF, 0}, {17, 0xFF, 2},
 		{18, 0xFF, 1}, {18, 0xFF, 0}, {18, 0xFF, 2},
 	};
 	static const char *const MODE[3] = {"by budget", "full", "all light"};
-	if (EVERY(10000) && STEP(10000) < 15u) {
+	if (EVERY(10000) && STEP(10000) < 13u) {
 		const int k = (int)STEP(10000);
 		gl_lite(L[k].mode);
 		glui_test(GT_PIECE, L[k].piece, 0, 0.0f, glt_now);
@@ -419,8 +419,8 @@ static void sc_light(uint32_t t)
 		nm[n] = 0;
 		glt_mark(nm, MODE[L[k].mode]);
 	}
-	if (AT(149000))
-		gl_lite(1);
+	if (AT(129000))
+		gl_lite(gl_lite_default());
 }
 static void sc_shuffle(uint32_t t)
 {
@@ -453,7 +453,7 @@ static const glt_scene GLT_SCENES[] = {
 	{"spikes", 28, 0, sc_spikes},
 	{"album", 64, 0, sc_album},
 	{"shuffle", 192, 0, sc_shuffle},
-	{"light", 150, 0, sc_light},
+	{"light", 130, 0, sc_light},
 };
 #define GLT_N ((int)(sizeof GLT_SCENES / sizeof GLT_SCENES[0]))
 

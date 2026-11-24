@@ -1535,7 +1535,7 @@ static void kit_step(chan *c, int ch, uint32_t step)
 	const float h = eff_activity(ch), x = P.ch[ch][CP_CHAR];
 	const int s16 = (int)(step % 16u);
 	/* the load governor stepping in (a block past 88 %): the core plays on, the colour waits */
-	const int lean = (gov_cap < FM_CAP || LITE(ch)) && !kit_solo;   /* (and the light Kit: lite_update) */
+	const int lean = gov_cap < FM_CAP && !kit_solo;
 	const int phrase = (int)(step % 64u);                 /* four bars: the accents land here */
 	const float step_s = 15.0f / gl_tempo_bpm(P.g[GP_TEMPO]) * (float)(GL_CHX_DIV(P.chx[ch]) + 1u);
 	/* the rotation: at a phrase's start, at full macro (now and then), each segment a bar, half
@@ -2133,16 +2133,7 @@ static int kit_render12(chan *c, float *A)
 	float eg[8][KSUB];
 	unsigned ea = 0;
 	kit_map_prepare();                                   /* (the next beat's map blend, while it's quiet) */
-	/* (the macro's morph and the weird window, this channel's; the light Kit only when either has
-	 * moved, or another Kit set the table last) */
-	static float km_m = -1.0f, km_w = -1.0f;
-	static chan *km_c;
-	if (!LITE(c - CH) || km_c != c || (k->morph - km_m) * (k->morph - km_m) > 4e-6f || (k->weird - km_w) * (k->weird - km_w) > 4e-6f) {
-		kit_morph(k->morph, k->weird);
-		km_m = k->morph;
-		km_w = k->weird;
-		km_c = c;
-	}
+	kit_morph(k->morph, k->weird);                       /* (the macro's morph and the weird window, this channel's) */
 	for (int s = 0; s < 8; s++)
 		ea |= (unsigned)kit_env(k, s, eg[s]) << s;
 	/* the hits waiting off the grid */
@@ -2602,13 +2593,10 @@ nord_done:
 		k->r_acc = acc; k->r_held = held;
 	}
 	/* (the chorus sits out with the colour under the load governor) */
-	const int cho = KT[KT_CHO_MIX] > 0.0f && ((gov_cap >= FM_CAP && !LITE(c - CH)) || kit_solo) && !cho_share;
+	const int cho = KT[KT_CHO_MIX] > 0.0f && (gov_cap >= FM_CAP || kit_solo) && !cho_share;
 	kit_side_on = (uint8_t)(cho && KT[KT_CHO_WIDE] > 0.0f);
 	if (cho)
 		kit_chorus(A);
-	else if (LITE(c - CH) && KT[KT_CHO_MIX] > 0.0f && !cho_share)
-		for (uint32_t i = 0; i < KSUB; i++)
-			A[i] *= 0.8f;                             /* (the light Kit: the level its chorus would leave it at) */
 	if (KT[KT_COL] >= 0.5f && (any || k->c_tail > 1e-4f)) {
 		kit_color(c, A);
 		any = 1;

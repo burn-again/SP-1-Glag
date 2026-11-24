@@ -563,6 +563,12 @@ static void shuffle_settings(void)
 		cur.space[GL_SP_REVERB] = (uint8_t)irand(GR_COUNT);
 		cur.space[GL_SP_SHIMMER] = (uint8_t)irand(GS_COUNT);
 	}
+	/* a heavy voice (Strings, Kit, Super) never sits on the Hall: the Chamber instead (about 9 %
+	 * of the device less) */
+	for (int c = 0; c < 4; c++)
+		if ((cur.voice[c] == GV_STRINGS || cur.voice[c] == GV_KIT || cur.voice[c] == GV_SUPER) &&
+		    cur.space[GL_SP_REVERB] == GR_HALL)
+			cur.space[GL_SP_REVERB] = GR_CHAMBER;
 	uint8_t fl = cur.space[GL_SP_FLAGS] & (uint8_t)~(GL_FLAG_REVERSE | GL_FLAG_PINGPONG);
 	if (urand() < 0.25f)
 		fl |= GL_FLAG_REVERSE;
