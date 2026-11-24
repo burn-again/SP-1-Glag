@@ -131,11 +131,12 @@ static inline float fmaxf_(float a, float b) { return a > b ? a : b; }
 enum { ROLE_HELD, ROLE_PLUCK, ROLE_BASS, ROLE_DRUMS };
 static int voice_role(int v)
 {
-	if (v == GV_PULSE || v == GV_KIT)
+	if (v == GV_PULSE || v == GV_KIT || v == GV_LITEKIT)
 		return ROLE_DRUMS;
 	if (v == GV_BASS || v == GV_FUNK)
 		return ROLE_BASS;
-	if (v == GV_PAD || v == GV_DRONE || v == GV_FLUTE || v == GV_SWELL || v == GV_GONG)
+	if (v == GV_PAD || v == GV_DRONE || v == GV_FLUTE || v == GV_SWELL || v == GV_GONG ||
+	    v == GV_ORGAN || v == GV_CHOIR || v == GV_BREATH)
 		return ROLE_HELD;
 	return ROLE_PLUCK;
 }

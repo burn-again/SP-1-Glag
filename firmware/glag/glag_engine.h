@@ -55,6 +55,8 @@ enum gl_voice {
 	GV_SWELL, GV_EP, GV_GONG, GV_PIZZ, GV_SHIMMER, GV_TAILS, GV_PULSE,
 	GV_STRINGS, GV_GLOW, GV_SEQ, GV_SUPER,
 	GV_RIBBON, GV_FUNK, GV_HARP, GV_HARPSI, GV_KIT,
+	/* audition (glag_new.h): nine light voices, after the rest so no piece changes */
+	GV_LITEKIT, GV_PERC, GV_ORGAN, GV_MBOX, GV_BREATH, GV_CHIP, GV_CHOIR, GV_KOTO, GV_GRAINS,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];
@@ -186,6 +188,18 @@ int gl_lite_default(void);              /* the mode this build starts in */
  * for the pieces as written): a Kit keeps only light company, and a piece with a heavy voice is
  * not on the Hall */
 void gl_kit_rule(int on);
+/* Performance effects (audition, glag_new.h; every one at 0 leaves the engine as it was):
+ *   GF_ANSWER v      a Kit or Lite Kit fill is answered a beat later by the plucked voices (v: how often)
+ *   GF_MEMORY v      each channel reuses its decision of a bar before, with this probability (Deja Vu)
+ *   GF_BREATHE v     importance thinning: past the first start in a step, only what matters plays
+ *   GF_HOLD_ECHO 0|1 the tape echo's loop held (nothing in, nothing lost); notes go on
+ *   GF_HOLD_VERB 0|1 the reverb held forever, nothing new into it; notes go on
+ *   GF_HEAD 0..3     the echo as a read head: 1 repeat the last echo-length slice, 2 tape stop,
+ *                    3 reverse (0 off: back to the live echo over 25 ms)
+ *   GF_SYMBIOSIS v   the channels' macro glides pull toward each other's phase
+ *   GF_REGISTER v    register as a coordinate: low registers darker, high ones brighter */
+enum gl_perf { GF_ANSWER, GF_MEMORY, GF_BREATHE, GF_HOLD_ECHO, GF_HOLD_VERB, GF_HEAD, GF_SYMBIOSIS, GF_REGISTER };
+void gl_perform(int what, float v);
 /* what each voice costs, in half-points of the CPU (the M4 model; hardware runs about 1.3x), and
  * a patch's estimated load in model points: 49.5 for the space and output, the voices, the reverb,
  * the reverse swell, and the extras the caller names (distortion, a Playworld texture 1-4, pump) */
@@ -288,7 +302,7 @@ extern uint8_t gl_scope_on;
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 118                  /* an audition build: a hundred and two more (five of them labs) */
+#define GL_NPIECES 132                  /* an audition build: a hundred and two more (five of them labs), and fourteen on the light voices */
 #elif defined(GL_TEST_PIECES)
 #define GL_NPIECES 20                   /* the CPU test build: the sixteen and the four heaviest auditions */
 #else

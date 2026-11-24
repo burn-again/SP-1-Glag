@@ -49,6 +49,8 @@ int main(int argc, char **argv)
 		gl_song_drums(atoi(getenv("SDRUMS")));
 	if (getenv("LITE"))      /* LITE=0|1|2: the light versions by the budget, never (the default), every one */
 		gl_lite(atoi(getenv("LITE")));
+	if (getenv("VOXCH"))     /* VOXCH=c:n: channel c that voice (voices past 15) */
+		p.voice[atoi(getenv("VOXCH")) & 3] = (uint8_t)atoi(strchr(getenv("VOXCH"), ':') + 1);
 	if (getenv("VOX4"))      /* VOX4=n: every channel that voice, busy and long (the CPU test's x4) */
 		for (int c = 0; c < GL_NCH; c++) {
 			p.voice[c] = (uint8_t)atoi(getenv("VOX4"));

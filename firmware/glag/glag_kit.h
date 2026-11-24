@@ -1365,6 +1365,7 @@ static int kit_fill_pick(int ch)
 }
 static void kit_fill(chan *c, int ch, int t, float s)
 {
+	answer_call();                                       /* (Answer: the plucked voices reply a beat later) */
 	switch (t) {
 	case 1:     /* toms down the chord: the root up high, the fifth, the third, the root */
 		for (int i = 0; i < 4; i++)

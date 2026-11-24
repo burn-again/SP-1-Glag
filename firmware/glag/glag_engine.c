@@ -134,7 +134,9 @@ const char *const GL_VOICE_NAME[GV_COUNT] = {"Pad", "Bells", "Bass", "Piano", "M
                                              "Drone", "Kalimba", "Flute", "Arp", "Swell",
                                              "EP", "Gong", "Pizz", "Shimmer", "Tails", "Pulse",
                                              "Strings", "Glow", "Seq", "Super",
-                                             "Ribbon", "Funk", "Harp", "Harpsichord", "Kit"};
+                                             "Ribbon", "Funk", "Harp", "Harpsichord", "Kit",
+                                             "Lite Kit", "Perc", "Organ", "Music Box", "Breath",
+                                             "Chip", "Choir", "Koto", "Grains"};
 const char *const GL_MODE_NAME[GL_NMODES] = {"Ionian", "Dorian", "Phrygian", "Lydian",
                                              "Mixolydian", "Aeolian", "Pent maj", "Pent min"};
 static const uint16_t MODE_POOL[GL_NMODES] = {
@@ -224,10 +226,12 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
  * the rest are mono (their channel pan places them), which saves a buffer and half the mixing. SPREAD: how far each side sits
  * from the channel's pan. */
 static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1,
-                                        0, 0, 1, 1, 1};
+                                        0, 0, 1, 1, 1,
+                                        1, 0, 1, 1, 0, 0, 1, 1, 1};   /* lite kit .. grains */
 static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
                                        0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f, 0.35f, 0.0f, 0.0f, 0.4f,
-                                       0.0f, 0.0f, 0.35f, 0.25f, 0.5f};
+                                       0.0f, 0.0f, 0.35f, 0.25f, 0.5f,
+                                       0.3f, 0.0f, 0.4f, 0.25f, 0.0f, 0.0f, 0.35f, 0.3f, 0.45f};
 
 /* the kit (glag_kit.h): a snare (also the roll's), and each sound's state */
 typedef struct { float x1, y1, x2, y2, e1, e2, drop, dk, b, bk, n, nk, hp, l1, l2, lpk, nl, drive, lo; } kit_snare;
@@ -387,6 +391,7 @@ static uint8_t playing = 1, frozen, slowing;
 static float freeze_in = 1.0f;             /* reverb input gain, ramps to 0 while frozen */
 static float crank_open;                   /* a crank while frozen: the space open to it a moment */
 static int tp_hold;                        /* frozen: the tape loop holds what it has */
+static uint8_t rv_hold;                    /* the reverb held: frozen, or its hold alone (GF_HOLD_VERB) */
 
 /* ================================================================ harmony */
 
@@ -503,12 +508,14 @@ static int place(int pc, float from, int lo, int hi)
 /* home note of each voice; REGISTER moves it by octaves (-2..+2) */
 /* plucked or struck (bright into the reverb), rather than held */
 static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0,
-                                       0, 0, 1, 1, 1};
+                                       0, 0, 1, 1, 1,
+                                       1, 1, 0, 1, 0, 1, 0, 1, 0};
 #ifndef GLOW_HOME
 #define GLOW_HOME 69                       /* glow: A4, as it began (its top is cut instead) */
 #endif
 static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, GLOW_HOME, 55, 57,
-                                      67, 40, 62, 60, 36};
+                                      67, 40, 62, 60, 36,
+                                      36, 60, 57, 79, 67, 72, 57, 62, 60};
 
 /* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
  * Per voice, how far the macro moves:   tone  char  trem  oct   len   act */
@@ -538,6 +545,15 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{40, 90,  0, 40, 50, 40},   /* harp: plucks, rolled chords, glissandi */
 	{40, 70,  0, 40, 50, 50},   /* harpsichord: the stops, the figures */
 	{50, 90,  0,  0, 50, 50},   /* kit: the split (core -> tissue and Nord -> rolls), decays, hits */
+	{50, 80,  0,  0, 50, 50},   /* lite kit: the groove, decays, hits */
+	{50, 90,  0, 40, 40, 40},   /* perc: the material, octaves */
+	{70, 60, 50,  0, 30, 20},   /* organ: the drawbars, a breathing swell */
+	{50, 60,  0, 50, 40, 40},   /* music box */
+	{70, 70, 40, 30, 40, 30},   /* breath: tonal to airy */
+	{60, 80,  0, 50, 50, 40},   /* chip: the width, into the arpeggio */
+	{60, 90, 40,  0, 30, 20},   /* choir: the vowels */
+	{50, 80,  0, 40, 50, 40},   /* koto: koto to sitar */
+	{60, 90, 30, 40, 60, 50},   /* grains: their pitches, their length, how many */
 };
 /* arp mode (glag_play.h): whether a channel is being played by it, and the held voices' short
  * envelope while it is */
@@ -681,7 +697,19 @@ static int reg_base(const chan *c, int ch)
 }
 
 static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * w_act[ch] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
-static float eff_tone(int ch) { return clampf(P.ch[ch][CP_TONE] + 0.15f * arc, 0.0f, 1.0f); }
+/* the performance effects' state (glag_new.h, gl_perform), and their own dice */
+static struct {
+	float answer, memory, breathe, symb, regc;
+	uint8_t hold_echo, hold_verb, head;
+} pf;
+static uint32_t pf_rng = 0x6C8E9CF5u;
+static float eff_tone(int ch)
+{
+	float t = P.ch[ch][CP_TONE] + 0.15f * arc;
+	if (pf.regc > 0.0f)                   /* register as a coordinate: darker low, brighter high */
+		t += pf.regc * 0.12f * (float)(stepped(P.ch[ch][CP_REGISTER], 5) - 2);
+	return clampf(t, 0.0f, 1.0f);
+}
 
 /* ================================================================ note voices */
 
@@ -752,7 +780,8 @@ const uint8_t GL_VCOST[GV_COUNT] = {
 	10, 9, 6, 2, 1, 8, 3, 2, 8,           /* pad bells bass piano marimba drone kalimba flute arp */
 	10, 2, 5, 2, 3, 2, 4,                 /* swell ep gong pizz shimmer tails pulse */
 	30, 2, 8, 22,                         /* strings glow seq super */
-	4, 3, 10, 11, 29                      /* ribbon funk harp harpsichord kit */
+	4, 3, 10, 11, 29,                     /* ribbon funk harp harpsichord kit */
+	6, 2, 3, 2, 2, 1, 4, 4, 2             /* (estimates, not measured) lite kit perc organ music-box breath chip choir koto grains */
 };
 static float duck_g[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
 static uint8_t duck_mask, duck_order[GL_NCH], duck_n, duck_strike[GL_NCH];
@@ -889,6 +918,9 @@ static int nslots(int voice)
 	case GV_HARP: return alt_m[GV_HARP] == 3 ? 4 : 0;
 	case GV_HARPSI: return 0;                 /* strings: counted below */
 	case GV_KIT: return 0;                    /* drums: outside the budget */
+	case GV_LITEKIT: return 0;
+	case GV_KOTO: return 0;                   /* strings: counted below */
+	case GV_GRAINS: return 0;                 /* reads of the tape: outside the budget */
 	default: return 3;
 	}
 }
@@ -904,7 +936,8 @@ static int stealable(int voice)
 {
 	return voice == GV_BELLS || voice == GV_PIANO || voice == GV_MARIMBA || voice == GV_ARP ||
 	       voice == GV_FLUTE || voice == GV_EP || voice == GV_GONG || voice == GV_PIZZ ||
-	       voice == GV_SHIMMER || voice == GV_TAILS || voice == GV_GLOW || voice == GV_SEQ;
+	       voice == GV_SHIMMER || voice == GV_TAILS || voice == GV_GLOW || voice == GV_SEQ ||
+	       voice == GV_PERC || voice == GV_MBOX || voice == GV_CHIP;
 }
 static int budget_used(void)
 {
@@ -918,7 +951,7 @@ static int budget_used(void)
 		if (ch->voice == GV_KALIMBA)               /* a ringing string costs about a voice */
 			for (int k = 0; k < 3; k++)
 				n += ch->ks_len[k] ? 2 : 0;
-		else if (ch->voice == GV_HARP || ch->voice == GV_HARPSI)   /* tuned strings: about half */
+		else if (ch->voice == GV_HARP || ch->voice == GV_HARPSI || ch->voice == GV_KOTO)   /* tuned strings: about half */
 			for (int k = 0; k < KS_N; k++)
 				n += ch->ks_len[k] ? 1 : 0;
 	}
@@ -1347,7 +1380,7 @@ static float syncopation(int ch)
 }
 
 /* ---- plucked strings (kalimba, harp, harpsichord) ---- */
-static int ks_count(int voice) { return voice == GV_KALIMBA ? 3 : KS_N; }
+static int ks_count(int voice) { return voice == GV_KALIMBA ? 3 : voice == GV_KOTO ? 4 : KS_N; }
 /* string k plucked at hz: its excitation (noise through a one-pole low-pass, ea), the loop's
  * filter a (0.5: dark, toward 1: bright), -60 dB in T seconds. The excitation is written into
  * the string during its first period by the render, so a pluck costs no spike. tuned: an
@@ -1894,7 +1927,9 @@ static void ribbon_control(chan *c, int ch, float sdt, float tone, float len)
 	}
 }
 
+static void answer_call(void);
 #include "glag_kit.h"
+#include "glag_new.h"
 
 /* ---- the sixteenth-note step: every voice's sequencer ---- */
 static void chan_step(chan *c, int ch, uint32_t step)
@@ -1911,6 +1946,12 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		break;
 	case GV_KIT:
 		kit_step(c, ch, step);
+		break;
+	case GV_LITEKIT:
+		lk_step(c, ch, step);
+		break;
+	case GV_GRAINS:
+		grains_step(c, ch, step);
 		break;
 	case GV_BASS: {
 		int bar = (step & 15) == 0;
@@ -1975,9 +2016,15 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	case GV_EP:
 	case GV_SHIMMER:
 	case GV_GLOW:
-	case GV_TAILS: {
+	case GV_TAILS:
+	case GV_PERC:
+	case GV_MBOX:
+	case GV_BREATH:
+	case GV_CHIP:
+	case GV_KOTO: {
 		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
-		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0, 0, 0, 0, 0, 0};
+		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0, 0, 0, 0, 0, 0,
+		                                     0, 0.22f, 0, 0.14f, 0.06f, 0.24f, 0, 0.2f, 0};
 		float p = act * act * PMAX[c->voice];
 		if (c->voice == GV_GLOW && (step & 15u) == 0u)
 			c->arp_dir = (uint8_t)((c->arp_dir + 1u) & 3u);   /* full macro: a bar each at 0, -1, -2, -1 octaves */
@@ -1985,12 +2032,40 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			float syn = syncopation(ch);
 			p *= (step & 1u) ? 1.0f + 1.5f * syn : (step & 2u) ? 1.0f : 1.0f - 0.6f * syn;
 		}
-		if (rnd() >= p)
-			break;
-		int note = pick_note(c, base - 5, base + 12, 0.6f);
+		int note;
+		if (pf.memory > 0.0f) {
+			/* Memory: the decision of a bar before, or new dice (and remembered either way) */
+			int mf, mn;
+			if (mem_recall(ch, &mf, &mn)) {
+				mem_store(ch, mf, mn);
+				if (!mf)
+					break;
+				note = mn;
+			} else {
+				if (rnd() >= p) {
+					mem_store(ch, 0, 0);
+					break;
+				}
+				note = pick_note(c, base - 5, base + 12, 0.6f);
+				mem_store(ch, 1, note);
+			}
+		} else {
+			if (rnd() >= p)
+				break;
+			note = pick_note(c, base - 5, base + 12, 0.6f);
+		}
 		float vel = 0.55f + 0.45f * rnd();
 		int vp = (int)(rnd32() & 1u);
-		if (c->voice == GV_KALIMBA) {
+		if (c->voice == GV_KOTO) {
+			/* the harp's tuned strings, four of them, plucked with a nail (bright) */
+			int k = c->ks_next;
+			if (!c->ks_len[k] && budget_used() + 1 > fm_cap)
+				break;
+			c->ks_next = (uint8_t)((k + 1) % 4);
+			float hz = mtof(ivl_note(ch, (float)note)) * speed * pbend;
+			ks_pluck(c, k, hz, vel, 0.35f + 0.6f * eff_tone(ch), 0.62f + 0.33f * eff_tone(ch),
+			         expmap(P.ch[ch][CP_LENGTH], 0.5f, 5.0f), 1);
+		} else if (c->voice == GV_KALIMBA) {
 			int k = c->ks_next;
 			if (!c->ks_len[k] && budget_used() + 2 > fm_cap)
 				break;                       /* no room: this pluck is skipped */
@@ -2023,7 +2098,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			nv_trigger(v, (float)note, vel, 1.0f, vp);
 		} else {
 			nvoice *v = alloc(c, 3);
-			if (c->voice == GV_FLUTE && v->stage != ST_IDLE)
+			if ((c->voice == GV_FLUTE || c->voice == GV_BREATH) && v->stage != ST_IDLE)
 				break;                       /* a flute never cuts a breath short */
 			float ratio = 1.0f;
 			if (c->voice == GV_PIANO)
@@ -2037,8 +2112,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			}
 			if (!sounding(v))
 				make_room(v);
-			nv_trigger(v, (float)note, c->voice == GV_FLUTE ? vel : vel * 1.35f, ratio, vp);
-			if (c->voice == GV_FLUTE)
+			nv_trigger(v, (float)note, c->voice == GV_FLUTE || c->voice == GV_BREATH ? vel : vel * 1.35f, ratio, vp);
+			if (c->voice == GV_FLUTE || c->voice == GV_BREATH)
 				v->hold = expmap(P.ch[ch][CP_LENGTH], 0.8f, 7.0f);
 		}
 		c->glow = vel;
@@ -3035,6 +3110,25 @@ static void chan_control(chan *c, int ch, float dt)
 		}
 		break;
 	}
+	case GV_LITEKIT:
+		lk_control(c, ch, dt);
+		return;                                 /* (its glow kept its own way) */
+	case GV_PERC:
+		perc_control(c, ch, dt);
+		break;
+	case GV_MBOX:
+		mbox_control(c, ch, dt);
+		break;
+	case GV_BREATH:
+		breath_control(c, ch, dt);
+		break;
+	case GV_CHIP:
+		chip_control(c, ch, dt);
+		break;
+	case GV_ORGAN:
+	case GV_CHOIR:
+		held_control(c, ch, dt);
+		break;
 	case GV_KALIMBA:
 	default:
 		break;
@@ -3833,9 +3927,32 @@ static int chan_render(chan *c, float *A, float *B)
 		v->pc = pc; v->pm = pm; v->amp = amp; v->idx = idx; v->fb = fb;
 		break;
 	}
+	case GV_LITEKIT:
+		any = lk_render(c, A, B);
+		break;
+	case GV_PERC:
+		any = perc_render(c, A);
+		break;
+	case GV_MBOX:
+		any = mbox_render(c, A, B);
+		break;
+	case GV_BREATH:
+		any = breath_render(c, A);
+		break;
+	case GV_CHIP:
+		any = chip_render(c, A);
+		break;
+	case GV_ORGAN:
+	case GV_CHOIR:
+		any = held_render(c, A, B);
+		break;
+	case GV_GRAINS:
+		any = grains_render(c, A, B);
+		break;
 	case GV_KALIMBA:
 	case GV_HARP:
 	case GV_HARPSI:
+	case GV_KOTO:
 		if (c->voice == GV_HARP && alt_m[GV_HARP] == 3)
 			for (int i = 0; i < 4; i++)
 				if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
@@ -3877,11 +3994,17 @@ static int chan_render(chan *c, float *A, float *B)
 			float y = (float)b[i];                     /* carried: one load per sample */
 			if (c->voice != GV_KALIMBA) {              /* tuned: the all-pass in the loop */
 				float cc = c->ks_c[k], x1 = c->ks_x1[k], y1 = c->ks_y1[k];
+				/* the koto's bridge (glag_new.h): one side of the string's swing flattened while
+				 * it rings loud, a buzz that fades with it (CHARACTER: koto .. sitar) */
+				const float bz = c->voice == GV_KOTO ? P.ch[(int)(c - CH)][CP_CHAR] : 0.0f;
+				const float blim = 0.5f - 0.42f * bz;           /* (in the loop's units: 1.0 = full) */
 				for (; n < VSUB; n++) {
 					int j = i + 1 == len ? 0 : i + 1;
 					float yj = (float)b[j];
 					float nx = (a * y + na * yj) * g;
 					float ap = cc * (nx - y1) + x1;
+					if (bz > 0.0f && ap < -blim)
+						ap = -blim + (ap + blim) * 0.3f;
 					x1 = nx;
 					y1 = ap;
 					b[i] = (int16_t)(ap * 16000.0f);
@@ -4364,6 +4487,7 @@ static void clock_step(int play)
 			}
 	if (play == 1)
 		pump_step(step_n);                    /* Playworld's pump on its own clock */
+	answer_tick();                            /* (Answer: nothing while none is waiting) */
 	if ((step_n & 15u) == 0u)
 		arp_bar();                            /* arp mode on or off: on the bar */
 	step_n++;
@@ -4429,6 +4553,7 @@ static void control(float dt)
 		dist_setup();
 	slowing = cmd_slow;
 	macro_tick(dt);
+	macro_couple(dt);                         /* (Symbiosis: nothing while it is at zero) */
 	midi_tick(dt);
 	world_tick();
 	form_tick(dt);
@@ -4529,11 +4654,18 @@ static void control(float dt)
 
 	/* the space (the patch-dependent parts are in derive()) */
 	lite_update();
+	{
+		const uint8_t rh = (uint8_t)(frozen || pf.hold_verb);
+		if (rh != rv_hold) {
+			rv_hold = rh;
+			freeze_changed = 1;
+		}
+	}
 	space_control(dt, freeze_changed);
 	if (crank_open > 0.0f)
 		crank_open -= dt;
-	tp_hold = frozen && crank_open <= 0.0f;      /* the echo's loop held, as the reverb is */
-	freeze_in += ((frozen && crank_open <= 0.0f ? 0.0f : 1.0f) - freeze_in) * k_freeze;
+	tp_hold = (frozen && crank_open <= 0.0f) || pf.hold_echo;   /* the echo's loop held, as the reverb is (or alone) */
+	freeze_in += (((frozen && crank_open <= 0.0f) || pf.hold_verb ? 0.0f : 1.0f) - freeze_in) * k_freeze;
 	gl_playing = playing;
 	gl_frozen = frozen;
 }
@@ -5852,6 +5984,77 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{55, 45, 40, 50, 0, 0, 50, 40, 100}, {40, 45, 50, 50, 25, 45, 40, 40, 68},
 	  {30, 35, 75, 50, 15, 55, 60, 35, 58}, {35, 30, 75, 50, 5, 30, 50, 35, 86}},
 	 {64, 40, 50, 50, 0, 5, 25, 40}, {GR_HALL, GS_OCTAVE, 4}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* ---- audition: the nine light voices (glag_new.h), fourteen pieces built on them (118 on) ---- */
+	/* a choir and a music box over the organ's flute stop, the tape's grains drifting above; Lydian, 56 */
+	{"Paper Cathedral", {GV_CHOIR, GV_MBOX, GV_ORGAN, GV_GRAINS},
+	 {{55, 45, 70, 50, 30, 80, 35, 30, 72}, {35, 55, 55, 75, 55, 65, 65, 40, 60},
+	  {60, 40, 60, 50, 20, 60, 50, 15, 55}, {55, 50, 55, 50, 0, 85, 50, 60, 65}},
+	 {36, 50, 78, 50, 2, 3, 35, 55}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 0, 0, 2}, 12, {2, 2, 1, 3}, 12, 0, {0, 0, 0, 0}, 0},
+	/* a market at night: the Lite Kit's clave groove, log drums, a koto, a bass; Dorian, 96 */
+	{"Lantern Market", {GV_LITEKIT, GV_PERC, GV_KOTO, GV_BASS},
+	 {{65, 55, 40, 50, 15, 25, 50, 50, 78}, {45, 50, 50, 50, 30, 45, 35, 33, 64},
+	  {40, 60, 55, 50, 40, 55, 65, 25, 62}, {45, 30, 60, 50, 0, 10, 50, 30, 64}},
+	 {76, 40, 55, 50, 9, 1, 30, 45}, {GR_CHAMBER, GS_OCTAVE, 6}, {2, 1, 1, 0}, 8, {3, 2, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* a chip arpeggio and a music box over four on the floor; Ionian, 112 */
+	{"Chip Garden", {GV_CHIP, GV_LITEKIT, GV_BASS, GV_MBOX},
+	 {{55, 50, 30, 50, 40, 35, 40, 85, 63}, {60, 55, 35, 50, 0, 15, 50, 0, 79},
+	  {45, 35, 45, 50, 0, 10, 50, 25, 67}, {35, 60, 60, 75, 45, 50, 60, 40, 58}},
+	 {92, 45, 50, 50, 2, 0, 30, 45}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 0, 1}, 8, {3, 2, 1, 2}, 8, 0, {0, 0, 0, 0}, 0},
+	/* a breath and a koto in a wind's shimmer, the organ low, grains of all three; Aeolian, 60 */
+	{"Wind Harp", {GV_BREATH, GV_KOTO, GV_ORGAN, GV_GRAINS},
+	 {{40, 45, 70, 50, 45, 70, 35, 55, 96}, {40, 55, 65, 50, 50, 65, 65, 20, 88},
+	  {50, 30, 70, 25, 10, 55, 50, 10, 74}, {50, 50, 60, 50, 0, 85, 50, 70, 87}},
+	 {40, 55, 75, 50, 4, 5, 35, 55}, {GR_SHIMMER, GS_OCTAVE, 2}, {1, 1, 0, 2}, 12, {2, 2, 1, 3}, 12, 0, {0, 0, 0, 0}, 0},
+	/* glass struck and rung, a music box, a choir and a breath; pentatonic major, 64 */
+	{"Glass Rain", {GV_PERC, GV_MBOX, GV_CHOIR, GV_BREATH},
+	 {{40, 55, 70, 75, 45, 70, 40, 100, 77}, {35, 60, 65, 75, 40, 60, 60, 50, 68},
+	  {50, 45, 70, 50, 20, 75, 50, 45, 86}, {30, 50, 70, 75, 40, 70, 55, 80, 74}},
+	 {44, 50, 75, 50, 7, 6, 35, 55}, {GR_BLOOM, GS_OCTAVE, 3}, {2, 1, 1, 1}, 12, {3, 2, 2, 2}, 12, 0, {0, 0, 0, 0}, 0},
+	/* dub: the Lite Kit in half time, a bass, the organ skanking, a woodblock; Aeolian, 72 */
+	{"Dub Kitchen", {GV_LITEKIT, GV_BASS, GV_ORGAN, GV_PERC},
+	 {{60, 45, 55, 50, 35, 30, 50, 100, 80}, {50, 30, 60, 50, 0, 10, 50, 30, 71},
+	  {55, 45, 40, 50, 45, 40, 40, 40, 50}, {40, 60, 30, 50, 60, 35, 65, 0, 57}},
+	 {52, 65, 55, 50, 9, 5, 30, 45}, {GR_CHAMBER, GS_OCTAVE, 0}, {1, 0, 1, 1}, 8, {3, 1, 2, 2}, 8, 0, {0, 0, 0, 0}, 0},
+	/* a sitar's buzz over a drone, a breath, tabla; Phrygian, 70 */
+	{"Sitar Dusk", {GV_KOTO, GV_BREATH, GV_DRONE, GV_PERC},
+	 {{45, 55, 70, 50, 40, 55, 40, 90, 93}, {30, 45, 70, 75, 35, 65, 60, 40, 74},
+	  {30, 25, 90, 25, 0, 50, 50, 30, 74}, {50, 50, 45, 50, 15, 30, 55, 67, 90}},
+	 {50, 45, 65, 50, 4, 2, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 3}, {2, 1, 0, 1}, 12, {3, 2, 1, 2}, 12, 0, {0, 0, 0, 0}, 0},
+	/* a choir over the Lite Kit's minimal groove, a glow, a bass; Aeolian, 100 */
+	{"Choir Engine", {GV_CHOIR, GV_LITEKIT, GV_GLOW, GV_BASS},
+	 {{60, 50, 55, 50, 20, 65, 50, 70, 72}, {55, 55, 40, 50, 15, 25, 50, 75, 75},
+	  {40, 50, 50, 75, 50, 55, 40, 40, 54}, {45, 30, 55, 50, 0, 10, 50, 30, 65}},
+	 {80, 45, 60, 50, 2, 5, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 7}, {1, 1, 1, 0}, 8, {3, 3, 2, 1}, 8, 0, {0, 0, 0, 0}, 0},
+	/* grains of a piano and a pad, read back from the tape a bar later; Ionian, 54 */
+	{"Tape Ghosts", {GV_GRAINS, GV_PIANO, GV_PAD, GV_GRAINS},
+	 {{55, 50, 55, 50, 0, 80, 30, 55, 78}, {35, 40, 60, 50, 70, 55, 50, 30, 75},
+	  {75, 35, 60, 50, 50, 70, 50, 20, 64}, {40, 50, 70, 75, 0, 85, 70, 90, 69}},
+	 {34, 70, 75, 50, 0, 0, 35, 55}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 1, 1, 2}, 12, {2, 2, 2, 3}, 12, 0, {0, 0, 0, 0}, 0},
+	/* a toy factory: music box, a chip at a quarter width, a woodblock, the breaks; Lydian, 104 */
+	{"Toy Factory", {GV_MBOX, GV_CHIP, GV_PERC, GV_LITEKIT},
+	 {{50, 60, 50, 75, 40, 45, 35, 40, 77}, {45, 55, 30, 50, 35, 30, 65, 37, 71},
+	  {40, 60, 30, 50, 30, 30, 50, 0, 74}, {55, 55, 35, 50, 0, 15, 50, 25, 95}},
+	 {84, 45, 50, 50, 5, 3, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 1, 1, 1}, 8, {2, 2, 2, 3}, 8, 0, {0, 0, 0, 0}, 0},
+	/* the organ's full stops, a choir, bells, a drone: a field at dusk; Mixolydian, 66 */
+	{"Organ Fields", {GV_ORGAN, GV_CHOIR, GV_BELLS, GV_DRONE},
+	 {{55, 50, 70, 50, 25, 70, 40, 90, 58}, {45, 45, 70, 50, 20, 75, 60, 20, 62},
+	  {35, 50, 60, 50, 45, 60, 50, 25, 55}, {30, 25, 90, 25, 0, 50, 50, 30, 49}},
+	 {46, 45, 72, 50, 7, 4, 35, 55}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 1, 0}, 12, {2, 2, 2, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* soft machines: the Lite Kit quietly on the floor, a chip, the organ, a koto; Dorian, 118 */
+	{"Soft Machines", {GV_LITEKIT, GV_CHIP, GV_ORGAN, GV_KOTO},
+	 {{40, 45, 35, 50, 10, 20, 50, 0, 79}, {45, 50, 30, 50, 40, 30, 40, 60, 59},
+	  {50, 40, 50, 50, 25, 45, 50, 55, 54}, {35, 55, 50, 50, 45, 50, 60, 35, 67}},
+	 {98, 40, 55, 50, 2, 1, 35, 50}, {GR_CHAMBER, GS_OCTAVE, 7}, {1, 1, 0, 1}, 8, {2, 3, 1, 2}, 8, 0, {0, 0, 0, 0}, 0},
+	/* two breaths, low and high, a music box, the grains; pentatonic minor, 50 */
+	{"Breath Study", {GV_BREATH, GV_BREATH, GV_MBOX, GV_GRAINS},
+	 {{40, 40, 80, 25, 35, 70, 35, 20, 97}, {30, 55, 75, 75, 40, 75, 65, 80, 83},
+	  {30, 60, 65, 75, 50, 60, 50, 40, 76}, {50, 45, 65, 50, 0, 85, 50, 65, 93}},
+	 {30, 55, 78, 50, 9, 7, 35, 55}, {GR_SHIMMER, GS_FIFTH, 3}, {1, 2, 0, 2}, 12, {2, 3, 1, 3}, 12, 0, {0, 0, 0, 0}, 0},
+	/* log drums and tabla over the Lite Kit's clave, a kalimba; Dorian, 92 */
+	{"Log Drum Ritual", {GV_PERC, GV_PERC, GV_LITEKIT, GV_KALIMBA},
+	 {{55, 45, 55, 25, 15, 40, 35, 33, 84}, {45, 55, 50, 50, 20, 35, 65, 67, 75},
+	  {50, 50, 40, 50, 10, 20, 50, 50, 87}, {40, 55, 55, 50, 45, 55, 50, 40, 73}},
+	 {72, 40, 55, 50, 2, 1, 30, 50}, {GR_CHAMBER, GS_OCTAVE, 6}, {1, 1, 1, 1}, 8, {2, 2, 3, 2}, 8, 0, {0, 0, 0, 0}, 0},
 #elif defined(GL_TEST_PIECES)
 	/* the CPU test build: the four heaviest audition pieces, as 17 to 20 */
 	R_SHIFTED_METAL, R_WAREHOUSE, R_STRING_DRUM_MASS, R_HARPSI_DRILL,

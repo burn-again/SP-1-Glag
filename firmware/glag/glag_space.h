@@ -54,6 +54,68 @@ const char *const GL_ECHO_NAME[GL_NECHO] = {"1/4.", "1/2", "1/2.", "1 bar", "2 b
 static const float ECHO_BEATS[GL_NECHO] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.5f, 0.75f, 1.0f, 0.5f};
 const uint8_t GL_ECHO_ORDER[GL_NECHO] = {GL_ECHO_STRING, 5, 6, 7, 0, 1, 2, 3, 4};
 
+/* Grains (glag_new.h) read the tape: where it is writing, and a sample (with a fraction) */
+static uint32_t grain_w(void) { return tp.w; }
+static float grain_read(uint32_t i, float f)
+{
+	const float a = TAPE_GET(i & (TAPE_N - 1u)), b = TAPE_GET((i + 1u) & (TAPE_N - 1u));
+	return a + (b - a) * f;
+}
+/* the echo as a read head (GF_HEAD; audition): while on, the tape is not written and a third head
+ * plays it: 1 the last echo-length slice round and round (its seam crossfaded), 2 a tape stop (the
+ * rate falling to nothing over 0.7 s, the level with it), 3 reverse (the rate slewing through
+ * zero to -1 over ~25 ms). Off, the live echo comes back over 25 ms and the tape runs on. */
+static struct { float back, rate, xf, L; uint32_t w0; uint8_t mode; } rhd;
+static float hd_read(float back)
+{
+	const uint32_t k = (uint32_t)back;
+	const float f = back - (float)k;
+	const float a = TAPE_GET((rhd.w0 - k) & (TAPE_N - 1u)), b = TAPE_GET((rhd.w0 - k - 1u) & (TAPE_N - 1u));
+	return a + (b - a) * f;
+}
+static float hd_tick(int head, float len)          /* one 8 kHz sample of the head, or 0 */
+{
+	if (head && !rhd.mode) {                         /* engaged: from where the long head reads */
+		rhd.w0 = tp.w;
+		rhd.L = len < 400.0f ? 400.0f : len > 16000.0f ? 16000.0f : len;
+		rhd.back = head == 1 ? rhd.L : len;
+		rhd.rate = 1.0f;
+	}
+	if (head)
+		rhd.mode = (uint8_t)head;
+	rhd.xf += ((head ? 1.0f : 0.0f) - rhd.xf) * 0.005f;
+	if (!head && rhd.xf < 0.001f) {
+		rhd.xf = 0.0f;
+		rhd.mode = 0;
+		return 0.0f;
+	}
+	float y, g = 1.0f;
+	if (rhd.mode == 1) {
+		y = hd_read(rhd.back);
+		if (rhd.back < 40.0f)                        /* the seam: into the slice's start */
+			y = y * (rhd.back * (1.0f / 40.0f)) + hd_read(rhd.back + rhd.L) * (1.0f - rhd.back * (1.0f / 40.0f));
+		rhd.back -= 1.0f;
+		if (rhd.back <= 0.0f)
+			rhd.back += rhd.L;
+	} else {
+		if (rhd.mode == 2) {
+			rhd.rate -= 1.0f / (0.7f * TAPE_SR);
+			rhd.rate = rhd.rate < 0.0f ? 0.0f : rhd.rate;
+			g = rhd.rate;
+		} else
+			rhd.rate += (-1.0f - rhd.rate) * 0.005f;
+		y = hd_read(rhd.back);
+		rhd.back -= rhd.rate;
+		if (rhd.back < 1.0f)
+			rhd.back = 1.0f;
+		if (rhd.back > (float)(TAPE_N - 64u)) {      /* never past the oldest sample */
+			rhd.back = (float)(TAPE_N - 64u);
+			rhd.rate = 0.0f;
+		}
+	}
+	return y * g;
+}
+
 /* the tape over a block: every 24 kHz sample in, and the two heads out (interpolated up from 8 kHz),
  * its state held in locals (no call or reload per sample) */
 static float tp_wsc = 1.0f;                       /* the wow fades out as the loop is held (~125 ms) */
@@ -64,7 +126,7 @@ static void tape_block(const float *X, float *EL, float *ER, uint32_t n)
 	int ph = tp.ph;
 	uint32_t w = tp.w;
 	const float len = tp.len, fb = tp.fb;
-	const int hold = tp_hold, string = tp.string, pp = w_pingpong;
+	const int hold = tp_hold, string = tp.string, pp = w_pingpong, head = pf.head;
 	const int one = pp || string;
 	const float lpk = string ? 0.9f : 0.75f, hpk = string ? 0.015f : 0.1f, hd = pp ? 0.5f : 0.75f;
 	/* the wow, less on a short loop (on the string, a cycle's length, it would detune it) */
@@ -86,7 +148,15 @@ static void tape_block(const float *X, float *EL, float *ER, uint32_t n)
 			float h1, h2;
 			TRD(len + wv, h1)
 			TRD(hd * len - wv, h2)
-			if (hold) {
+			if (head || rhd.xf > 0.0f) {                /* the read head (audition), crossfaded in and out */
+				tp.w = w;
+				const float y = hd_tick(head, len), x = rhd.xf;
+				h1 = h1 * (1.0f - x) + y * x;
+				h2 = h2 * (1.0f - x) + y * x;
+			}
+			if (head) {
+				/* the read head is playing: the tape stays as it is */
+			} else if (hold) {
 				/* frozen: the loop goes round as it is, nothing in, nothing lost */
 				w++;
 				TAPE_PUT(w & (TAPE_N - 1u), h1);
@@ -347,7 +417,7 @@ static void rv_derive(float rvv)
 	float dec = clampf(0.75f + 0.22f * rvv, 0.0f, 0.975f);
 	/* the same decay time as a plate whose ~0.725 s loop loses dec^4 */
 	float rt = 3.0f * 0.725f / (-4.0f * flog2(dec) * 0.30103f) * d->rt_k;
-	if (frozen)
+	if (rv_hold)
 		rt = 3000.0f;
 	for (int k = 0; k < rv.nl; k++)
 		rv.g[k] = fexp2(-9.9658f * (float)rv.len[k] / (rt * fr));
@@ -365,7 +435,7 @@ static void rv_derive(float rvv)
 		}
 		for (int k = 0; k < rv.nl; k++)
 			rv.g[k] *= 1.0f - 0.15f * rv.sh_amt;
-		if (frozen) {
+		if (rv_hold) {
 			rv.sh_amt = 0.25f;
 			for (int k = 0; k < rv.nl; k++)
 				rv.g[k] = 0.998f;
@@ -379,7 +449,7 @@ static void rv_derive(float rvv)
 			rv.gh[k] = rv.g[k] * fexp2(-9.9658f * (float)rv.len[k] / (0.7f * rt * fr)) / base;
 		}
 	}
-	float damp = frozen && d->shimmer ? 5500.0f : (float)d->damp;
+	float damp = rv_hold && d->shimmer ? 5500.0f : (float)d->damp;
 	rv.kd = 1.0f - fexp2(-1.4427f * 6.2832f * clampf(damp, 100.0f, 0.45f * fr) / fr);
 	rv.kbw = 1.0f - fexp2(-1.4427f * 6.2832f * clampf((float)d->bw, 100.0f, 0.45f * fr) / fr);
 	rv.kx = 1.0f - fexp2(-1.4427f * 6.2832f * 400.0f / fr);
@@ -394,7 +464,7 @@ static inline float rv_servo(float e)
 {
 	rv.agc_env += 0.0004f * (e - rv.agc_env);
 	float ag = 1.0f;
-	if (frozen && rv.agc_target > 0.0f)
+	if (rv_hold && rv.agc_target > 0.0f)
 		ag = clampf(1.0f + 0.004f * (rv.agc_target - rv.agc_env) / rv.agc_target, 0.9f, 1.003f);
 	else
 		rv.agc_target = rv.agc_env;
@@ -773,7 +843,7 @@ static void space_control(float dt, int freeze_changed)
 		rv_derive(P.g[GP_REVERB]);
 	/* the guard: the lines' level (rms) held under ~0.35 of the ring's 2.0, which no stock piece
 	 * reaches; past it, the input comes down in ~100 ms and goes back up over ~2 s */
-	if (!frozen) {
+	if (!rv_hold) {
 		float rms2 = rv.agc_env * (rv.nl == 8 ? 0.0625f : 0.25f);
 		float want = rms2 > 0.1225f ? 0.35f / sqrtf_fast(rms2) : 1.0f;
 		want = want < 0.2f ? 0.2f : want;
@@ -813,7 +883,7 @@ static void space_block(const float *E, const float *V, float *L, float *R, int 
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
 	}
-	const float emix = tp.mix * sp_duck;
+	const float emix = (rhd.xf > 0.0f && tp.mix < 0.55f ? tp.mix + (0.55f - tp.mix) * rhd.xf : tp.mix) * sp_duck;   /* (the read head heard even on a quiet echo) */
 	if (at24) {
 		for (uint32_t j = 0; j < GL_SUB / 2; j++) {
 			L[j] += EL[j] * emix + WL[j] * fade;
