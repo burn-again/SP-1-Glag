@@ -1,0 +1,383 @@
+<title>Glag Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* layout: a single column instrument: transport and the four channels, the pieces, the effects
+   (sliders, held pads, morph pads), then the voices and what each costs */
+:root {
+  --bg: #eef1f5; --surface: #ffffff; --fg: #18202b; --muted: #5a6474; --line: #d6dce4;
+  --accent: #3a6ea5; --accent-2: #2f8a6e; --warn: #b05a2c; --chip: #e5eaf0; --press: #d9e6f5;
+  --display: "Sora", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36; --press: #24364b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36; --press: #24364b; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 36px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 34px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 34px/1.1 var(--display); margin: 0; }
+h2 { font: 600 21px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 15px/1.3 var(--display); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 16.5px; color: var(--muted); }
+section { display: grid; gap: 14px; min-width: 0; }
+.cap { font-size: 13px; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+button { font: 500 14px/1.2 var(--body); color: var(--fg); background: var(--chip); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 13px; cursor: pointer; touch-action: manipulation; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--surface); border-color: transparent; font-weight: 600; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: transparent; }
+button:disabled { opacity: .5; cursor: default; }
+/* the transport */
+.deck { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; }
+.deck-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.now { display: grid; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.now-name { font: 600 18px/1.2 var(--display); }
+.now-meta { font: 400 12.5px/1.4 var(--mono); color: var(--muted); }
+.chans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ch { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; display: grid; gap: 6px; min-width: 0; }
+.ch-n { font: 500 11px/1 var(--mono); color: var(--muted); }
+.ch-v { font: 600 14px/1.2 var(--display); overflow-wrap: anywhere; }
+.ch-light { height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; }
+.ch-light i { display: block; height: 100%; width: 0; background: var(--accent-2); }
+.ch.ducked { border-color: var(--warn); }
+.beat { width: 10px; height: 10px; border-radius: 50%; background: var(--chip); flex: none; }
+.vol { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* pieces */
+.pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 10px; }
+.piece { text-align: left; display: grid; gap: 5px; background: var(--surface); padding: 12px 13px; border-radius: 10px; }
+.piece b { font: 600 15px/1.25 var(--display); }
+.piece span { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.piece em { font: 400 11.5px/1.3 var(--mono); font-style: normal; color: var(--muted); }
+.piece[aria-pressed="true"] span, .piece[aria-pressed="true"] em { color: var(--surface); }
+.other { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%; }
+/* effects */
+.fx { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; display: grid; gap: 8px; align-content: start; }
+.card-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.cost { font: 500 11px/1.2 var(--mono); color: var(--muted); background: var(--chip); border-radius: 5px; padding: 3px 6px; white-space: nowrap; }
+.cost.save { color: var(--accent-2); }
+.card p { font-size: 13px; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 10px; }
+.row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.row output { font: 500 12px/1 var(--mono); width: 3ch; text-align: right; }
+.pads { display: flex; flex-wrap: wrap; gap: 6px; }
+.pads button { flex: 1 1 auto; user-select: none; -webkit-user-select: none; }
+.pads button.held { background: var(--accent); color: var(--surface); border-color: transparent; }
+.morph { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.morph button { padding: 18px 8px; display: grid; gap: 3px; user-select: none; -webkit-user-select: none; }
+.morph button b { font: 600 14px/1.1 var(--display); }
+.morph button small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.morph button.held { background: var(--accent); border-color: transparent; color: var(--surface); }
+.morph button.held small { color: var(--surface); }
+/* voices */
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 11px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td.n { font-family: var(--mono); white-space: nowrap; }
+@media (max-width: 560px) { .chans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .morph { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">SP-1 · Glag · lab</span>
+  <h1>Glag Lab</h1>
+  <p class="lede">The real Glag engine, running in your browser: nine new light voices, fourteen pieces built on them, and the performance effects to play with live. Nothing here is measured or tested yet; every cost on this page is an estimate.</p>
+</header>
+
+<section aria-label="Transport">
+  <div class="deck">
+    <div class="deck-top">
+      <button class="primary" id="start" type="button">Start sound</button>
+      <span class="beat" id="beat" aria-hidden="true"></span>
+      <div class="now"><span class="now-name" id="nowName">Paper Cathedral</span><span class="now-meta" id="nowMeta">Press Start, then pick a piece</span></div>
+      <button type="button" id="again">New dice</button>
+      <label class="vol" for="vol">Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    </div>
+    <div class="chans" id="chans"></div>
+  </div>
+</section>
+
+<section>
+  <h2>The new pieces</h2>
+  <div class="pieces" id="pieces"></div>
+  <div class="other">
+    <label class="cap" for="other">Or try the effects on any of the 132:</label>
+    <select id="other"></select>
+  </div>
+</section>
+
+<section>
+  <h2>Performance effects</h2>
+  <p class="cap">Sliders take effect at once. Hold buttons work while you hold them (mouse, touch, or the keys shown). Everything returns when you let go or set it back to zero.</p>
+  <div class="fx" id="fx"></div>
+  <div class="card">
+    <div class="card-h"><h3>Impulse Morph</h3><span class="cost">~0 · control rate</span></div>
+    <p>Hold a pad to glide the piece somewhere for as long as you hold it; let go and it glides back over about 0.3 s. Pads add together, so four pads give fifteen combinations. Keys 1–4.</p>
+    <div class="morph" id="morph"></div>
+  </div>
+</section>
+
+<section>
+  <h2>The voices</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Voice</th><th>How it's made</th><th>CHARACTER</th><th>Est. cost</th></tr></thead>
+    <tbody id="voices"></tbody>
+  </table></div>
+  <p class="cap">Costs are estimates in points of the CPU model (100 is the whole chip; the device runs about 1.3 times the model), from the cost of similar voices we've measured. For comparison, measured: the Kit 14.6, Strings 15.3, the Pulse 1.8, a Pad 5. On top of its voice, every sounding channel costs about 1 to 1.7 for its mix and sends.</p>
+</section>
+</div>
+
+<script>
+const NEW = [
+  [118, "Paper Cathedral", "A choir and a music box over the organ's flute stop, grains drifting above. Lydian, 56."],
+  [119, "Lantern Market", "The Lite Kit's clave groove, log drums, a koto and a bass. Dorian, 96."],
+  [120, "Chip Garden", "A chip arpeggio and a music box over four on the floor. Ionian, 112."],
+  [121, "Wind Harp", "A breath and a koto in the Shimmer, the organ low, grains of all three. Aeolian, 60."],
+  [122, "Glass Rain", "Struck glass, a music box, a choir and a breath. Pentatonic major, 64."],
+  [123, "Dub Kitchen", "The Lite Kit in half time, a bass, the organ, a woodblock. Aeolian, 72."],
+  [124, "Sitar Dusk", "A sitar's buzz over a drone, a breath and tabla. Phrygian, 70."],
+  [125, "Choir Engine", "A choir over the Lite Kit's minimal groove, a glow and a bass. Aeolian, 100."],
+  [126, "Tape Ghosts", "Grains of a piano and a pad, read back from the echo's tape. Ionian, 54."],
+  [127, "Toy Factory", "A music box, a quarter-width chip, a woodblock, the breaks. Lydian, 104."],
+  [128, "Organ Fields", "The organ's full stops, a choir, bells and a drone. Mixolydian, 66."],
+  [129, "Soft Machines", "The Lite Kit quietly on the floor, a chip, the organ, a koto. Dorian, 118."],
+  [130, "Breath Study", "Two breaths, low and high, a music box and the grains. Pentatonic minor, 50."],
+  [131, "Log Drum Ritual", "Log drums and tabla over the Lite Kit's clave, and a kalimba. Dorian, 92."],
+];
+const VOICES = [
+  ["Lite Kit", "The Pulse's approach with more lanes: kick, snare, hats, a clap (three noise bursts through a band-pass), a rim or clave (a struck resonator on a chord tone), toms (a falling sine on the chord), a cowbell on the chord's root. A director adds a fill or a dropout every four bars.", "the groove: four on the floor, breaks, clave, minimal, dub", "2–4 busy"],
+  ["Perc", "A struck resonator plus a click: Nord Drum's body and click in miniature.", "woodblock, log drum, tabla (bends down into its note), glass", "~0.5"],
+  ["Organ", "Four drawbars (8′, 4′, 2⅔′, 2′) on the chord, gliding between chords, a slow Leslie between the sides.", "flute stop to full stops", "1–1.5"],
+  ["Music Box", "A sine and two inharmonic partials (2.76×, 5.4×) that die first.", "(the partials' shimmer)", "~0.6"],
+  ["Breath", "Noise through a narrow resonator at the note, a little sine under it; a flute's rise, hold and fall.", "tonal to airy", "~0.8"],
+  ["Chip", "A band-limited pulse. Past three quarters, a 50 Hz arpeggio through the chord.", "pulse width 1/8, 1/4, 1/2, then the arpeggio", "~0.5"],
+  ["Choir", "Three voices on the chord: a saw through two formant resonators, the vowels drifting, sliding into each chord, breathing in and out.", "oo/oh to ah/eh", "1.5–2.5"],
+  ["Koto", "The Harp's tuned plucked strings, four of them, with a one-sided bridge that buzzes while they ring loud.", "koto to sitar", "1.5–2.5"],
+  ["Grains", "Short windows read from the tape echo's own memory at ½, 1, 1½ and 2×: it replays what the other channels sent to the echo.", "how far the pitches spread", "~0.6"],
+];
+const FX = [
+  { k: "answer", w: 0, name: "Answer", cost: "~0 · event rate", kind: "slider", text: "When a Kit or Lite Kit plays a fill, the plucked voices answer a beat later: the root, then the fifth. The slider sets how often. Needs drums in the piece." },
+  { k: "memory", w: 1, name: "Memory", cost: "~0 · control rate", kind: "slider", text: "Each melodic channel reuses its decision from a bar before instead of rolling new dice. Near full, a part repeats; a little lower, it mutates slowly." },
+  { k: "breathe", w: 2, name: "Breathe", cost: "saves CPU", save: 1, kind: "slider", text: "Thins by importance: past the first note in a step, only what matters plays. Ghost notes and ornaments go first, downbeats and anchors stay." },
+  { k: "symb", w: 6, name: "Symbiosis", cost: "~0.02", kind: "slider", text: "The channels' slow macro movements pull toward each other until they breathe together. Needs macros running on two or more channels." },
+  { k: "reg", w: 7, name: "Register as a coordinate", cost: "0", kind: "slider", text: "Low registers turn darker and high ones brighter, so a part's register changes its timbre as well as its pitch." },
+  { k: "holds", name: "Hold", cost: "~0", kind: "holds", text: "Freeze one part of the space while the notes carry on: the echo's loop, the reverb's tail, or both together (Freeze also stops new notes).",
+    pads: [["Echo", 3, "E"], ["Reverb", 4, "R"], ["Freeze", -1, "F"]] },
+  { k: "head", name: "The echo as a read head", cost: "~0.1–0.3", kind: "head", text: "Plays the echo's own tape while held: Repeat loops the last echo-length slice, Stop slows the tape to a halt, Reverse runs it backwards. Only what was sent to the echo is on the tape.",
+    pads: [["Repeat", 1, "Q"], ["Stop", 2, "W"], ["Reverse", 3, "A"]] },
+];
+const MORPH = [
+  { name: "Swell", text: "louder, longer, more reverb", d: [[-1, 8, 0.15], [-1, 5, 0.3], [-1, 2, 0.25], [4, 2, 0.2]] },
+  { name: "Bloom", text: "brighter, busier, more echo", d: [[-1, 1, 0.3], [-1, 0, 0.25], [-1, 4, 0.25], [4, 1, 0.25]] },
+  { name: "Throw", text: "everything into the echo", d: [[-1, 4, 0.5], [4, 1, 0.35], [-1, 5, 0.2]] },
+  { name: "Dark", text: "darker, a low-pass closing", d: [[-1, 1, -0.45], [4, 3, -0.3], [-1, 8, -0.05]] },
+];
+
+/* ---- the engine, in a worklet (or on the page where there is none) ---- */
+class LabCore {
+  constructor(o) {
+    this.w = new WebAssembly.Instance(new WebAssembly.Module(o.wasm), {}).exports;
+    this.w.lab_init(o.seed);
+    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0; this.pos = 0;
+    this.ratio = 48000 / (typeof sampleRate !== "undefined" && sampleRate > 0 ? sampleRate : 48000);
+    this.frames = 0; this.sent = 0;
+  }
+  cmd(m) {
+    const w = this.w;
+    if (m.t === "piece") w.lab_piece(m.i, m.seed >>> 0);
+    else if (m.t === "perf") w.lab_perform(m.w, m.v);
+    else if (m.t === "freeze") w.lab_freeze(m.on ? 1 : 0);
+    else if (m.t === "vol") w.lab_volume(m.v);
+    else if (m.t === "morph") { w.lab_morph_clear(); for (const [c, p, d] of m.d) w.lab_morph(c, p, d); }
+  }
+  run(L, R) {
+    const w = this.w, ratio = this.ratio;
+    const need = Math.ceil(this.pos + L.length * ratio) + 2;
+    while (this.n < need) {
+      const a = new Float32Array(w.memory.buffer, w.lab_render(48), 96);
+      for (let i = 0; i < 96; i++) this.fifo[(this.r + this.n * 2 + i) & 4095] = a[i];
+      this.n += 48;
+      this.frames += 48;
+    }
+    for (let i = 0; i < L.length; i++) {
+      const k = Math.floor(this.pos), fr = this.pos - k;
+      const i0 = (this.r + 2 * k) & 4095, i1 = (this.r + 2 * k + 2) & 4095;
+      L[i] = this.fifo[i0] + (this.fifo[i1] - this.fifo[i0]) * fr;
+      R[i] = this.fifo[(i0 + 1) & 4095] + (this.fifo[(i1 + 1) & 4095] - this.fifo[(i0 + 1) & 4095]) * fr;
+      this.pos += ratio;
+    }
+    const adv = Math.floor(this.pos);
+    this.r = (this.r + 2 * adv) & 4095; this.n -= adv; this.pos -= adv;
+    if (this.frames - this.sent < 2400) return null;
+    this.sent = this.frames;
+    return { t: "st", glow: [0, 1, 2, 3].map((c) => w.lab_glow(c)), beat: w.lab_beat(), duck: w.lab_ducked() };
+  }
+}
+const WORKLET = LabCore.toString() + `
+class LabNode extends AudioWorkletProcessor {
+  constructor(o) { super(); this.core = new LabCore(o.processorOptions); this.port.onmessage = (e) => this.core.cmd(e.data); }
+  process(_, outs) { const o = outs[0]; const m = this.core.run(o[0], o[1] || o[0]); if (m) this.port.postMessage(m); return true; }
+}
+registerProcessor("glag-lab", LabNode);`;
+
+let wasmBytes = null, info = null, ctx = null, port = null, current = 118;
+const $ = (id) => document.getElementById(id);
+function cstr(w, p) { const u = new Uint8Array(w.memory.buffer); let s = ""; while (u[p]) s += String.fromCharCode(u[p++]); return s; }
+
+/* the pieces' names, voices and tempos, from a second copy of the engine on the page (no sound) */
+async function loadInfo() {
+  const r = await fetch("glag_lab.wasm");
+  wasmBytes = await r.arrayBuffer();
+  const w = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}).exports;
+  w.lab_init(1);
+  const n = w.lab_npieces(), pieces = [];
+  const RV = ["Hall", "Chamber", "Shimmer", "Bloom"];
+  for (let i = 0; i < n; i++) {
+    w.lab_piece(i, 1);
+    pieces.push({ i, name: cstr(w, w.lab_name(i)), voices: [0, 1, 2, 3].map((c) => cstr(w, w.lab_voice_name(w.lab_voice(c)))),
+      bpm: Math.round(w.lab_tempo()), rv: RV[w.lab_reverb()] || "", cost: w.lab_cost() });
+  }
+  info = pieces;
+}
+function send(m) { if (port) port.postMessage(m); }
+function play(i, keepDice) {
+  current = i;
+  const p = info[i];
+  $("nowName").textContent = p.name;
+  $("nowMeta").textContent = p.bpm + " BPM · " + p.rv + " · est. load ~" + Math.round(p.cost * 1.29) + " % of the device";
+  $("chans").innerHTML = "";
+  p.voices.forEach((v, c) => {
+    const d = document.createElement("div"); d.className = "ch"; d.id = "ch" + c;
+    d.innerHTML = '<span class="ch-n">CH ' + (c + 1) + '</span><span class="ch-v"></span><span class="ch-light"><i></i></span>';
+    d.querySelector(".ch-v").textContent = v;
+    $("chans").appendChild(d);
+  });
+  document.querySelectorAll(".piece").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+  $("other").value = String(i);
+  send({ t: "piece", i, seed: (Math.random() * 4294967295) >>> 0 });
+}
+function onState(m) {
+  m.glow.forEach((g, c) => { const el = $("ch" + c); if (el) { el.querySelector("i").style.width = Math.round(Math.min(1, g) * 100) + "%"; el.classList.toggle("ducked", !!(m.duck >> c & 1)); } });
+  $("beat").style.background = m.beat < 0.15 ? "var(--accent-2)" : "var(--chip)";
+}
+async function start() {
+  if (ctx) {
+    if (ctx.state === "running") { await ctx.suspend(); $("start").textContent = "Start sound"; } else { await ctx.resume(); $("start").textContent = "Stop sound"; }
+    return;
+  }
+  try { ctx = new AudioContext({ sampleRate: 48000 }); } catch (e) { ctx = new AudioContext(); }
+  const opt = { wasm: wasmBytes.slice(0), seed: (Math.random() * 4294967295) >>> 0 };
+  try {
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+    const node = new AudioWorkletNode(ctx, "glag-lab", { numberOfOutputs: 1, outputChannelCount: [2], processorOptions: opt });
+    node.port.onmessage = (e) => { if (e.data.t === "st") onState(e.data); };
+    node.connect(ctx.destination);
+    port = node.port;
+  } catch (err) {
+    const core = new LabCore(opt), sp = ctx.createScriptProcessor(1024, 0, 2);
+    sp.onaudioprocess = (e) => { const m = core.run(e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)); if (m) onState(m); };
+    sp.connect(ctx.destination);
+    port = { postMessage: (m) => core.cmd(m) };
+  }
+  $("start").textContent = "Stop sound";
+  send({ t: "vol", v: +$("vol").value });
+  play(current);
+  for (const f of FX) if (f.kind === "slider") { const el = $("fx-" + f.k); if (+el.value > 0) send({ t: "perf", w: f.w, v: +el.value }); }
+}
+
+/* ---- building the page ---- */
+function build() {
+  for (const [i, name, text] of NEW) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "piece"; b.dataset.i = i;
+    b.setAttribute("aria-pressed", "false");
+    const p = info[i];
+    b.innerHTML = "<b></b><span></span><em></em>";
+    b.querySelector("b").textContent = name;
+    b.querySelector("span").textContent = text;
+    b.querySelector("em").textContent = p.voices.join(" · ") + " · ~" + Math.round(p.cost * 1.29) + " %";
+    b.addEventListener("click", () => { if (!ctx) start().then(() => play(i)); else play(i); });
+    $("pieces").appendChild(b);
+  }
+  for (const p of info) { const o = document.createElement("option"); o.value = p.i; o.textContent = (p.i + 1) + ". " + p.name; $("other").appendChild(o); }
+  $("other").addEventListener("change", (e) => { const i = +e.target.value; if (!ctx) start().then(() => play(i)); else play(i); });
+  for (const f of FX) {
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML = '<div class="card-h"><h3></h3><span class="cost"></span></div><p></p>';
+    card.querySelector("h3").textContent = f.name;
+    const c = card.querySelector(".cost"); c.textContent = f.cost; if (f.save) c.classList.add("save");
+    card.querySelector("p").textContent = f.text;
+    if (f.kind === "slider") {
+      const row = document.createElement("div"); row.className = "row";
+      row.innerHTML = '<input type="range" min="0" max="1" step="0.01" value="0"><output>0</output>';
+      const inp = row.querySelector("input"), out = row.querySelector("output");
+      inp.id = "fx-" + f.k; inp.setAttribute("aria-label", f.name);
+      inp.addEventListener("input", () => { out.textContent = Math.round(inp.value * 100); send({ t: "perf", w: f.w, v: +inp.value }); });
+      card.appendChild(row);
+    } else {
+      const pads = document.createElement("div"); pads.className = "pads";
+      for (const [label, val, key] of f.pads) {
+        const b = document.createElement("button"); b.type = "button"; b.textContent = label + " (" + key + ")";
+        const on = () => { b.classList.add("held"); if (f.kind === "head") send({ t: "perf", w: 5, v: val }); else if (val < 0) send({ t: "freeze", on: 1 }); else send({ t: "perf", w: val, v: 1 }); };
+        const off = () => { if (!b.classList.contains("held")) return; b.classList.remove("held"); if (f.kind === "head") send({ t: "perf", w: 5, v: 0 }); else if (val < 0) send({ t: "freeze", on: 0 }); else send({ t: "perf", w: val, v: 0 }); };
+        holdable(b, on, off, key);
+        pads.appendChild(b);
+      }
+      card.appendChild(pads);
+    }
+    $("fx").appendChild(card);
+  }
+  const held = new Set();
+  const sendMorph = () => {
+    const sum = new Map();
+    for (const k of held) for (const [c, p, d] of MORPH[k].d) {
+      const cs = c < 0 ? [0, 1, 2, 3] : [c];
+      for (const cc of cs) { const key = cc + ":" + p; sum.set(key, (sum.get(key) || 0) + d); }
+    }
+    send({ t: "morph", d: [...sum].map(([key, d]) => { const [c, p] = key.split(":").map(Number); return [c, p, d]; }) });
+  };
+  MORPH.forEach((m, k) => {
+    const b = document.createElement("button"); b.type = "button";
+    b.innerHTML = "<b></b><small></small>";
+    b.querySelector("b").textContent = (k + 1) + " · " + m.name;
+    b.querySelector("small").textContent = m.text;
+    holdable(b, () => { b.classList.add("held"); held.add(k); sendMorph(); }, () => { b.classList.remove("held"); held.delete(k); sendMorph(); }, String(k + 1));
+    $("morph").appendChild(b);
+  });
+  for (const [n, how, chr, cost] of VOICES) {
+    const tr = document.createElement("tr");
+    for (const [x, cls] of [[n, ""], [how, ""], [chr, ""], [cost, "n"]]) { const td = document.createElement("td"); td.textContent = x; if (cls) td.className = cls; tr.appendChild(td); }
+    $("voices").appendChild(tr);
+  }
+}
+/* press-and-hold on pointer and key; released whenever the pointer leaves or the page loses focus */
+const keyMap = new Map();
+function holdable(b, on, off, key) {
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); on(); });
+  b.addEventListener("pointerup", off);
+  b.addEventListener("pointercancel", off);
+  b.addEventListener("lostpointercapture", off);
+  b.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); on(); } });
+  b.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") off(); });
+  keyMap.set(key.toLowerCase(), [on, off]);
+}
+document.addEventListener("keydown", (e) => { if (e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return; const k = keyMap.get(e.key.toLowerCase()); if (k) k[0](); });
+document.addEventListener("keyup", (e) => { const k = keyMap.get(e.key.toLowerCase()); if (k) k[1](); });
+window.addEventListener("blur", () => { for (const [, [, off]] of keyMap) off(); });
+
+$("start").addEventListener("click", start);
+$("again").addEventListener("click", () => { if (ctx) play(current); });
+$("vol").addEventListener("input", (e) => send({ t: "vol", v: +e.target.value }));
+loadInfo().then(build).catch((e) => { $("nowMeta").textContent = "Could not load the engine: " + e.message; });
+</script>
