@@ -4,7 +4,9 @@
  * "GLAG T3" lines, so a device log can be laid beside it: what the twin shows too is the music;
  * what only the device shows (load, stream, stacks) is the device. There is no cycle counter
  * here, so the load fields read 0. OUT.wav: everything it played (48 kHz stereo, ~180 MB a round).
- * ONLY=name: that scenario alone. SEED: the engine's (the device takes one from the clock at power-on, so its notes differ). */
+ * ONLY=name: that scenario alone. FADER_NOISE=counts: the faders read with that much ADC noise
+ * (and now and then a spike three times it); HAND=s: at s seconds a hand moves fader 2 by 30 %
+ * (both to check the script tells noise from a hand). SEED: the engine's (the device takes one from the clock at power-on, so its notes differ). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,11 +39,22 @@ int main(int argc, char **argv)
 	gl_ui_out out;
 	if (w)
 		wav_header(w, 0);
-	uint32_t now = 0, frames = 0;
+	uint32_t now = 0, frames = 0, nz = 12345u;
+	const float noise = getenv("FADER_NOISE") ? (float)atof(getenv("FADER_NOISE")) / 3701.0f : 0.0f;
+	const float hand = getenv("HAND") ? (float)atof(getenv("HAND")) * 1000.0f : -1.0f;
 	int16_t blk[192];
 	while (glt_round < rounds) {
 		gl_input in = rest;
-		glt_tick(now, &in, 0);
+		for (int f = 0; f < 4 && noise > 0.0f; f++) {
+			nz = nz * 1664525u + 1013904223u;
+			const float u = (float)(nz >> 8) * (1.0f / 8388608.0f) - 1.0f;
+			in.fader[f] += ((nz & 0xFFu) < 1u ? 3.0f : 1.0f) * noise * u;   /* (a spike: 1 in 256) */
+		}
+		if (hand >= 0.0f && (float)now >= hand) {
+			const float k = ((float)now - hand) / 300.0f;
+			in.fader[1] += 0.3f * (k > 1.0f ? 1.0f : k);
+		}
+		glt_tick(now, &in, glt_touch(&in));
 		glui_tick(now, &in, &out);
 		for (int b = 0; b < 4; b++) {
 			gl_render(blk, 96, 1.0f);

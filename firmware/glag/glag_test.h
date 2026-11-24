@@ -5,12 +5,14 @@
  * the device.
  *
  * Include it once, after glag_ui.h, with GL_PROF and GL_TEST_HOOKS defined and GLT_PRINTF set to
- * the log's printf (printk on the device). Then, every UI tick, before glui_tick:
+ * the log's printf (printk on the device). Then, every UI tick, before glui_tick, with `in` as the
+ * real controls read it:
  *
- *     int ev = glt_tick(now_ms, &in, real);
+ *     int ev = glt_tick(now_ms, &in, glt_touch(&in));
  *
- * `real`: a real button is held or a real fader moved this tick. The script then stops at once
- * (`in` passes as it came) and waits for 30 s of quiet, then goes on with the next scenario.
+ * glt_touch: a hand on the controls (a button held, VOL aside; a fader moved well past its noise).
+ * The script then stops at once (`in` passes as it came), says what was touched, and goes on with
+ * the next scenario after 30 s untouched.
  * Otherwise it may set the faders in `in`, and of the buttons only FFWD and RWD, tapped or held:
  * never ••, VOL or PLAY (so never a power gesture, never a save). It sets state through
  * glui_test() and sends MIDI through glui_midi_*(), as the gestures and a MIDI cable would.
@@ -47,7 +49,8 @@ static float glt_fad[4];                 /* where the script holds the faders (t
 static gl_check_t glt_acc, glt_sub;      /* the scenario so far; its step so far */
 static const char *glt_name = "";  /* the scenario's name */
 static char glt_step[40];                /* the step playing ("" none) */
-static uint32_t glt_fs_seen;
+static uint32_t glt_fs_seen, glt_touch_said, glt_touch_why;
+static gl_check_t glt_win;               /* since the last 5 s line (glt_window) */
 static int glt_p_seen = -1;
 static int glt_only = -1;              /* the host twin: this scenario alone, round after round */
 
@@ -84,12 +87,25 @@ static int glt_a10(float v) { int x = glt_x10(v); return x < 0 ? -x : x; }
 #define T10(v) (glt_x10(v) < 0 ? "-" : ""), glt_a10(v) / 10, glt_a10(v) % 10
 static float glt_db(float x) { return x > 1e-9f ? 20.0f * log10f(x) : -180.0f; }
 
-/* the step that just ended: its line; then the next one's name */
-static void glt_step_end(void)
+/* the engine's counts since the last take, into the step and the 5 s window */
+static void glt_take(void)
 {
 	gl_check_t c;
 	gl_check_take(&c);
 	glt_merge(&glt_sub, &c);
+	glt_merge(&glt_win, &c);
+}
+/* the counts since the last call, script running or not (the device's 5 s line) */
+static __attribute__((unused)) void glt_window(gl_check_t *o)
+{
+	glt_take();
+	*o = glt_win;
+	glt_zero(&glt_win);
+}
+/* the step that just ended: its line; then the next one's name */
+static void glt_step_end(void)
+{
+	glt_take();
 	if (glt_step[0]) {
 		const gl_check_t *s = &glt_sub;
 		const float avg = s->loads ? s->load_sum / (float)s->loads * 100.0f : 0.0f;
@@ -431,19 +447,56 @@ static void glt_start(int i, uint32_t now)
 	glt_btn = 0;
 	glt_step[0] = 0;
 	glui_test(GT_RESET, GLT_SCENES[i].piece < GL_NPIECES ? GLT_SCENES[i].piece : 0, 0, 0.0f, now);
-	{ gl_check_t c; gl_check_take(&c); }            /* (what came before is not this one's) */
+	glt_take();                                      /* (what came before is not this one's) */
 	glt_zero(&glt_acc);
 	glt_zero(&glt_sub);
 	GLT_PRINTF("GLAG T3 > %d/%d %s (%u s) on %s, round %u seed 0x%08x\n", i + 1, GLT_N, GLT_SCENES[i].name,
 	           GLT_SCENES[i].secs, gl_piece_name(GLT_SCENES[i].piece), glt_round, glt_seed);
 }
 
-static int glt_tick(uint32_t now, gl_input *in, int real)
+/* A hand on the controls: the buttons held (bits 0-9, as gl_btn; VOL aside, it is the output
+ * level), and the faders moved (bits 16-19). The faders come raw from the ADC, so no one reading
+ * means anything: each is followed by a running average (~30 ms), its resting place taken once that
+ * has settled, and a fader counts only when its average has sat more than 8 % from there for three
+ * ticks running. Noise never does that; a hand moving a fader always does, within ~0.1 s. */
+static float glt_avg[4], glt_ref[4];
+static uint8_t glt_away[4], glt_warm;
+static uint32_t glt_touch(const gl_input *in)
+{
+	uint32_t why = (uint32_t)(in->buttons & (uint16_t)~((1u << GB_VOLUP) | (1u << GB_VOLDN)));
+	for (int f = 0; f < 4; f++)
+		glt_avg[f] = glt_warm ? glt_avg[f] + 0.25f * (in->fader[f] - glt_avg[f]) : in->fader[f];
+	if (glt_warm < 8u) {                             /* settling: where the faders rest */
+		glt_warm++;
+		for (int f = 0; f < 4; f++)
+			glt_ref[f] = glt_avg[f];
+		return why;
+	}
+	for (int f = 0; f < 4; f++) {
+		const float d = glt_avg[f] - glt_ref[f];
+		if (d < 0.08f && d > -0.08f)
+			glt_away[f] = 0;
+		else if (++glt_away[f] >= 3u) {
+			why |= 1u << (16 + f);
+			glt_ref[f] = glt_avg[f];
+			glt_away[f] = 0;
+		}
+	}
+	return why;
+}
+
+static int glt_tick(uint32_t now, gl_input *in, uint32_t real)
 {
 	glt_now = now;
 	if (real) {                                      /* a hand on it: out of the way, at once */
-		if (!glt_paused)
-			GLT_PRINTF("GLAG T3 paused: a real press (on again after %u s untouched)\n", GLT_QUIET_MS / 1000u);
+		/* what it was: at once, then at most every 10 s (or when it is something else) */
+		if (!glt_paused || real != glt_touch_why || now - glt_touch_said >= 10000u) {
+			GLT_PRINTF("GLAG T3 %s: buttons 0x%03x faders 0x%x (on again %u s after the last touch)\n",
+			           glt_paused ? "touched" : "paused", (unsigned)(real & 0xFFFFu), (unsigned)(real >> 16),
+			           GLT_QUIET_MS / 1000u);
+			glt_touch_said = now;
+			glt_touch_why = real;
+		}
 		glt_paused = 1;
 		glt_quiet_at = now;
 		return GLT_RUN;

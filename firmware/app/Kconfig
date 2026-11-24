@@ -253,8 +253,10 @@ config SP1_GLAG_CPU_TEST
 	  DC, clipping, clicks, silence, NaN, the sample rate), the engine's counts (steps against
 	  the tempo, notes, steals), the stream's failures, every thread's free stack and the
 	  TX blocks left. After each AUD line a GLAG line gives the last 5 s by part, as before.
-	  The script presses only FFWD and RWD, never ••, VOL or PLAY; any real button or fader
-	  stops it at once, and it carries on 30 s after the last touch. The output is capped
+	  The script presses only FFWD and RWD, never ••, VOL or PLAY; any real button (VOL aside)
+	  or a fader moved by a hand (more than 8 %, past its noise) stops it at once, and it
+	  carries on 30 s after the last touch. A "GLAG win" line every 5 s gives that window's
+	  late blocks, steals, clicks and silences, script running or not. The output is capped
 	  6 dB under what VOL gives. Writes nothing anywhere.
 	  Off in release builds.
 

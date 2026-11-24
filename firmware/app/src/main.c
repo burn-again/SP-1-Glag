@@ -116,23 +116,14 @@ static void glag_cpu_test_tick(uint32_t budget)
 	       a10[3] / 10u, a10[3] % 10u, w10[3] / 10u, w10[3] % 10u,
 	       a10[4] / 10u, a10[4] % 10u, w10[4] / 10u, w10[4] % 10u,
 	       ma, mw, nb);
-}
-/* a hand on the controls: a button held, or a fader moved past its noise since the last tick
- * (VOL alone does not count: it is the output level, outside the script) */
-static float t3_fad[4];
-static bool t3_have_fad;
-static int glag_t3_real(const gl_input *gi)
-{
-	int moved = 0;
-	for (int f = 0; f < 4; f++) {
-		const float d = gi->fader[f] - t3_fad[f];
-		if (t3_have_fad && (d > 0.02f || d < -0.02f))
-			moved = 1;
-		t3_fad[f] = gi->fader[f];
-	}
-	t3_have_fad = true;
-	const uint16_t vol = (uint16_t)((1u << GB_VOLUP) | (1u << GB_VOLDN));
-	return moved || (gi->buttons & (uint16_t)~vol) != 0u;
+	/* and what came out of those 5 s, script running or not: the blocks past 90/100 %, the
+	 * governor, notes taken away, clicks, silences (to match a hiccup heard to a cause) */
+	gl_check_t w;
+	glt_window(&w);
+	printk("GLAG win >90=%u >100=%u >150=%u capmin=%d leanmax=%d notes=%u steals=%u clicks=%u max=%u silent=%ums nan=%u peak=%u\n",
+	       w.over90, w.over100, w.over150, w.cap_min, w.lean_max, w.notes, w.steals, w.jumps,
+	       (unsigned)sqrtf((float)w.jump_max), w.blocks ? w.silent_max * (w.samples / w.blocks) / 48u : 0u,
+	       w.nan, w.peak);
 }
 /* after each scenario: what only the device can say. The stream, each thread's stack, the TX blocks */
 static uint32_t t3_fail0, t3_rst0, t3_blk0;
@@ -2435,7 +2426,7 @@ int main(void)
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
 				/* the test's script: after the power gesture above (which never reads gi),
 				 * through the controls as a hand would; out of the way the moment a hand is on them */
-				if (glt_tick(k_uptime_get_32(), &gi, glag_t3_real(&gi)) == GLT_END) {
+				if (glt_tick(k_uptime_get_32(), &gi, glt_touch(&gi)) == GLT_END) {
 					glag_t3_device();
 				}
 #endif

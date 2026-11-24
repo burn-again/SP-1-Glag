@@ -302,10 +302,15 @@ with its load and counts, and four `=` lines at its end:
 - the device: stream failures and restarts, every thread's free stack, the TX blocks left free.
 
 The load leaves the checks' own cost out (about 2 % of a block, shown on its own), so the governor
-sees what the release would. After every `AUD` line a `GLAG` line still gives the last 5 s by part.
-The script presses only FFWD and RWD, never ••, VOL or PLAY, so never a power gesture or a save; any
-real button (VOL aside) or a moved fader stops it at once, and it carries on 30 s after the last touch
-with the next scenario. The output is capped 6 dB under what VOL gives. It writes nothing anywhere.
+sees what the release would. After every `AUD` line a `GLAG` line still gives the last 5 s by part,
+and a `GLAG win` line what came out of those 5 s, script running or not: blocks past 90, 100 and
+150 %, the governor's lowest voice cap and leanest step, notes, notes taken away (steals), clicks,
+the longest silence, NaN and the peak, so a hiccup heard can be matched to its 5 s.
+The script presses only FFWD and RWD, never ••, VOL or PLAY, so never a power gesture or a save. Any
+real button (VOL aside) or a fader moved by a hand stops it at once (`GLAG T3 paused: buttons 0x...
+faders 0x...` says which), and it carries on 30 s after the last touch with the next scenario. The
+faders are read raw, so a fader counts only when its ~30 ms average sits more than 8 % from where it
+rested for three ticks running: noise never does, a hand always does. The output is capped 6 dB under what VOL gives. It writes nothing anywhere.
 
 `host/build/hwtest` is its twin: the same script through the same controls and engine on a computer
 (`hwtest [ROUNDS] [OUT.wav] [SEED]`, `ONLY=name` for one scenario), the same lines with the load left
