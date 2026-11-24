@@ -1,8 +1,8 @@
 check_image: /tmp/claude-0/-home-user-SP-1-Glag/37a63ede-696f-5b04-98a9-6d9eb365f5fa/scratchpad/zws/build-t/zephyr
   [PASS] _vector_table at 0x20000  (0x20000)
   [PASS] no load segment below 0x20000  (lowest LMA 0x20000)
-  [PASS] no load segment at or above 0xFF000  (image ends 0x65fe4)
-  [PASS] glag-sp1.bin matches the ELF's loadable span  (286692 B vs 286692 B)
+  [PASS] no load segment at or above 0xFF000  (image ends 0x663b4)
+  [PASS] glag-sp1.bin matches the ELF's loadable span  (287668 B vs 287668 B)
   [PASS] .map: FLASH region origin 0x20000  (0x20000)
   [PASS] .map: FLASH region ends at 0xFF000  (0xff000)
   [PASS] .map: _vector_table at 0x20000  (0x0000000000020000)
@@ -12,5 +12,5 @@ check_image: /tmp/claude-0/-home-user-SP-1-Glag/37a63ede-696f-5b04-98a9-6d9eb365
   [PASS] CONFIG_REBOOT=y  (got y)
   [PASS] CONFIG_CLOCK_CONTROL_NRF_K32SRC_SYNTH=y  (got y)
   [PASS] SP1_FORCE_CALIB is 0  (got 0)
-glag-sp1.bin: 286692 B (31.39% of the slot), fallback config
+glag-sp1.bin: 287668 B (31.49% of the slot), fallback config
 OK: safe to hand over for flashing
