@@ -351,6 +351,9 @@ static uint32_t seen_next, seen_panic;
 static int scale_pc[12], scale_n;          /* absolute pitch classes, ascending from the root */
 static int root_pc, mode_cur = -1, root_cur = -1;
 static int chord_deg, chord_pc[4], chord_n, chord_moves;
+#ifdef GL_EXT_TEX
+void (*gl_ext_tex)(float *HL, float *HR, float *V, uint32_t n, const int *chord, int nchord);
+#endif
 static uint32_t chord_count;
 static uint16_t scale_mask, chord_mask;     /* bit pc: in the scale / in the chord */
 static float chord_timer;
@@ -4610,6 +4613,10 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 		}
 		PROF_ADD(p_vox, p_v);
 		texture_block(HL, HR, VSUB, VSR);           /* Playworld's bed, dry */
+#ifdef GL_EXT_TEX
+		if (gl_ext_tex)                              /* (audition builds: a texture from outside) */
+			gl_ext_tex(HL, HR, V, VSUB, chord_pc, chord_n);
+#endif
 		{	/* the dark send: 12 dB an octave from 1.5 kHz */
 			const float k = 0.3245f;              /* 1 - exp(-2 pi 1500 / 24000) */
 			float d1 = vd_s[0], d2 = vd_s[1];
