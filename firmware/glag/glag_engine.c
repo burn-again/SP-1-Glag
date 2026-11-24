@@ -333,7 +333,7 @@ typedef struct {
 	uint8_t pend;                  /* (the mask fits: up to 127) */
 	/* bells: a note waiting to sound, per loop */
 	float bp_t[4], bp_note[4], bp_vel[4], bp_ratio[4];
-	uint8_t bp_on;
+	uint8_t bp_on, bp_fade;        /* (bp_fade: voices fading to make way for one) */
 	kit_state kt;                  /* the kit (glag_kit.h) */
 } chan;
 
@@ -2309,10 +2309,29 @@ static void chan_control(chan *c, int ch, float dt)
 			if (c->bp_on & (1u << k)) {
 				c->bp_t[k] -= sdt;
 				if (c->bp_t[k] <= 0.0f) {
+					/* the quietest of the four voices takes it. Still ringing, it fades first
+					 * (-60 dB in 12 ms, for up to 20 ms): retriggered as it rang, a bell jumped to
+					 * the new note and lost its brightness in one sample, a skip (Night Bus's busy
+					 * bells did it 30 times a minute) */
+					int q = 0;
+					for (int i = 0; i < 4; i++) {
+						if (!sounding(&c->v[i])) {
+							q = i;
+							break;
+						}
+						if (c->v[i].amp < c->v[q].amp)
+							q = i;
+					}
+					nvoice *v = &c->v[q];
+					if (sounding(v) && v->amp > 0.02f && c->bp_t[k] > -0.02f) {
+						c->bp_fade |= (uint8_t)(1u << q);
+						continue;
+					}
 					c->bp_on &= (uint8_t)~(1u << k);
-					if (!sounding(&c->v[k]))
-						make_room(&c->v[k]);
-					nv_trigger(&c->v[k], c->bp_note[k], c->bp_vel[k], c->bp_ratio[k], k);
+					c->bp_fade &= (uint8_t)~(1u << q);
+					if (!sounding(v))
+						make_room(v);
+					nv_trigger(v, c->bp_note[k], c->bp_vel[k], c->bp_ratio[k], k);
 					c->glow = 1.0f;
 				}
 			}
@@ -2521,6 +2540,8 @@ static void chan_control(chan *c, int ch, float dt)
 			           clampf(0.15f + (v->note - 66.0f) * (1.0f / 18.0f), 0.15f, 1.0f);   /* mostly the high bells */
 			nv_perc(v, att + 0.02f * mu, expmap(len, 1.0f, 10.0f) * ring * (1.0f - 0.8f * mu) / speed,
 			        (0.35f + 1.5f * tone) * (1.0f - 0.6f * mu) / speed, (0.3f + 2.0f * tone) * (1.0f - 0.65f * mu), dt);
+			if (c->bp_fade & (1u << k))
+				v->env *= dcoef(0.012f, dt);         /* making way for the next bell */
 			nv_pitch(v, v->note);
 		}
 		break;
