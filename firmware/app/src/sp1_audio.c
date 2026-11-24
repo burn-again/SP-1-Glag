@@ -52,7 +52,10 @@ BUILD_ASSERT(BLK_FRAMES % 48u == 0u,
 
 /* The nrfx TX queue + two EasyDMA buffers + the one being filled + one spare for the
  * re-prime. tape-looper measured the structural peak at exactly queue + 3 (7 at 4). */
-K_MEM_SLAB_DEFINE_STATIC(tx_slab, BLK_BYTES, TX_QUEUE + 4, 4);
+#define TX_BLOCKS (TX_QUEUE + 4)
+/* (a pool of our own, not K_MEM_SLAB_DEFINE_STATIC: tx_pool_whole() rebuilds it) */
+static char __aligned(4) tx_slab_buf[TX_BLOCKS * BLK_BYTES];
+static struct k_mem_slab tx_slab;
 
 #if defined(CONFIG_SP1_USB_AUDIO)
 #include "sp1_uac.h"        /* M5c: the same blocks, to the host */
@@ -140,13 +143,34 @@ static volatile bool started;
 static K_SEM_DEFINE(start_sem, 0, 1);
 
 static struct sp1_audio_stats st;
+
+/* The TX pool whole again, before every start and restart. Seen on hardware (2026-11-24): after a
+ * run of late blocks the I2S driver kept blocks it never gave back (DROP marks the stream ready
+ * while the peripheral is still stopping, and the restart's START lands in that window); four of
+ * the five were gone, one block cannot keep a stream fed, so every restart failed for good --
+ * and off/on (standby, on USB) restarted on the same short pool, still silent. Called only with
+ * the stream stopped and no block of it in our hands: it waits for the peripheral to be off (the
+ * driver's last callback has run), then, if any block is missing, rebuilds the pool. */
+static void tx_pool_whole(void)
+{
+	for (int i = 0; i < 20 && NRF_I2S->ENABLE; i++) {
+		k_msleep(1);
+	}
+	const uint32_t fr = k_mem_slab_num_free_get(&tx_slab);
+	if (NRF_I2S->ENABLE || fr >= TX_BLOCKS) {
+		return;
+	}
+	(void)k_mem_slab_init(&tx_slab, tx_slab_buf, BLK_BYTES, TX_BLOCKS);
+	st.tx_lost += TX_BLOCKS - fr;
+	st.tx_rebuilt++;
+}
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
 static uint32_t t3_slab_min = 0xFFFFFFFFu;
 void sp1_audio_t3_slab(uint32_t *free_now, uint32_t *free_min, uint32_t *total)
 {
 	*free_now = k_mem_slab_num_free_get(&tx_slab);
 	*free_min = t3_slab_min;
-	*total = TX_QUEUE + 4u;
+	*total = TX_BLOCKS;
 	t3_slab_min = 0xFFFFFFFFu;
 }
 #endif
@@ -531,6 +555,7 @@ static void audio_thread(void *a, void *b, void *c)
 			.timeout        = 500,
 		};
 
+		tx_pool_whole();
 		st.cfg_rc = i2s_configure(i2s_dev, I2S_DIR_TX, &cfg);
 		if (st.cfg_rc != 0) {
 			goto park;
@@ -611,6 +636,7 @@ static void audio_thread(void *a, void *b, void *c)
 					 * a repeating fail/restart cycle. Inherited from
 					 * tape-looper; cheap to close. */
 					k_msleep(5);
+					tx_pool_whole();
 					prime(TX_QUEUE);
 					if (i2s_trigger(i2s_dev, I2S_DIR_TX,
 							I2S_TRIGGER_START) == 0) {
@@ -860,6 +886,7 @@ void sp1_audio_init(void)
 #endif
 
 	if (!thread_made) {
+		(void)k_mem_slab_init(&tx_slab, tx_slab_buf, BLK_BYTES, TX_BLOCKS);
 		thread_made = true;
 		(void)k_thread_create(&audio_tcb, audio_stack,
 				      K_THREAD_STACK_SIZEOF(audio_stack),

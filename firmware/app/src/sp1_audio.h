@@ -168,6 +168,8 @@ struct sp1_audio_stats {
 	uint32_t blocks;         /* blocks handed to I2S                         */
 	uint32_t write_fails;    /* i2s_write errors                             */
 	uint32_t restarts;       /* stream drop + re-prime after repeated fails  */
+	uint32_t tx_lost;        /* TX blocks the driver never gave back (found at a (re)start) */
+	uint32_t tx_rebuilt;     /* times the TX pool was rebuilt for them       */
 	uint32_t cyc_max;        /* worst cycles spent generating one block      */
 	uint32_t cyc_budget;     /* cycles available per block                   */
 	int      cfg_rc;         /* last i2s_configure() result                  */

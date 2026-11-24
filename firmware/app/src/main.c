@@ -2662,7 +2662,7 @@ int main(void)
 				const uint32_t wmax_x100 = as.cyc_budget
 					? (uint32_t)(((uint64_t)wmax * 10000u) /
 						     as.cyc_budget) : 0u;
-				printk("AUD run=%d blk=%u fail=%u rst=%u"
+				printk("AUD run=%d blk=%u fail=%u rst=%u lost=%u/%u"
 				       "  cyc avg=%u.%02u%% max=%u.%02u%%"
 				       " ever=%u.%02u%% (budget %u/blk)  meter=%u jack=%d"
 #if defined(CONFIG_SP1_PLAITS)
@@ -2670,7 +2670,7 @@ int main(void)
 #endif
 				       "\n",
 				       as.running ? 1 : 0, as.blocks, as.write_fails,
-				       as.restarts,
+				       as.restarts, as.tx_lost, as.tx_rebuilt,
 				       avg_x100 / 100u, avg_x100 % 100u,
 				       wmax_x100 / 100u, wmax_x100 % 100u,
 				       pct_x100 / 100u, pct_x100 % 100u,
