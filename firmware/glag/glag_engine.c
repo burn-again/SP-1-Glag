@@ -5876,6 +5876,58 @@ void gl_piece_scene(int i, uint8_t *steps, float *period_s)
 	*period_s = r->scene_s ? (float)r->scene_s : 8.0f;
 }
 
+/* The presets' CPU rules (as each piece loads; the CPU test build's heavy pieces are let be):
+ * a piece with a heavy voice (Strings, Kit, Super) is not on the Hall (the Chamber instead, about
+ * 9 % of the device less); and a piece with a Kit keeps within the budget (gl_cost_est at 68
+ * model points, about 88 % of the device): while it is past it, its heaviest companion gives
+ * way to a light voice in the same role. A held voice's stand-in (Glow for a pad, swell, strings
+ * or super; Tails for a drone) plays long and busy so it still holds the harmony */
+#ifndef GL_KIT_RULE
+#ifdef GL_TEST_PIECES
+#define GL_KIT_RULE 0
+#else
+#define GL_KIT_RULE 1
+#endif
+#endif
+static uint8_t kit_rule = GL_KIT_RULE;
+void gl_kit_rule(int on) { kit_rule = (uint8_t)(on != 0); }
+static int heavy_voice(int v) { return v == GV_STRINGS || v == GV_KIT || v == GV_SUPER; }
+static int held_voice(int v) { return v == GV_PAD || v == GV_SWELL || v == GV_STRINGS || v == GV_SUPER || v == GV_DRONE; }
+static void preset_rules(gl_patch *p)
+{
+	int kit = 0, heavy = 0;
+	for (int c = 0; c < GL_NCH; c++) {
+		kit |= p->voice[c] == GV_KIT;
+		heavy |= heavy_voice(p->voice[c]);
+	}
+	if (heavy && p->space[GL_SP_REVERB] == GR_HALL)
+		p->space[GL_SP_REVERB] = GR_CHAMBER;
+	for (int n = 0; kit && n < 3 && gl_cost_est(p, 0, 0, 0) > 68.0f; n++) {
+		/* the heaviest that is not a held voice first (bells, harp, arp, seq, harpsichord: their
+		 * stand-ins are close); a held one (whose stand-in only thins it) when none is left */
+		int c = -1;
+		for (int pass = 0; pass < 2 && c < 0; pass++)
+			for (int k = 0; k < GL_NCH; k++)
+				if (p->voice[k] != GV_KIT && GL_VCOST[p->voice[k]] > 6 && held_voice(p->voice[k]) == pass &&
+				    (c < 0 || GL_VCOST[p->voice[k]] > GL_VCOST[p->voice[c]]))
+					c = k;
+		if (c < 0)
+			break;
+		const int v = p->voice[c];
+		const int held = held_voice(v);
+		p->voice[c] = (uint8_t)(v == GV_BELLS ? GV_MARIMBA : v == GV_HARP ? GV_KALIMBA :
+		                        v == GV_ARP || v == GV_SEQ || v == GV_HARPSI ? GV_PIZZ :
+		                        v == GV_DRONE ? GV_TAILS : GV_GLOW);
+		if (held) {
+			p->ch[c][CP_ACTIVITY] = clampf(p->ch[c][CP_ACTIVITY], 0.6f, 1.0f);
+			p->ch[c][CP_LENGTH] = clampf(p->ch[c][CP_LENGTH], 0.85f, 1.0f);
+		}
+		/* and its level toward what it stands in for (a held voice's Glow is 6-12 dB under it,
+		 * the Marimba 0-4 under the Bells): +5 and +1.6 dB, at most the fader's top */
+		const float up = held ? 1.8f : v == GV_BELLS ? 1.2f : 1.0f;
+		p->ch[c][CP_LEVEL] = clampf(p->ch[c][CP_LEVEL] * up, 0.0f, 1.0f);
+	}
+}
 void gl_piece(int i, gl_patch *out)
 {
 	const recipe *r = &PIECES[(unsigned)i < GL_NPIECES ? i : 0];
@@ -5903,6 +5955,8 @@ void gl_piece(int i, gl_patch *out)
 #endif
 	out->g[GP_ROOT] = (float)r->g[GP_ROOT] / 11.0f;
 	out->g[GP_MODE] = (float)r->g[GP_MODE] / (float)(GL_NMODES - 1);
+	if (kit_rule)
+		preset_rules(out);
 }
 
 /* main thread: its own generator, so it never races the render's */

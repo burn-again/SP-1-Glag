@@ -182,6 +182,10 @@ void gl_duck_reset(void);              /* (the hardware test: each reading from 
 void gl_lite(int mode);
 int gl_lite_mask(void);
 int gl_lite_default(void);              /* the mode this build starts in */
+/* the presets' CPU rules, as gl_piece loads a piece (on by default; GL_KIT_RULE=0 or gl_kit_rule(0)
+ * for the pieces as written): a Kit keeps only light company, and a piece with a heavy voice is
+ * not on the Hall */
+void gl_kit_rule(int on);
 /* what each voice costs, in half-points of the CPU (the M4 model; hardware runs about 1.3x), and
  * a patch's estimated load in model points: 49.5 for the space and output, the voices, the reverb,
  * the reverse swell, and the extras the caller names (distortion, a Playworld texture 1-4, pump) */

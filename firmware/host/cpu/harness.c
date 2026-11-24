@@ -21,6 +21,9 @@ int main(void)
 	gl_init(1234);
 	gl_patch p;
 	const int whole = cfg_piece != 0xFF;
+#ifdef KITRULE
+	gl_kit_rule(KITRULE);                  /* 0: the pieces as written */
+#endif
 	gl_piece(whole ? cfg_piece : 0, &p);
 #ifdef ALTV
 	gl_alt(ALTV, ALTM);

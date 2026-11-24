@@ -21,6 +21,8 @@ int main(int argc, char **argv)
 	float secs = (float)atof(argv[2]);
 	gl_init(getenv("SEED") ? (uint32_t)atoi(getenv("SEED")) : 1234u);   /* SEED=n: another take */
 	gl_patch p;
+	if (getenv("KITRULE"))   /* KITRULE=0: the pieces as written, before the presets' CPU rules */
+		gl_kit_rule(atoi(getenv("KITRULE")));
 	gl_piece(piece, &p);
 	if (argc > 4 && argv[4][0] != '-')   /* ("-": the piece's own voices) */
 		for (int c = 0; c < GL_NCH && argv[4][c]; c++)
