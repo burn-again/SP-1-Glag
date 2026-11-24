@@ -829,7 +829,11 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		if (fn) {
 			used_with_fn = 1;
 			if (page == PG_HOME) {                     /* rotate this channel's voice */
+#ifdef GL_DEMO_PIECES
 				cur.voice[t] = (uint8_t)((cur.voice[t] + 1) % GV_COUNT);
+#else
+				cur.voice[t] = (uint8_t)((cur.voice[t] + 1) % GV_LITEKIT);   /* (the lab's voices: audition builds only) */
+#endif
 				dirty = 1;
 				show_idx = cur.voice[t];
 				say(SH_INDEX, now, 1200);

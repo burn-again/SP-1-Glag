@@ -137,10 +137,10 @@ int main(void)
 	down(GB_FN); tap(GB_T4); up(GB_FN);
 	CHECK(glui_patch()->voice[3] == GV_GLOW, "•• + T4 again: Glow (%d)", glui_patch()->voice[3]);
 	CHECK(out.page == PG_HOME, "rotating stays on HOME");
-	for (int k = 0; k < GV_COUNT - 2; k++) {
+	for (int k = 0; k < GV_LITEKIT - 2; k++) {
 		down(GB_FN); tap(GB_T4); up(GB_FN);
 	}
-	CHECK(glui_patch()->voice[3] == GV_PULSE, "all %d voices, back to Pulse (%d)", GV_COUNT, glui_patch()->voice[3]);
+	CHECK(glui_patch()->voice[3] == GV_PULSE, "all %d voices, back to Pulse (%d)", GV_LITEKIT, glui_patch()->voice[3]);
 	run(500);
 
 	/* •• + PLAY once: HARMONY */
