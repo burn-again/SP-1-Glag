@@ -328,6 +328,7 @@ typedef struct {
 	float ps_h, ps_y, ps_z, sn_m, sn_l;  /* the shaker's top, rolled off; the snare noise's filters */
 	uint32_t pn;                   /* its own noise (xorshift): not the shared generator */
 	float pc_k, sn_a, sn_k;        /* the click's decay; the snare's noise (grid mode) */
+	float ps_p, sn_p;              /* (PULSE_SOFT audition) the shaker's and snare's level, rising to */
 	float pend_t;
 	uint8_t pend;                  /* (the mask fits: up to 127) */
 	/* bells: a note waiting to sound, per loop */
@@ -1183,7 +1184,13 @@ static void pulse_fire(chan *c, int ch, int mask)
 		c->glow = 1.0f;
 	}
 	if (mask & 2) {
+#ifdef PULSE_SOFT
+		c->ps_p = (mask & 16 ? 0.6f : 0.35f) * (0.7f + 0.3f * rnd());
+		if (c->ps_a < 1e-4f)
+			c->ps_a = 1e-4f;                      /* (so it renders) */
+#else
 		c->ps_a = (mask & 16 ? 0.6f : 0.35f) * (0.7f + 0.3f * rnd());
+#endif
 		c->ps_k = fexp2(-9.9658f / ((mask & 64 ? 0.12f + 0.2f * l : 0.02f + 0.07f * l) * GL_SR));
 	}
 	if (mask & 4) {
@@ -1197,7 +1204,13 @@ static void pulse_fire(chan *c, int ch, int mask)
 		c->pc_ph = 0.0f;
 		c->pc_inc = (170.0f + 60.0f * t) / VSR;
 		c->pc_k = fexp2(-9.9658f / (0.07f * VSR));
+#ifdef PULSE_SOFT
+		c->sn_p = 0.8f + 0.2f * rnd();
+		if (c->sn_a < 1e-4f)
+			c->sn_a = 1e-4f;
+#else
 		c->sn_a = 0.8f + 0.2f * rnd();
+#endif
 		c->sn_k = fexp2(-9.9658f / ((0.08f + 0.15f * l) * GL_SR));
 		c->glow = 1.0f;
 	}
@@ -2988,6 +3001,13 @@ static void pulse_noise(chan *c, float *OL, float *OR, const float *h, const flo
 		sz += lk * (0.5f * (sy + sy1) - sz);
 		hp1 = hp;
 		float sh = sz * sa * 3.0f, sn = 0.0f;
+#ifdef PULSE_SOFT
+		if (c->ps_p > 0.0f) {                    /* rising over ~0.5 ms, then the decay */
+			sa += 0.12f * (c->ps_p - sa);
+			if (sa > 0.97f * c->ps_p)
+				c->ps_p = 0.0f;
+		} else
+#endif
 		sa *= sk;
 		if (snare) {
 			float nm1 = nm;
@@ -2995,6 +3015,13 @@ static void pulse_noise(chan *c, float *OL, float *OR, const float *h, const flo
 			float nb = 0.5f * (nm + nm1);
 			nl += kl * (nb - nl);
 			sn = (nb - nl) * na * 1.6f;
+#ifdef PULSE_SOFT
+			if (c->sn_p > 0.0f) {
+				na += 0.12f * (c->sn_p - na);
+				if (na > 0.97f * c->sn_p)
+					c->sn_p = 0.0f;
+			} else
+#endif
 			na *= nk;
 		}
 		OL[i] += sh * hL + sn * nL;
@@ -3736,6 +3763,9 @@ static inline float from16(int16_t v) { return (float)v * (1.0f / 16384.0f); }
 /* ---- DJ filter: TPT state-variable, stereo ---- */
 static float svf_s[2][2], svf_a1, svf_a2, svf_a3, svf_k = 1.2f;
 static float svf_mode;                         /* <0 low-pass, >0 high-pass, 0 through */
+static float filt_v = 0.5f, filt_tgt = 0.5f;   /* the DJ filter's place as it glides, and where to */
+static float svf_mix, svf_tap;                 /* how much of it is heard (0..1); the side its taps follow */
+static uint8_t filt_snap = 1;                  /* a fresh start: straight there, as the renders always were */
 static float dc_x[2], dc_y[2];                 /* DC blocker (feedback FM leaves an offset) */
 
 static void filter_setup(float v)
@@ -3946,7 +3976,13 @@ static void derive(void)
 	d_drift = expmap(1.0f - P.g[GP_DRIFT], 10.0f, 240.0f);
 	space_derive(bpm);
 	k_freeze = 1.0f - dcoef(0.08f, dt);
-	filter_setup(P.g[GP_FILTER]);
+	filt_tgt = P.g[GP_FILTER];                     /* (glided to, a millisecond at a time: gl_render) */
+	if (filt_snap) {
+		filt_v = filt_tgt;
+		filter_setup(filt_v);
+		svf_mix = svf_mode != 0.0f ? 1.0f : 0.0f;
+		svf_tap = svf_mode;
+	}
 }
 
 static void macro_tick(float dt)
@@ -4074,6 +4110,7 @@ static void control(float dt)
 		 * this seed (piece 1 loaded, its chord built, every channel reset, the space emptied),
 		 * then the posted piece taken on top of it, as the renders take theirs */
 		seen_fresh = cmd_fresh;
+		filt_snap = 1;
 		rng = cmd_fresh_seed ? cmd_fresh_seed : 0x9E3779B9u;
 		step_n = 0;
 		step_acc = 0.0f;
@@ -4422,8 +4459,10 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 #endif
 	for (uint32_t base = 0; base + GL_SUB <= n; base += GL_SUB) {
 		PROF_MARK(p_a);
-		if (ctl_ph == 0u)
+		if (ctl_ph == 0u) {
 			control(dt * (float)opt_ctl_n);
+			filt_snap = 0;
+		}
 		ctl_ph = ctl_ph + 1u >= (uint32_t)opt_ctl_n ? 0u : ctl_ph + 1u;
 		PROF_ADD(p_ctl, p_a);
 		/* The instruments at 24 kHz: the dry mix (HL, HR) and the sends. Plucked and struck
@@ -4672,11 +4711,33 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			dist_block(R, GL_SUB, 1);
 		}
 		warble_block(L, R, GL_SUB);                  /* Playworld: the vinyl's warble */
-		/* DJ filter, DC blocker, soft clip, out */
+		/* DJ filter, DC blocker, soft clip, out. The filter glides to the fader (~30 ms): set straight
+		 * to a jump, its cutoff and its side (low-pass, off, high-pass) changed under the signal
+		 * at once, a pop. Its sides meet at the centre (low-pass fully open, off, high-pass at
+		 * its lowest), so a glide through the middle is seamless; switched back on, it starts
+		 * fresh (the low-pass holding the signal, the high-pass at rest), not where it was left */
+		if (filt_v != filt_tgt) {
+			const float d = filt_tgt - filt_v;
+			filt_v = d < 0.0005f && d > -0.0005f ? filt_tgt : filt_v + 0.08f * d;
+			const float was = svf_mode;
+			if (filt_v < 0.47f || filt_v > 0.53f)
+				filter_setup(filt_v);
+			else
+				svf_mode = 0.0f;                    /* (off: its settings kept, to fade out on) */
+			if (was == 0.0f && svf_mode != 0.0f && svf_mix == 0.0f) {   /* the low-pass already holding the signal */
+				const int lp = svf_mode < 0.0f;
+				svf_s[0][0] = svf_s[1][0] = 0.0f;
+				svf_s[0][1] = lp ? L[0] : 0.0f;
+				svf_s[1][1] = lp ? R[0] : 0.0f;
+			}
+		}
 		float a1 = svf_a1, a2 = svf_a2, a3 = svf_a3, k = svf_k, md = svf_mode;
 		float s0l = svf_s[0][0], s1l = svf_s[0][1], s0r = svf_s[1][0], s1r = svf_s[1][1];
 		float xl = dc_x[0], yl = dc_y[0], xr = dc_x[1], yr = dc_y[1];
-		if (md != 0.0f) {
+		if (md != 0.0f)
+			svf_tap = md;
+		const float mto = md != 0.0f ? 1.0f : 0.0f;
+		if (mto == 1.0f && svf_mix == 1.0f) {
 			for (uint32_t i = 0; i < GL_SUB; i++) {
 				float l = L[i], r = R[i];
 				float v3 = l - s1l, v1 = a1 * s0l + a2 * v3, v2 = s1l + a2 * s0l + a3 * v3;
@@ -4689,6 +4750,26 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				L[i] = md < 0.0f ? v2 : l - k * v1 - v2;
 				R[i] = md < 0.0f ? w2 : r - k * w1 - w2;
 			}
+		} else if (mto != svf_mix) {
+			/* switched on or off: from the dry signal to the filtered one (or back) across the
+			 * millisecond, the filter running on its last settings */
+			const float tp = svf_tap, dm = (mto - svf_mix) * (1.0f / GL_SUB);
+			float mx = svf_mix;
+			for (uint32_t i = 0; i < GL_SUB; i++) {
+				float l = L[i], r = R[i];
+				float v3 = l - s1l, v1 = a1 * s0l + a2 * v3, v2 = s1l + a2 * s0l + a3 * v3;
+				s0l = 2.0f * v1 - s0l;
+				s1l = 2.0f * v2 - s1l;
+				v3 = r - s1r;
+				float w1 = a1 * s0r + a2 * v3, w2 = s1r + a2 * s0r + a3 * v3;
+				s0r = 2.0f * w1 - s0r;
+				s1r = 2.0f * w2 - s1r;
+				const float fl = tp < 0.0f ? v2 : l - k * v1 - v2, fr = tp < 0.0f ? w2 : r - k * w1 - w2;
+				mx += dm;
+				L[i] = l + mx * (fl - l);
+				R[i] = r + mx * (fr - r);
+			}
+			svf_mix = mto;
 		}
 		/* the master compressor (glue): both sides' peak, caught in 10 ms and let go over 250 ms,
 		 * read once a millisecond; above the threshold (-10 to -22 dBFS) the ratio 1.5:1 to 6:1,
