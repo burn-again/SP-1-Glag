@@ -254,7 +254,7 @@ typedef struct {
 	 * resonators, a through-zero FM sine, a soggy low-pass */
 	uint16_t c_w;
 	uint8_t c_sel;
-	float c_d1, c_d2, c_lfo, c_lp1, c_lp2, c_t, c_tail, c_wl, c_roct, k_since;
+	float c_d1, c_d2, c_lfo, c_lp1, c_lp2, c_t, c_tail, c_wl, c_wlp, c_roct, k_since;
 	uint8_t vthr;
 	float c_r1[3], c_r2[3], c_ra[3], c_rb[3], c_rg[3];   /* the resonators: states, coefficients, input gain */
 	uint16_t c_rmask;              /* the chord they were set for */

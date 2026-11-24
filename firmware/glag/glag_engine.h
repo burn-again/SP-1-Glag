@@ -217,6 +217,7 @@ typedef struct {
 void gl_check_take(gl_check_t *o);
 uint32_t gl_check_cost(void);             /* the last block's checks, in counter units (left out of its load) */
 void gl_kit_cheap(int bits);          /* audition only: cheaper Kit (1 the Nord at the kit's rate, smoothed jumps; 2 the drum's burst drawn as read; 4 the canvas kick from a cache) */
+void gl_kit_col_half(int on);         /* audition: the Kit's chord resonators at 8 kHz (1) or 16 (0, as before) */
 void gl_kit_rotate(int always);       /* audition only: the Kit rotates on every phrase (else at full macro) */
 void gl_kit_tune(int id, float v);    /* the Kit tuning page: one of its numbers (glag_kit.h, KT_*) */
 int gl_kit_tunes(void);               /* how many there are */

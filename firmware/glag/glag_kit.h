@@ -1885,6 +1885,11 @@ static void kit_chorus(float *A)
 	}
 	kit_cho_w = w;
 }
+/* the chord resonators at half the kit's rate (8 kHz: their tones are under 1 kHz and their
+ * ringing goes through a 4 kHz low-pass), each pair of samples in, once; their ringing drawn
+ * between the pairs. Audition: kit_col_half (off: as before) */
+static uint8_t kit_col_half;
+void gl_kit_col_half(int on) { kit_col_half = (uint8_t)(on != 0); for (int c = 0; c < GL_NCH; c++) CH[c].kt.c_rg[0] = 0.0f; }
 static void kit_color(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
@@ -1925,12 +1930,13 @@ static void kit_color(chan *c, float *A)
 		 * gain 6; set again only when the chord changes */
 		const uint16_t key = (uint16_t)(chord_pc[0] | chord_pc[1] << 4 | chord_pc[2] << 8);
 		const float wofs = clampf(KT[KT_WET_OCT] + kit_boct, -24.0f, 12.0f) + kit_iv;
+		const float rsr = kit_col_half ? 0.5f * KSR : KSR;    /* (the resonators' own rate) */
 		if (key != k->c_rmask || k->c_rg[0] == 0.0f || k->c_roct != wofs) {
 			k->c_rmask = key;
 			k->c_roct = wofs;
 			for (int j = 0; j < 3; j++) {
-				const float f = kit_hz(72 + chord_pc[j] + (int)k->c_roct), w = 6.2832f * f / KSR;
-				const float r = fexp2(-1.4427f * 3.1416f * f * 0.006f / KSR);       /* e^(-pi bw / sr) */
+				const float f = kit_hz(72 + chord_pc[j] + (int)k->c_roct), w = 6.2832f * f / rsr;
+				const float r = fexp2(-1.4427f * 3.1416f * f * 0.006f / rsr);       /* e^(-pi bw / sr) */
 				const float cw = sin_u((uint32_t)(w * (1.0f / 6.2832f) * 4294967296.0f) + 0x40000000u);
 				k->c_ra[j] = 2.0f * r * cw;
 				k->c_rb[j] = r * r;
@@ -1950,6 +1956,26 @@ static void kit_color(chan *c, float *A)
 		const float wg = 0.9f * KT[KT_RES_MIX] * KT[KT_WET_AMT];
 		const float lk = KT[KT_WET_LP] >= 7900.0f ? 1.0f : 1.0f - fexp2(-9.06f * KT[KT_WET_LP] / KSR);   /* (one pole: 1 - e^(-2 pi fc / sr)) */
 		float wl = k->c_wl;
+		if (kit_col_half) {
+			const float lh = KT[KT_WET_LP] >= 3900.0f ? 1.0f : 1.0f - fexp2(-9.06f * KT[KT_WET_LP] / rsr);
+			float wp = k->c_wlp;
+			for (uint32_t i = 0; i < KSUB; i += 2) {
+				const float x0 = A[i], x1 = A[i + 1], x = 0.5f * (x0 + x1);
+				float n0 = a0 * y1[0] - b0 * y2[0] + g0 * x;
+				float n1 = a1 * y1[1] - b1 * y2[1] + g1 * x;
+				float n2 = a2 * y1[2] - b2 * y2[2] + g2 * x;
+				y2[0] = y1[0]; y1[0] = n0;
+				y2[1] = y1[1]; y1[1] = n1;
+				y2[2] = y1[2]; y1[2] = n2;
+				const float sum = n0 + n1 + n2;
+				wl += lh * (sum - wl);
+				A[i] = x0 * 0.75f + 0.5f * (wp + wl) * wg;
+				A[i + 1] = x1 * 0.75f + wl * wg;
+				wp = wl;
+				tail = tail > kabs(sum) ? tail : kabs(sum);
+			}
+			k->c_wlp = wp;
+		} else
 		for (uint32_t i = 0; i < KSUB; i++) {
 			const float x = A[i];
 			float n0 = a0 * y1[0] - b0 * y2[0] + g0 * x;

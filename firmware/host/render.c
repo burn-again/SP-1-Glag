@@ -21,6 +21,8 @@ int main(int argc, char **argv)
 	float secs = (float)atof(argv[2]);
 	gl_init(getenv("SEED") ? (uint32_t)atoi(getenv("SEED")) : 1234u);   /* SEED=n: another take */
 	gl_patch p;
+	if (getenv("COLHALF"))   /* COLHALF=1: the Kit's chord resonators at 8 kHz */
+		gl_kit_col_half(atoi(getenv("COLHALF")));
 	if (getenv("KITRULE"))   /* KITRULE=0: the pieces as written, before the presets' CPU rules */
 		gl_kit_rule(atoi(getenv("KITRULE")));
 	gl_piece(piece, &p);
