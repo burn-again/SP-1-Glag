@@ -95,6 +95,9 @@ int main(void)
 		mark = 1;
 		gl_render(blk, 96, 0.8f);
 		mark = 2;
+#ifdef KTSET                              /* KTSET: id,value pairs into the Kit's table, after its tuning is in (each block: the map blend rewrites some) */
+		{ static const float kv[] = {KTSET}; for (unsigned q = 0; q + 1 < sizeof kv / sizeof kv[0]; q += 2) gl_kit_tune((int)kv[q], kv[q + 1]); }
+#endif
 	}
 	mark = 3;
 	for (;;) {}
