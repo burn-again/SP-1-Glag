@@ -2094,7 +2094,9 @@ static void kit_color(chan *c, float *A)
 
 /* ---- each sound's envelope (attack, decay to sustain, a gate, release), the tuning page's: off
  * (and costing nothing) while it is at its defaults. Returns whether it is in use. ---- */
-static int kit_env(kit_state *k, int s, float *eg)
+/* (an envelope at rest at zero, before and after, reads this instead of filling its own) */
+static const float kit_zero[KIT_KSUB];
+static int kit_env(kit_state *k, int s, float *buf, const float **eg)
 {
 	const float *e = &KT[KT_E_KICK_A + 5 * s];
 	const float A = e[0] * 0.001f, D = e[1] * 0.001f, S = e[2], G = e[3] * 0.001f, Rr = e[4] * 0.001f;
@@ -2114,11 +2116,16 @@ static int kit_env(kit_state *k, int s, float *eg)
 	default: break;
 	}
 	t += dt;
-	const float step = (lvl - l0) * (1.0f / (float)KSUB);
-	float v = l0;
-	for (uint32_t i = 0; i < KSUB; i++) {
-		v += step;
-		eg[i] = v;
+	if (lvl == 0.0f && l0 == 0.0f)
+		*eg = kit_zero;                                   /* (what the loop would write: zeros) */
+	else {
+		const float step = (lvl - l0) * (1.0f / (float)KSUB);
+		float v = l0;
+		for (uint32_t i = 0; i < KSUB; i++) {
+			v += step;
+			buf[i] = v;
+		}
+		*eg = buf;
 	}
 	k->e_lvl[s] = lvl; k->e_t[s] = t; k->e_st[s] = st;
 	return 1;
@@ -2130,12 +2137,13 @@ static int kit_render12(chan *c, float *A)
 {
 	kit_state *k = &c->kt;
 	int any = 0;
-	float eg[8][KSUB];
+	float egb[8][KSUB];
+	const float *eg[8];
 	unsigned ea = 0;
 	kit_map_prepare();                                   /* (the next beat's map blend, while it's quiet) */
 	kit_morph(k->morph, k->weird);                       /* (the macro's morph and the weird window, this channel's) */
 	for (int s = 0; s < 8; s++)
-		ea |= (unsigned)kit_env(k, s, eg[s]) << s;
+		ea |= (unsigned)kit_env(k, s, egb[s], &eg[s]) << s;
 	/* the hits waiting off the grid */
 	for (int i = 0; i < 16; i++)
 		if (k->q_t[i] > 0.0f) {
