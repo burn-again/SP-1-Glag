@@ -9,7 +9,7 @@
  *             the notes down as it cuts through
  *   shape     the channel macros' shape: the glide, steps on each bar, or a long rise
  *   pingpong  the tape's heads bounce left and right (also a flag in the patch: saved with it)
- *   texture   a bed under the piece: rain, vinyl (with a warble), tape hiss or surf
+ *   texture   a bed under the piece: rain, tape hiss or surf (2, the vinyl, removed: ~20 % of the CPU on hardware)
  *   reverse   the reverb's tail played backwards, swelling (also a flag in the patch)
  *   autof     the DJ filter sweeping on its own, once every two bars
  */
@@ -36,7 +36,7 @@ static struct {
 	/* the pump */
 	float prel, pbend, pdrums, pdr_s, pspace, pspare;
 	int prhythm;
-	/* the textures' controls past their level (rain, vinyl, tape hiss, surf) */
+	/* the textures' controls past their level (rain, -, tape hiss, surf) */
 	float tp[5][3];
 	int key_hold;
 	/* arp mode */
@@ -697,11 +697,7 @@ static void arp_held_control(chan *c, int ch, float dt, float tone, float len)
 /* ---- textures, at 24 kHz into the dry mix ---- */
 static uint32_t tx_r = 0x2545F491u;
 static float tx_s[12];
-static float tx_drop, tx_dk, tx_dpan, tx_lfo, tx_ce;
-/* vinyl: the turn (0..1), its scratches (where in the turn, how big), the thump's ring */
-#define VN_TURN 1.8f
-static float vn_rev, vn_pos[3] = {0.13f, 0.58f, 0.81f}, vn_size[3] = {0.8f, 0.0f, 0.6f}, vn_th, vn_t1, vn_t2;
-static uint32_t vn_turns;
+static float tx_drop, tx_dk, tx_dpan, tx_lfo;
 static float rn_f[2] = {0.3f, 0.5f}, rn_ft[2] = {0.3f, 0.5f};            /* rain: two moving bands */
 static float sf_env[2], sf_ph[2] = {0.0f, 0.55f}, sf_per[2] = {9.0f, 11.0f}, sf_pan[2];   /* surf: two waves */
 static inline float tx_noise(void)
@@ -772,58 +768,6 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 			r += d * tx_dpan;
 			break;
 		}
-		case 2: {   /* vinyl: a record turning (33 1/3: once every 1.8 s) under the needle */
-			/* its scratches come round again each turn, at the same places, a little different
-			 * each time; dust adds tiny ticks anywhere; a bigger pop has a low thump under it
-			 * (the cartridge kicked); and a rumble that swells with the warp, once a turn. Each
-			 * pop is a burst a few tenths of a millisecond long, rounded off above ~2 kHz */
-			float pop = 0.0f;
-			const float rv0 = vn_rev;
-			vn_rev += 1.0f / (VN_TURN * sr);
-			if (vn_rev >= 1.0f) {
-				vn_rev -= 1.0f;
-				if (++vn_turns >= 6u) {                     /* every few turns the needle has moved on: */
-					vn_turns = 0;                           /* one scratch left behind, maybe a new one */
-					const int k = (int)((tx_r >> 8) % 3u);
-					vn_pos[k] = 0.5f + 0.5f * b;
-					vn_size[k] = (0.55f + 0.45f * (0.5f + 0.5f * a)) * (0.4f + 0.6f * tp[0]);
-				}
-			}
-			float hit = 0.0f;
-			for (int k = 0; k < 3; k++)
-				if (vn_size[k] > 0.02f && rv0 < vn_pos[k] && vn_rev >= vn_pos[k])
-					hit = vn_size[k] * (0.75f + 0.25f * a);        /* a scratch, again */
-			if ((tx_r & 0xFFFu) < (uint32_t)(4.0f * tp[0] + 0.5f)) {   /* ~12 crackles a second */
-				const float u = 0.5f + 0.5f * b;
-				hit = hit > 0.0f ? hit : (0.1f + 0.9f * u * u * u * u) * 0.55f;
-			} else if (((tx_r >> 12) & 0x3FFu) < (uint32_t)(2.0f + 6.0f * tp[0]))   /* dust: ~50-190 a second */
-				hit = hit > 0.0f ? hit : 0.04f + 0.08f * (0.5f + 0.5f * b);
-			if (hit > 0.0f) {
-				tx_ce = hit * (a > 0.0f ? 1.0f : -1.0f);
-				if (hit > 0.45f)
-					vn_th += (hit - 0.3f) * 0.0184f;     /* (scratches, and the odd big crackle) */                  /* (sin of its 70 Hz step: unit swing) */
-			}
-			float c = tx_ce * (0.6f + 0.4f * a);
-			tx_ce *= 0.8f;                                 /* (~0.2 ms) */
-			s[5] += 0.35f * (c - s[5]);
-			s[6] += 0.35f * (s[5] - s[6]);
-			s[0] += 0.02f * (s[6] - s[0]);
-			pop = (s[6] - s[0]) * 1.6f;
-			/* the thump: a 70 Hz ring dying in ~25 ms */
-			const float th = 1.996330f * vn_t1 - 0.996672f * vn_t2 + vn_th;
-			vn_t2 = vn_t1; vn_t1 = th; vn_th = 0.0f;
-			/* the rumble: the lowest noise, a little louder where the record is warped */
-			s[7] += 0.006f * (a - s[7]);
-			s[8] += 0.006f * (s[7] - s[8]);
-			const float warp = 0.6f + 0.4f * sin_u((uint32_t)(vn_rev * 4294967296.0f));
-			const float low = th * 0.4f + s[8] * 0.9f * warp * (0.4f + 0.6f * tp[2]);
-			s[1] += 0.25f * (a - s[1]);
-			s[2] += 0.004f * (s[1] - s[2]);
-			float hiss = (s[1] - s[2]) * 0.054f * tp[2] * wash;   /* (the surface: 40 % under what it was) */
-			l = pop * 1.1f + hiss + low;
-			r = pop * 0.95f + hiss + low;
-			break;
-		}
 		case 3: {   /* tape hiss: soft, rolled off above ~4.5 kHz, breathing slowly */
 			s[0] += 0.08f * (a - s[0]);
 			s[1] += 0.08f * (b - s[1]);
@@ -852,46 +796,6 @@ static void texture_block(float *HL, float *HR, uint32_t n, float sr)
 		}
 		HL[i] += l * g;
 		HR[i] += r * g;
-	}
-}
-
-/* ---- the vinyl's warble: the whole mix through a short delay that wavers (wow and flutter) ---- */
-#define WB_N 1024u                                   /* 21 ms at 48 kHz */
-static int16_t wb_l[WB_N], wb_r[WB_N];
-static uint32_t wb_w;
-static float wb_wow, wb_flut, wb_drift, wb_dt, wb_glp[2];
-static void warble_block(float *L, float *R, uint32_t n)
-{
-	float amt = W.tex == 2 ? W.tex_lvl * 2.0f * W.tp[2][1] : 0.0f;
-	if (amt <= 0.0f || W.tex != 2) {
-		wb_wow = vn_rev;                              /* (the warp turns with the record) */
-		return;
-	}
-	/* the groove: the music cut into a soft material and read back by a stylus, its top a
-	 * little rounded (a pole near 7 kHz, part of the way in) */
-	const float gk = 0.6f, gm = 0.35f * (W.tex_lvl < 1.0f ? W.tex_lvl : 1.0f);
-	for (uint32_t i = 0; i < n; i++) {
-		wb_glp[0] += gk * (L[i] - wb_glp[0]);
-		wb_glp[1] += gk * (R[i] - wb_glp[1]);
-		L[i] += gm * (wb_glp[0] - L[i]);
-		R[i] += gm * (wb_glp[1] - R[i]);
-		wb_wow += 1.0f / (VN_TURN * GL_SR);
-		wb_wow -= wb_wow >= 1.0f ? 1.0f : 0.0f;
-		wb_flut += 6.3f / GL_SR;
-		wb_flut -= wb_flut >= 1.0f ? 1.0f : 0.0f;
-		if ((wb_w & 4095u) == 0u)
-			wb_dt = tx_noise();
-		wb_drift += (wb_dt - wb_drift) * 0.00002f;
-		float d = 384.0f + amt * (70.0f * sin_u((uint32_t)(wb_wow * 4294967296.0f)) +
-		                          6.0f * sin_u((uint32_t)(wb_flut * 4294967296.0f)) + 60.0f * wb_drift);
-		wb_l[wb_w & (WB_N - 1u)] = to16(L[i]);
-		wb_r[wb_w & (WB_N - 1u)] = to16(R[i]);
-		uint32_t k = (uint32_t)d;
-		float f = d - (float)k;
-		uint32_t a = (wb_w - k) & (WB_N - 1u), b = (wb_w - k - 1u) & (WB_N - 1u);
-		L[i] = from16(wb_l[a]) + (from16(wb_l[b]) - from16(wb_l[a])) * f;
-		R[i] = from16(wb_r[a]) + (from16(wb_r[b]) - from16(wb_r[a])) * f;
-		wb_w++;
 	}
 }
 

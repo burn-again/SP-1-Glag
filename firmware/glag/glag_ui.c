@@ -252,6 +252,8 @@ static void world_press(int t, uint32_t now, const gl_input *in)
 		return;
 	}
 	*st = (*st + 1) % n;
+	if (t == 3 && *st == 2)
+		*st = 3;                                     /* (the vinyl's place: removed) */
 	if (t == 0)
 		gl_world(GW_SONG, w_song ? 1.0f : 0.0f);
 	else if (t == 1)
@@ -532,7 +534,8 @@ static void shuffle_settings(void)
 	}
 	/* a texture, now and then */
 	if (urand() < 0.3f) {
-		w_tex = 1 + irand(4);
+		static const uint8_t TX[3] = {1, 3, 4};   /* rain, tape hiss or surf (the vinyl removed) */
+		w_tex = TX[irand(3)];
 		wv_tex[w_tex][0] = 0.25f + 0.35f * urand();
 		for (int f = 1; f < 4; f++)
 			wv_tex[w_tex][f] = 0.2f + 0.6f * urand();

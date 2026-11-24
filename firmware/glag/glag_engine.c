@@ -4710,7 +4710,6 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			dist_block(L, GL_SUB, 0);
 			dist_block(R, GL_SUB, 1);
 		}
-		warble_block(L, R, GL_SUB);                  /* Playworld: the vinyl's warble */
 		/* DJ filter, DC blocker, soft clip, out. The filter glides to the fader (~30 ms): set straight
 		 * to a jump, its cutoff and its side (low-pass, off, high-pass) changed under the signal
 		 * at once, a pop. Its sides meet at the centre (low-pass fully open, off, high-pass at
@@ -5175,7 +5174,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	  {30, 45, 70, 75, 40, 70, 40, 75, 48}, {15, 40, 85, 50, 25, 65, 60, 50, 52}},
 	 {40, 50, 88, 50, 2, 5, 25, 55}, {GR_HALL, GS_OCTAVE, 1}, {2, 2, 0, 1}, 14, {3, 3, 1, 2}, 14, 0, {0, 0, 0, 0}, 0},
 	/* Boards of Canada: wide Juno chords (chorus II) on the bar, a Glow, soft swung rings, a
-	 * bass; with vinyl and its warble */
+	 * bass */
 	{"Hazy Kodak", {GV_STRINGS, GV_GLOW, GV_PULSE, GV_BASS},
 	 {{30, 30, 70, 50, 25, 55, 50, 100, 68}, {40, 40, 60, 50, 40, 55, 60, 70, 55},
 	  {45, 30, 35, 50, 10, 20, 50, 35, 53}, {25, 20, 80, 50, 0, 15, 50, 40, 65}},
@@ -5226,7 +5225,7 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {100, 30, 40, 50, 9, 1, 10, 35}, {GR_CHAMBER, GS_OCTAVE, 5}, {1, 2, 0, 1}, 8, {3, 4, 2, 3}, 8,
 	 GL_FLAG_PINGPONG, {0, 0, 0, 0}, 0},
 	/* lo-fi house: dusty wide chords, a fingered Funk bass, a swung beat, an EP, the top rolled
-	 * off (with vinyl in the demo) */
+	 * off */
 	{"Lofi House", {GV_STRINGS, GV_FUNK, GV_PULSE, GV_EP},
 	 {{50, 30, 45, 50, 35, 50, 50, 90, 55}, {45, 25, 50, 50, 0, 10, 50, 10, 69},
 	  {78, 30, 35, 50, 0, 20, 50, 75, 55}, {35, 30, 60, 50, 40, 55, 60, 40, 40}},

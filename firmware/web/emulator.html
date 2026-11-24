@@ -174,7 +174,7 @@ details summary { cursor: pointer; font-weight: 500; }
             <div><b>Channel</b>: F1 character, F2 tone, F3 length, F4 register. •• + its own T: extended page (echo, reverb send, pan, activity).</div>
             <div><b>Macro</b>, on a channel or extended page: FFWD tap adds a step (four), RWD held slows its glide (8 s up to 64 s), RWD double tap turns it off.</div>
             <div><b>Harmony</b>: •• + PLAY once. F1 root, F2 mode, F3 drift, F4 motion. •• + T1 to T4 picks the reverb: Hall, Chamber, Shimmer, Bloom; •• + T3 again steps Shimmer's interval (octave, fifth, seventh).</div>
-            <div><b>Playworld</b>: hold PLAY 2 s (again, or •• twice, to leave). T1 song mode: on, its pages 2, 3, 4, then off (an outro). T3 the pump: on, page 2, off. T4 a texture: rain, vinyl, tape hiss, surf, off. A bright light: on; a dim pulsing one: the page. The faders follow the last T pressed; what is on stays on when you leave. T2 arp mode: every channel but the drums one arp, short; F1 octaves, F2 pattern, F3 division, F4 spread (0: all on the same note).</div>
+            <div><b>Playworld</b>: hold PLAY 2 s (again, or •• twice, to leave). T1 song mode: on, its pages 2, 3, 4, then off (an outro). T3 the pump: on, page 2, off. T4 a texture: rain, tape hiss, surf, off. A bright light: on; a dim pulsing one: the page. The faders follow the last T pressed; what is on stays on when you leave. T2 arp mode: every channel but the drums one arp, short; F1 octaves, F2 pattern, F3 division, F4 spread (0: all on the same note).</div>
             <div><b>Album</b>: hold PLAY 10 s and let go (the play row fills to 2 s for Playworld, then again, blinking, to 10 s, where it flashes). The AMB-1 pieces in order, two minutes each, fading one into the next, each in its own key. FFWD skips on, RWD goes back; any other press ends it.</div>
             <div><b>Shuffle</b>: keep holding to 20 s (it fills again, blinking fast, then a light runs round) and let go. Every piece in a random order, no repeats, each in song mode with random settings: by chance arp mode, distortion, the pump (sometimes without drums), a texture, another reverb, reverse, ping-pong, an echo time, the auto filter, macros.</div>
             <div><b>Anywhere</b>: •• held + faders: the four levels. •• twice: Home. PLAY: grow or rest. •• + PLAY twice: next piece.</div>
@@ -514,7 +514,7 @@ function rows() {
     ["Echo send", "", pct(ch(c, 4))], ["Reverb send", "", pct(ch(c, 5))], ["Pan", "", panText(ch(c, 6))], ["Activity", "", pct(ch(c, 0))]] };
   if (page === 4) {
     const song = state.getUint8(104), pump = state.getUint8(106), tex = state.getUint8(107), focus = state.getInt8(108);
-    const on = [song ? "song p" + song : "", state.getUint8(105) ? "arp" : "", pump ? "pump p" + pump : "", tex ? ["", "rain", "vinyl", "tape hiss", "surf"][tex] : ""].filter(Boolean).join(", ");
+    const on = [song ? "song p" + song : "", state.getUint8(105) ? "arp" : "", pump ? "pump p" + pump : "", tex ? ["", "rain", "", "tape hiss", "surf"][tex] : ""].filter(Boolean).join(", ");
     const t = (i) => glui_t(i);
     const title = "Playworld" + (on ? "  ·  " + on : "  ·  nothing on: T1 song, T2 arp, T3 pump, T4 texture");
     const LOOPS = ["×¼", "×½", "×1", "×2", "×4"], KINDS = ["breakdown and build", "waves", "slow build"], BARS = ["4 bars", "8 bars", "16 bars", "24 bars", "32 bars"];
@@ -573,7 +573,7 @@ function draw() {
 /* ---- the track view ---- */
 const BUILD = "@@BUILD@@";
 const ECHOS = ["1/4.", "1/2", "1/2.", "1 bar", "2 bars", "1/8", "1/8.", "1/4", "string"];
-const KINDS3 = ["breakdown and build", "waves", "slow build"], TEXS = ["", "rain", "vinyl", "tape hiss", "surf"];
+const KINDS3 = ["breakdown and build", "waves", "slow build"], TEXS = ["", "rain", "", "tape hiss", "surf"];
 const PLACES = ["before the effects", "after the effects", "on the reverb only", "on the drums only"];
 const CH_KEYS = ["lvl", "wlvl", "wact", "act", "mac", "tone", "chr", "len", "echo", "verb", "reg", "pan", "glow"];
 const G_KEYS = ["t", "bpm", "beat", "arc", "space", "duck", "filt", "comp", "peak", "reverb", "delay", "filter", "motion", "autof", "tex_lvl", "pump"];

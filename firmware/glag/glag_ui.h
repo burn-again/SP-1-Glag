@@ -38,7 +38,7 @@
  *                           1: depth, release, bend, drums (down: the pump goes on without them)
  *                           2: master compressor, rhythm (kick, beats, eighths, half bars),
  *                              how much the space ducks, how much bass and held voices are spared
- *                        T4 texture: rain, vinyl, tape hiss, surf, off; F1 level, F2-F4 its own
+ *                        T4 texture: rain, tape hiss, surf, off; F1 level, F2-F4 its own
  *                        Song changes land on the next bar and glide; leaving keeps all of it on.
  *   SHUFFLE              PLAY held 20 s, then let go: every piece in a random order (no repeats
  *                        until all have played), two minutes each, each with random settings: song

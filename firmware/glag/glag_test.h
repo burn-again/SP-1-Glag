@@ -237,11 +237,12 @@ static void sc_dist(uint32_t t)
 /* each texture at full, its own three controls swept: 8 s each */
 static void sc_tex(uint32_t t)
 {
-	static const char *const TX[4] = {"rain", "vinyl", "tape hiss", "surf"};
-	if (EVERY(8000) && STEP(8000) < 4u) {
+	static const char *const TX[3] = {"rain", "tape hiss", "surf"};
+	static const uint8_t TN[3] = {1, 3, 4};
+	if (EVERY(8000) && STEP(8000) < 3u) {
 		const int k = (int)STEP(8000);
 		glt_mark(TX[k], "");
-		glui_test(GT_WORLD, 3, 1 + k, 0.0f, glt_now);
+		glui_test(GT_WORLD, 3, TN[k], 0.0f, glt_now);
 		glui_test(GT_WORLDV, 3, 0, 1.0f, glt_now);
 	}
 	if (EVERY(250)) {
@@ -251,7 +252,7 @@ static void sc_tex(uint32_t t)
 	}
 }
 /* Playworld all at once: song mode at its most random, the arp through its patterns, the pump
- * and the compressor at full, vinyl under it */
+ * and the compressor at full, tape hiss under it */
 static void sc_world(uint32_t t)
 {
 	if (glt_first) {
@@ -265,7 +266,7 @@ static void sc_world(uint32_t t)
 		glui_test(GT_WORLD, 2, 1, 0.0f, glt_now);
 		glui_test(GT_WORLDV, 2, 0, 1.0f, glt_now);              /* the pump's depth */
 		glui_test(GT_WORLDV, 2, 4, 1.0f, glt_now);              /* the compressor */
-		glui_test(GT_WORLD, 3, 2, 0.0f, glt_now);               /* vinyl */
+		glui_test(GT_WORLD, 3, 3, 0.0f, glt_now);               /* tape hiss */
 		glui_test(GT_WORLD, 1, 1, 0.0f, glt_now);
 		glui_test(GT_WORLDV, 1, 0, 1.0f, glt_now);              /* four octaves */
 		glui_test(GT_WORLDV, 1, 2, 0.0f, glt_now);              /* sixteenths */
@@ -404,7 +405,7 @@ static const glt_scene GLT_SCENES[] = {
 	{"echo", 4u * GL_NECHO, 1, sc_echo},
 	{"hold", 28, 0, sc_hold},
 	{"dist", 2u * 16u * GD_COUNT + 4u, 16, sc_dist},
-	{"textures", 32, 0, sc_tex},
+	{"textures", 24, 0, sc_tex},
 	{"playworld", 40, 17, sc_world},
 	{"macros", 30, 18, sc_macros},
 	{"faders", 72, 16, sc_faders},

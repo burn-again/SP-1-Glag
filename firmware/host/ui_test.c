@@ -242,7 +242,7 @@ int main(void)
 		CHECK(out.world_tex == 1 && out.world_focus == 3 && out.world_song == 2, "T4: rain on, the faders follow it, song stays on");
 		CHECK(out.led_t[0] == 255 && out.led_t[3] == 255, "both sections' lights bright (%d %d)", out.led_t[0], out.led_t[3]);
 		tap(GB_T4); run(1100);
-		CHECK(out.world_tex == 2 && out.led_t[2] > 0 && out.led_t[2] < 255, "T4 again: vinyl, light 3 dim (%d)", out.led_t[2]);
+		CHECK(out.world_tex == 3 && out.led_t[1] > 0 && out.led_t[1] < 255, "T4 again: tape hiss (no vinyl), light 2 dim (%d)", out.led_t[1]);
 		tap(GB_T1); run(300);
 		CHECK(out.world_song == 2 && out.world_focus == 0, "T1 while song is on elsewhere: just the focus back (page %d)", out.world_song);
 		tap(GB_T2); run(1100);
@@ -256,7 +256,7 @@ int main(void)
 		CHECK(out.world_pump == 0 && out.world_focus >= 0, "T3 twice more: the pump off, focus to what's still on");
 		tap(GB_T1); tap(GB_T1); tap(GB_T1); run(1100);
 		CHECK(out.world_song == 0, "T1 past page 4: song mode off (%d)", out.world_song);
-		tap(GB_T4); tap(GB_T4); tap(GB_T4); run(1100);
+		tap(GB_T4); tap(GB_T4); run(1100);
 		CHECK(out.world_tex == 0, "T4 past surf: texture off (%d)", out.world_tex);
 		tap(GB_T1); run(1100);
 		down(GB_FN); run(30); up(GB_FN); run(30); down(GB_FN); run(30); up(GB_FN); run(50);
