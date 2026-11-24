@@ -175,6 +175,12 @@ void gl_cpu_opts(int space24, int ctl_n);
 void gl_gov_state(int *cap, int *lean);
 /* the governor's very last resort: the channels it has faded out (bits), until the load has room */
 int gl_ducked(void);
+void gl_duck_reset(void);              /* (the hardware test: each reading from the same place) */
+/* the light versions (Strings at 12 kHz, the Super's outer saws plain, the Kit lean) for a patch past the
+ * CPU budget: mode 0 by the budget (the default), 1 never, 2 on every channel that has one.
+ * gl_lite_mask: the channels playing light now */
+void gl_lite(int mode);
+int gl_lite_mask(void);
 /* what each voice costs, in half-points of the CPU (the M4 model; hardware runs about 1.3x), and
  * a patch's estimated load in model points: 49.5 for the space and output, the voices, the reverb,
  * the reverse swell, and the extras the caller names (distortion, a Playworld texture 1-4, pump) */

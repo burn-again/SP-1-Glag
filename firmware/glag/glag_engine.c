@@ -558,6 +558,16 @@ static int drop_cap;
 /* audition: one chorus for the Strings and the Kit (1 the Juno's way, 2 the Kit's two swaying taps),
  * fed from both channels after their levels, instead of one each */
 static uint8_t cho_share;
+/* The light versions, for a patch past the CPU budget (lite_update): the Strings' whole channel at
+ * 12 kHz (its notes, filter and chorus; then back to 24), the Super's outer pair of saws plain
+ * (their steps not smoothed: the same level, a little more alias under its filter), the Kit as
+ * it plays under the load governor (its colour lanes, ghosts, fills and chorus out) and its morph
+ * table recomputed only when its macro moves. Decided when a patch, a voice
+ * or the distortion changes, never by the load, so a piece does not change sound as it plays. */
+static uint8_t lite_mask, lite_mode = 1;   /* channels light; 0 by the budget, 1 never (for now: until the light versions are heard), 2 every one it can */
+void gl_lite(int mode) { lite_mode = (uint8_t)mode; }
+int gl_lite_mask(void) { return lite_mask; }
+#define LITE(c) ((lite_mask >> (c)) & 1u)
 void gl_cho_share(int m) { cho_share = (uint8_t)m; }
 static float shc_ring[512], shc_hp, shc_ph, shc_bus[GL_SUB];
 static uint32_t shc_w;
@@ -3092,8 +3102,13 @@ static void nv_render_saws(nvoice *v, float *out, int five)
 		float x = blep_saw(a, ia) + blep_saw(b, ib);
 		a += ia;
 		b += ib;
-		if (five) {
+		if (five == 1) {
 			x += blep_saw(c3, ic) + 0.8f * (blep_saw(d, id) + blep_saw(e, ie));
+			c3 += ic;
+			d += id;
+			e += ie;
+		} else if (five == 2) {                   /* light: the outer pair plain saws (their steps not smoothed) */
+			x += blep_saw(c3, ic) + 0.8f * ((float)(int32_t)(d ^ 0x80000000u) + (float)(int32_t)(e ^ 0x80000000u)) * (1.0f / 2147483648.0f);
 			c3 += ic;
 			d += id;
 			e += ie;
@@ -3422,6 +3437,72 @@ static void juno_chorus(chan *c, int ch, float *A, float *B)
 	c->hq_vel = hp;
 	c->hq_i = (uint8_t)w;
 }
+/* the light Strings (LITE): a note at 12 kHz, VSUB / 2 samples. The same pulse; each pole of the
+ * ladder takes the step two of its 24 kHz steps would (1 - (1 - g)^2), so the tone matches */
+static void nv_render_pwm_half(nvoice *v, float *out)
+{
+	uint32_t a = v->pc;
+	const uint32_t ia = 2u * v->ic, w = (uint32_t)(v->bend * 4294967296.0f);
+	float amp = v->amp, l1 = v->f1, l2 = v->f2, l3 = v->idx2, l4 = v->menv2;
+	const float ai = 2.0f * v->ainc, g1 = 1.0f - v->fk, g = 1.0f - g1 * g1, q = v->fq;
+	for (uint32_t i = 0; i < VSUB / 2u; i++) {
+		float x = 0.6f * (blep_saw(a, ia) - blep_saw(a + w, ia)), y;
+		a += ia;
+		LADDER(x, y);
+		out[i] += y * amp;
+		amp += ai;
+	}
+	v->pc = a; v->amp = amp; v->f1 = l1; v->f2 = l2; v->idx2 = l3; v->menv2 = l4;
+}
+/* and its chorus at 12 kHz: the Juno's, its delays in half as many samples */
+static void juno_chorus_half(chan *c, int ch, float *A, float *B)
+{
+	int16_t *rb = c->ks;
+	const uint32_t n = VSUB / 2u;
+	const float chr = P.ch[ch][CP_CHAR];
+	const float rate = 0.51f + 0.35f * chr, lo = 20.0f, span = (45.0f + 20.0f * chr) * speed;
+	float ph = c->hq_t, hp = c->hq_vel;
+	float t0 = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;
+	ph += rate * (float)VSUB / VSR;
+	ph -= ph >= 1.0f ? 1.0f : 0.0f;
+	float t1 = ph < 0.5f ? 4.0f * ph - 1.0f : 3.0f - 4.0f * ph;
+	float dl = lo + span * (0.5f + 0.5f * t0), dr = lo + span * (0.5f - 0.5f * t0);
+	const float dd = span * 0.5f * (t1 - t0) / (float)n;
+	uint32_t w = c->hq_i;
+	for (uint32_t i = 0; i < n; i++) {
+		float x = A[i];
+		hp += 0.0765f * (x - hp);                 /* ~150 Hz, at 12 kHz */
+		x -= hp;
+		rb[w] = to16(0.5f * x);
+		float pl = (float)(w + 256u) - dl, pr = (float)(w + 256u) - dr;
+		int il = (int)pl, ir = (int)pr;
+		float fl = pl - (float)il, fr = pr - (float)ir;
+		float a0 = rb[il & 255], a1 = rb[(il + 1) & 255], b0 = rb[ir & 255], b1 = rb[(ir + 1) & 255];
+		A[i] = 0.7f * x + (a0 + fl * (a1 - a0)) * (0.7f / 8192.0f);
+		B[i] = 0.7f * x + (b0 + fr * (b1 - b0)) * (0.7f / 8192.0f);
+		dl += dd;
+		dr -= dd;
+		w = (w + 1u) & 255u;
+	}
+	c->hq_t = ph;
+	c->hq_vel = hp;
+	c->hq_i = (uint8_t)w;
+}
+/* 12 kHz back to 24: each sample two behind, and between it and the next a four-point (cubic)
+ * half-way point, so little of the 12 kHz copy's image is left above 6 kHz. hist: the last three */
+static void up2(const float *h, float *out, float *hist)
+{
+	float x3 = hist[0], x2 = hist[1], x1 = hist[2];
+	for (uint32_t i = 0; i < VSUB / 2u; i++) {
+		const float x0 = h[i];
+		out[2u * i] = x2;
+		out[2u * i + 1u] = 0.5625f * (x2 + x1) - 0.0625f * (x3 + x0);
+		x3 = x2;
+		x2 = x1;
+		x1 = x0;
+	}
+	hist[0] = x3; hist[1] = x2; hist[2] = x1;
+}
 
 /* audition glow 3: a sine (a little third) and breath: noise from its own generator through a
  * narrow band-pass at the note (ratio: its coefficient; idx2: the breath's level) */
@@ -3504,6 +3585,20 @@ static int chan_render(chan *c, float *A, float *B)
 		break;
 	case GV_STRINGS: {
 		const int m = alt_m[GV_STRINGS];
+		if (m == 2 && LITE(c - CH) && !str_thin && !cho_share) {
+			static float up_prev[GL_NCH][2][3];
+			float ha[VSUB / 2], hb[VSUB / 2];
+			for (uint32_t i = 0; i < VSUB / 2u; i++)
+				ha[i] = 0.0f;
+			for (int i = 0; i < 3; i++)
+				if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f)
+					nv_render_pwm_half(&c->v[i], ha);
+			juno_chorus_half(c, (int)(c - CH), ha, hb);
+			up2(ha, A, up_prev[c - CH][0]);
+			up2(hb, B, up_prev[c - CH][1]);
+			any = 1;
+			break;
+		}
 		float mid[VSUB];
 		if (m == 3)
 			for (uint32_t i = 0; i < VSUB; i++)
@@ -3568,7 +3663,7 @@ static int chan_render(chan *c, float *A, float *B)
 	case GV_SUPER:
 		for (int i = 0; i < 3; i++)
 			if (c->v[i].amp > 0.0f || c->v[i].ainc > 0.0f) {
-				nv_render_saws(&c->v[i], (i & 1) ? B : A, 1);
+				nv_render_saws(&c->v[i], (i & 1) ? B : A, LITE(c - CH) ? 2 : 1);
 				any = 1;
 			}
 		break;
@@ -4048,6 +4143,14 @@ static void duck_clear(int c)
 	duck_n = (uint8_t)k;
 }
 int gl_ducked(void) { return duck_mask; }
+void gl_duck_reset(void)
+{
+	duck_mask = duck_n = 0;
+	duck_hot = 0;
+	duck_calm = 0;
+	for (int c = 0; c < GL_NCH; c++)
+		duck_strike[c] = 0;
+}
 
 static void reverse_block(float *WL, float *WR, uint32_t n);
 #include "glag_space.h"
@@ -4149,6 +4252,35 @@ static inline float macro_trem(int c)
 }
 
 #include "glag_play.h"
+
+/* which channels play light (above, LITE): past the budget (the same 68 model points shuffle keeps
+ * to, about 88 % of the device) the voice that saves most goes light first, then the next, until
+ * the estimate fits or none is left that can. LITE_SAVE: what each saves, in half-points */
+static const uint8_t LITE_SAVE[GV_COUNT] = {[GV_STRINGS] = 9, [GV_SUPER] = 4, [GV_KIT] = 9};   /* (measured: 4.6, 2.2, 4.5) */
+#define LITE_BUDGET 68.0f
+static void lite_update(void)
+{
+	uint8_t m = 0;
+	if (lite_mode == 2) {
+		for (int c = 0; c < GL_NCH; c++)
+			if (P.voice[c] < GV_COUNT && LITE_SAVE[P.voice[c]])
+				m |= (uint8_t)(1u << c);
+	} else if (lite_mode == 0) {
+		float est = gl_cost_est(&P, dist.amt, W.tex, W.pump > 0.0f);
+		while (est > LITE_BUDGET) {
+			int best = -1;
+			for (int c = 0; c < GL_NCH; c++)
+				if (!((m >> c) & 1u) && P.voice[c] < GV_COUNT && LITE_SAVE[P.voice[c]] &&
+				    P.ch[c][CP_LEVEL] > 0.01f && (best < 0 || LITE_SAVE[P.voice[c]] > LITE_SAVE[P.voice[best]]))
+					best = c;
+			if (best < 0)
+				break;
+			m |= (uint8_t)(1u << best);
+			est -= 0.5f * (float)LITE_SAVE[P.voice[best]];
+		}
+	}
+	lite_mask = m;
+}
 
 /* one sixteenth of the clock: the bar's chord, every channel's step (play: 1; 2, the crank's,
  * leaves the drums out: they add little to a frozen space and a tap on a hat is only a click) */
@@ -4344,6 +4476,7 @@ static void control(float dt)
 	}
 
 	/* the space (the patch-dependent parts are in derive()) */
+	lite_update();
 	space_control(dt, freeze_changed);
 	if (crank_open > 0.0f)
 		crank_open -= dt;

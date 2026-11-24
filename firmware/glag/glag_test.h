@@ -111,8 +111,8 @@ static void glt_step_end(void)
 	if (glt_step[0]) {
 		const gl_check_t *s = &glt_sub;
 		const float avg = s->loads ? s->load_sum / (float)s->loads * 100.0f : 0.0f;
-		GLT_PRINTF("GLAG T3 - %s %s: load %s%d.%d/%s%d.%d%% >100 %u lean %d cap %d duck %u/%d | steals %u clip %u clicks %u (max %u) nan %u\n",
-		           glt_name, glt_step, T10(avg), T10(s->load_worst * 100.0f), s->over100, s->lean_max, s->cap_min, s->ducks, s->duck_max,
+		GLT_PRINTF("GLAG T3 - %s %s: load %s%d.%d/%s%d.%d%% >100 %u lean %d cap %d duck %u/%d lite %x | steals %u clip %u clicks %u (max %u) nan %u\n",
+		           glt_name, glt_step, T10(avg), T10(s->load_worst * 100.0f), s->over100, s->lean_max, s->cap_min, s->ducks, s->duck_max, gl_lite_mask(),
 		           s->steals, s->clips, s->jumps, (uint32_t)sqrtf((float)s->jump_max), s->nan);
 	}
 	glt_merge(&glt_acc, &glt_sub);
@@ -384,6 +384,44 @@ static void sc_album(uint32_t t)
 }
 /* shuffle, 16 s tracks, now and then one skipped by FFWD: a fuzz test, every deal logged */
 static uint32_t glt_skip_at;
+/* the light versions against the full: Strings, Kit and Super four at a time (every channel busy
+ * and long), full then light; then the three heaviest pieces full, light by the budget, and every
+ * channel light that can be. 10 s each, the governor's ducks cleared at each (so each reading
+ * starts from the same place); the light versions back off at the end */
+static void sc_light(uint32_t t)
+{
+	static const struct { uint8_t piece, voice, mode; } L[15] = {
+		{0, GV_STRINGS, 1}, {0, GV_STRINGS, 2}, {0, GV_KIT, 1}, {0, GV_KIT, 2}, {0, GV_SUPER, 1}, {0, GV_SUPER, 2},
+		{16, 0xFF, 1}, {16, 0xFF, 0}, {16, 0xFF, 2}, {17, 0xFF, 1}, {17, 0xFF, 0}, {17, 0xFF, 2},
+		{18, 0xFF, 1}, {18, 0xFF, 0}, {18, 0xFF, 2},
+	};
+	static const char *const MODE[3] = {"by budget", "full", "all light"};
+	if (EVERY(10000) && STEP(10000) < 15u) {
+		const int k = (int)STEP(10000);
+		gl_lite(L[k].mode);
+		glui_test(GT_PIECE, L[k].piece, 0, 0.0f, glt_now);
+		if (L[k].voice != 0xFF)
+			for (int c = 0; c < 4; c++) {
+				glui_test(GT_VOICE, c, L[k].voice, 0.0f, glt_now);
+				glui_test(GT_CH, c, CP_ACTIVITY, 1.0f, glt_now);
+				glui_test(GT_CH, c, CP_LENGTH, 1.0f, glt_now);
+			}
+		gl_duck_reset();
+		char nm[24];
+		int n = 0;
+		for (const char *q = L[k].voice != 0xFF ? GL_VOICE_NAME[L[k].voice] : gl_piece_name(L[k].piece); *q && n < 18; q++)
+			nm[n++] = *q;
+		if (L[k].voice != 0xFF) {
+			nm[n++] = ' ';
+			nm[n++] = 'x';
+			nm[n++] = '4';
+		}
+		nm[n] = 0;
+		glt_mark(nm, MODE[L[k].mode]);
+	}
+	if (AT(149000))
+		gl_lite(1);
+}
 static void sc_shuffle(uint32_t t)
 {
 	if (AT(0)) {
@@ -415,6 +453,7 @@ static const glt_scene GLT_SCENES[] = {
 	{"spikes", 28, 0, sc_spikes},
 	{"album", 64, 0, sc_album},
 	{"shuffle", 192, 0, sc_shuffle},
+	{"light", 150, 0, sc_light},
 };
 #define GLT_N ((int)(sizeof GLT_SCENES / sizeof GLT_SCENES[0]))
 

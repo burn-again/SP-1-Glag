@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 	gl_init(getenv("SEED") ? (uint32_t)atoi(getenv("SEED")) : 1234u);   /* SEED=n: another take */
 	gl_patch p;
 	gl_piece(piece, &p);
-	if (argc > 4)
+	if (argc > 4 && argv[4][0] != '-')   /* ("-": the piece's own voices) */
 		for (int c = 0; c < GL_NCH && argv[4][c]; c++)
 			p.voice[c] = (uint8_t)(argv[4][c] <= '9' ? argv[4][c] - '0' : (argv[4][c] | 0x20) - 'a' + 10);   /* hex: 0-9, a-f */
 	if (argc > 5)   /* channel mask, e.g. 0100 keeps channel 2 only */
@@ -43,6 +43,13 @@ int main(int argc, char **argv)
 		p.ch[0][CP_LENGTH] = (float)atof(getenv("LEN"));
 	if (getenv("SDRUMS"))    /* SDRUMS=0..3: song mode's drums leaving (glag_engine.h) */
 		gl_song_drums(atoi(getenv("SDRUMS")));
+	if (getenv("LITE"))      /* LITE=0|1|2: the light versions by the budget, never (the default), every one */
+		gl_lite(atoi(getenv("LITE")));
+	if (getenv("VOX4"))      /* VOX4=n: every channel that voice, busy and long (the CPU test's x4) */
+		for (int c = 0; c < GL_NCH; c++) {
+			p.voice[c] = (uint8_t)atoi(getenv("VOX4"));
+			p.ch[c][CP_ACTIVITY] = p.ch[c][CP_LENGTH] = 1.0f;
+		}
 	if (getenv("CHOSHARE"))  /* CHOSHARE=1|2: one chorus for the Strings and the Kit */
 		gl_cho_share(atoi(getenv("CHOSHARE")));
 	if (getenv("RVCUT"))     /* RVCUT=bits: the reverb cut (1 Hall on four lines, 2 one damping band) */

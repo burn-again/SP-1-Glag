@@ -269,8 +269,8 @@ If a combination runs over, `FM_CAP` in `glag/glag_engine.c` (18 half-voices, i.
 ### The hardware test build
 
 `release/test/glag-sp1-cputest-*.bin` (or build with `-DEXTRA_CONF_FILE=cputest.conf`) plays a
-script of 14 scenarios by itself, through the controls as a hand would (`glag/glag_test.h`), about
-15 minutes a round, round after round:
+script of 15 scenarios by itself, through the controls as a hand would (`glag/glag_test.h`), about
+17 minutes a round, round after round:
 
 | # | Scenario | What it does |
 |---|---|---|
@@ -288,6 +288,7 @@ script of 14 scenarios by itself, through the controls as a hand would (`glag/gl
 | 12 | spikes | the piece, reverb, voice, distortion and echo time changed in quick succession |
 | 13 | album | 20 s tracks, one skipped by FFWD |
 | 14 | shuffle | 16 s tracks, some skipped: a fuzz test, every deal logged with the seeds that replay it |
+| 15 | light | the light versions against the full, 10 s each: Strings, Kit and Super four at a time (busy, long), full then light; Shifted Metal, Warehouse and String Drum Mass full, light by the budget, and all light (`lite` on each line: the channels playing light). The governor's ducks are cleared at each step |
 
 Every line starts `GLAG T3`: `>` a scenario starts, `-` one of its steps (a voice, a reverb, a page)
 with its load and counts, and four `=` lines at its end:
@@ -363,6 +364,8 @@ Harp and Harpsichord rows are the stress case (every channel at full activity an
 A load governor sits under all of it: the audio thread reports each block's load, and past 88 % the engine sounds fewer notes at once (the quietest decaying ones give way) until it cools. Still over with the cap down, it leans (control every 2 ms and the space at 24 kHz; then the four-line Hall and the cheaper Kit). Still past 97 % with all that, the last resort: the heaviest channel sounding fades out over 0.15 s (a silent channel's voices are not rendered at all), then another if needed, one always playing on. A channel comes back, fading in over 2 s, after 3 calm seconds and only if the load has room for it; each time the same channel has to go again it waits twice as long (6, 12, 24 s), so a piece just past the line loses a channel for good rather than in and out. A new voice on a channel starts it afresh. So no setting can run the stream dry: the worst a player hears is a channel ducking out.
 
 What each voice costs, over the 49.5 % the space and output take on the model (one channel of it, at Garden's settings; the device runs about 1.3 times the model): Strings 15, Kit 14.5 (spikes to 29), Super 11, Harpsichord 5.5, Pad, Swell and Harp 5, Bells 4.5, Drone, Arp and Seq 4, Bass 3, Gong 2.5, Pulse 2 (spikes to 9), Ribbon 2, the rest 0.5 to 1.5. The extras: the surf texture 9, distortion 6 (any type or place), reverse 5, rain or tape hiss 5, the pump 2, the compressor 1; song mode 4 less, arp 2 less; Chamber 7 less than the Hall, Bloom 2.5, Shimmer 1.5. `gl_cost_est` sums these (the sixteen pieces come within 4 points of what they measure), and **shuffle keeps to 68** (about 88 % of the device, room left for the faders and macros): past it, what it dealt goes again, the texture first, then the distortion, the reverse swell, the pump, and a reverb heavier than the piece's own. On the sixteen that leaves distortion on about one track in five and a texture on one in six (from one in three each).
+
+**The light versions** (`gl_lite`; off for now, until they have been heard): for a patch past the same budget, the voice that saves most plays light first, then the next, until the estimate fits. Decided from the patch, the distortion, the texture and the pump, never from the load, so a piece does not change sound as it plays. Strings: the whole channel (its notes, filter and chorus) at 12 kHz, each filter pole taking the step two of its 24 kHz steps would, then a four-point interpolation back to 24 (4.6 points of its 15.3 saved; the same level; about 69 dB of image left above 9 kHz). Super: its outer pair of saws plain, their steps not smoothed (2.2 of 13.4; exactly the same level). Kit: as it plays under the governor, its colour lanes, ghosts, fills and chorus out, its level trimmed to where the chorus would leave it, and its morph table recomputed only when its macro moves (4.5 of 14.6; spikes barely change). Four at once: Strings 110 → 91.5 %, Kit 109 → 93 %, Super 86 → 80.5 % (model). Over the 38 audition pieces the budget would lighten, the average goes from 78.9 to 72.3 model points, and those past 100 % of the device (estimated at 1.29 times the model) from 23 to 6: Oxygen, Fog Machine, Shifted Metal, String Drum Mass, Night Chorus (100 %) and Bright Engine; the governor's cap, lean and duck stay under those.
 
 The other reverbs cost 2 to 6 points less (Chamber, the lightest, about 6). Among the FM voices, the heaviest case is four
 Bells channels at full activity with distortion on, under the Hall. If it

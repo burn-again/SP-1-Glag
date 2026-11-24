@@ -53,6 +53,9 @@ int main(void)
 	gl_world(WORLD2, WORLD2V);
 #endif
 /* WORLDS: WORLD1/2 = a gl_world setting and its value */
+#ifdef LITEMODE
+	gl_lite(LITEMODE);
+#endif
 #ifdef COMP
 	gl_world(GW_COMP, 1.0f);
 #endif
