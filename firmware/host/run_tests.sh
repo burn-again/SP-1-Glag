@@ -14,6 +14,8 @@ $CC -O2 -Wall -Wextra -I../glag -o "$OUT/ui_test" ui_test.c ../glag/glag_ui.c ..
 $CC -O2 -Wall -I../glag -o "$OUT/render" render.c ../glag/glag_engine.c -lm
 $CC -O2 -Wall -DGL_DEMO_PIECES -I../glag -o "$OUT/render_demo" render.c ../glag/glag_engine.c -lm
 "$OUT/ui_test"
+$CC -O2 -Wall -DGL_TEST_HOOKS -I../glag -o "$OUT/hall_test" hall_test.c ../glag/glag_ui.c ../glag/glag_engine.c -lm
+"$OUT/hall_test" | tail -1
 for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
 	"$OUT/render" $i 60 "$OUT/piece$i.wav"
 done

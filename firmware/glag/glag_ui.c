@@ -322,6 +322,19 @@ static void echo_step(int d, uint32_t now)
 	show_idx = at;
 	say(SH_INDEX, now, 1200);
 }
+/* The Hall, the heaviest room: kept for the pieces written with it (the AMB-1 presets), and
+ * otherwise only for a light patch (with the Hall, at most 62 model points: about 80 % of the
+ * device). Elsewhere T1 leaves the room as it is, and shuffle does not deal it */
+static int hall_ok(const gl_patch *p)
+{
+	gl_patch own;
+	gl_piece(piece, &own);
+	if (own.space[GL_SP_REVERB] == GR_HALL)
+		return 1;
+	gl_patch h = *p;
+	h.space[GL_SP_REVERB] = GR_HALL;
+	return gl_cost_est(&h, dist_amt, w_tex, w_pump) <= 62.0f;
+}
 static void load_piece(int i)
 {
 	undo_patch = cur;
@@ -563,12 +576,9 @@ static void shuffle_settings(void)
 		cur.space[GL_SP_REVERB] = (uint8_t)irand(GR_COUNT);
 		cur.space[GL_SP_SHIMMER] = (uint8_t)irand(GS_COUNT);
 	}
-	/* a heavy voice (Strings, Kit, Super) never sits on the Hall: the Chamber instead (about 9 %
-	 * of the device less) */
-	for (int c = 0; c < 4; c++)
-		if ((cur.voice[c] == GV_STRINGS || cur.voice[c] == GV_KIT || cur.voice[c] == GV_SUPER) &&
-		    cur.space[GL_SP_REVERB] == GR_HALL)
-			cur.space[GL_SP_REVERB] = GR_CHAMBER;
+	/* the Hall only where it is allowed (hall_ok): the Chamber instead (about 9 % of the device less) */
+	if (cur.space[GL_SP_REVERB] == GR_HALL && !hall_ok(&cur))
+		cur.space[GL_SP_REVERB] = GR_CHAMBER;
 	uint8_t fl = cur.space[GL_SP_FLAGS] & (uint8_t)~(GL_FLAG_REVERSE | GL_FLAG_PINGPONG);
 	if (urand() < 0.25f)
 		fl |= GL_FLAG_REVERSE;
@@ -832,10 +842,10 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 					cur.space[GL_SP_SHIMMER] = (uint8_t)((cur.space[GL_SP_SHIMMER] + 1) % GS_COUNT);
 				else if (t == cur.space[GL_SP_REVERB])
 					cur.space[GL_SP_FLAGS] ^= GL_FLAG_REVERSE;
-				else
+				else if (t != GR_HALL || hall_ok(&cur))
 					cur.space[GL_SP_REVERB] = (uint8_t)t;
 				dirty = 1;
-				say(SH_REVERB, now, 1500);
+				say(SH_REVERB, now, 1500);              /* (the Hall refused: the room it stays on) */
 			} else if ((page == PG_CH || page == PG_EXT) && t == chan) {
 				go(page == PG_CH ? PG_EXT : PG_CH, t, in);
 			} else {
