@@ -165,7 +165,7 @@ def run(voices):
             k = l.split('/')[-1].split(' ')[0]
             agg[k] = agg.get(k, 0) + d[a] / n
         print(f"  lines, averaged over {n} blocks:")
-        for k, c in sorted(agg.items(), key=lambda x: -x[1])[:30]:
+        for k, c in sorted(agg.items(), key=lambda x: -x[1])[:None if '--all' in sys.argv else 30]:   # --all: every line (to sum them by part)
             print(f"      {c / budget * 100:5.2f} pts  {k}")
     if WORST and '--worst-lines' in sys.argv:
         only = sys.argv[sys.argv.index('--func') + 1] if '--func' in sys.argv else None
