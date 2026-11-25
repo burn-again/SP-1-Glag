@@ -1957,8 +1957,10 @@ static void tide_enter(int s, int now)
 	tide_tdl = (float)t->dl * 0.01f;
 	tide_trv = (float)t->rv * 0.01f;
 	const float gs = (float)t->glide * 4.0f * beat;
-	tide_k = gs > 0.01f ? gs : 0.0f;
-	if (now || t->glide == 0) {
+	/* a section that cuts in (a gap, a peak, a fall) still takes 40 ms: levels stepped at once
+	 * clicked on whatever was ringing (Music Box Fog) */
+	tide_k = gs > 0.01f ? gs : 0.04f;
+	if (now) {
 		for (int k = 0; k < 4; k++)
 			for (int c = 0; c < 4; c++)
 				tide_cur[k][c] = tide_tgt[k][c];

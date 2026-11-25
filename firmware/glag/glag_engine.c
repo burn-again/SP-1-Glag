@@ -6291,12 +6291,12 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {32, 35, 68, 46, 2, 1, 20, 35}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* after Badalamenti: vibes in broken chords on a slow motor over Imaj7, vi9, IVmaj7 and a suspended V, a dark pad, the double bass, a Rhodes; F, 56 */
 	{"Pine Lake", {GV_VIBES, GV_PAD, GV_UPRIGHT, GV_RHODES},
-	 {{45, 30, 75, 50, 30, 50, 42, 60, 83}, {70, 20, 40, 50, 15, 54, 50, 30, 49},
+	 {{45, 30, 75, 50, 30, 50, 42, 60, 83}, {70, 20, 40, 50, 15, 54, 50, 30, 42},
 	  {35, 30, 80, 50, 0, 18, 50, 15, 87}, {40, 30, 75, 50, 20, 47, 58, 30, 72}},
 	 {36, 30, 62, 46, 5, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Vangelis's Blade Runner: a brass swell for the CS-80, a tenor's phrases, a gliding bass, a Rhodes for the electric grand; IV and I, then the long turn home; D-flat, 58 */
 	{"Neon Rain", {GV_SWELL, GV_SAX, GV_BASS, GV_RHODES},
-	 {{45, 25, 70, 50, 15, 60, 50, 40, 41}, {45, 30, 75, 50, 30, 56, 42, 55, 63},
+	 {{45, 25, 70, 50, 15, 60, 50, 40, 35}, {45, 30, 75, 50, 30, 56, 42, 55, 63},
 	  {35, 30, 85, 50, 6, 22, 50, 30, 31}, {35, 30, 70, 50, 25, 52, 60, 25, 50}},
 	 {38, 30, 70, 46, 1, 0, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Chet Baker's ballads: an open trumpet, soft, behind the beat, a cello answering below, the double bass, brushes; a ballad's changes; E-flat, 54 */
@@ -6306,8 +6306,8 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {34, 25, 62, 47, 3, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* after Bowie and Eno's Subterraneans: a wordless choir, a pad, a tenor weaving in phrases, the bass; major and minor on the same ground; F-sharp, 48 */
 	{"Under the Wall", {GV_CHOIR, GV_PAD, GV_SAX, GV_BASS},
-	 {{45, 40, 75, 50, 15, 56, 45, 40, 54}, {70, 25, 40, 50, 20, 56, 55, 30, 37},
-	  {40, 30, 75, 50, 35, 52, 40, 60, 68}, {35, 30, 85, 50, 6, 21, 50, 25, 30}},
+	 {{45, 40, 75, 50, 15, 56, 45, 40, 46}, {70, 25, 40, 50, 20, 56, 55, 30, 37},
+	  {40, 30, 75, 50, 35, 52, 40, 60, 58}, {35, 30, 85, 50, 6, 21, 50, 25, 30}},
 	 {28, 35, 65, 45, 6, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Bohren's doom and the noir line cliche: the double bass very slow, a low tenor, a Rhodes carrying the falling inner line, only the brushes' sweeps; E, 40 */
 	{"Velvet Doom", {GV_UPRIGHT, GV_SAX, GV_RHODES, GV_BRUSH},
