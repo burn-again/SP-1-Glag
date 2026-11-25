@@ -935,15 +935,24 @@ static const prog_step PG_BALLAD[] = {
 	{0, 4, {0, 4, 7, 11}, C9 | C13, 2}, {9, 4, {0, 3, 7, 10}, C9, 2}, {2, 4, {0, 3, 7, 10}, C9 | C11, 2},
 	{7, 4, {0, 4, 7, 10}, C9 | C13, 2}, {4, 4, {0, 3, 7, 10}, C11, 2}, {9, 4, {0, 4, 7, 10}, C9, 2},
 	{2, 4, {0, 3, 7, 10}, C9 | C11, 2}, {7, 4, {0, 4, 7, 10}, C9 | C13, 2}};
-static const struct { const prog_step *s; uint8_t n; } PROGS[7] = {
-	{PG_LIFT, 2}, {PG_RAIN, 11}, {PG_PINES, 5}, {PG_DOOM, 4}, {PG_CLICHE, 6}, {PG_WALL, 5}, {PG_BALLAD, 8}};
+/* 8 (B) the line cliche once, then away from it: i held, bVI, iv and V before it comes round again */
+static const prog_step PG_CLICHE2[] = {
+	{0, 3, {0, 3, 7}, C9, 2}, {0, 4, {0, 3, 7, 11}, C9, 2}, {0, 4, {0, 3, 7, 10}, C9, 2}, {0, 4, {0, 3, 7, 9}, C9, 2},
+	{5, 4, {0, 3, 7, 10}, C9, 2}, {7, 4, {0, 4, 7, 10}, CB9, 2},
+	{0, 4, {0, 3, 7, 10}, C9 | C11, 4}, {8, 4, {0, 4, 7, 11}, C9, 4}, {5, 4, {0, 3, 7, 10}, C9, 2}, {7, 3, {0, 4, 7}, C9, 2}};
+static const struct { const prog_step *s; uint8_t n; } PROGS[8] = {
+	{PG_LIFT, 2}, {PG_RAIN, 11}, {PG_PINES, 5}, {PG_DOOM, 4}, {PG_CLICHE, 6}, {PG_WALL, 5}, {PG_BALLAD, 8}, {PG_CLICHE2, 10}};
+static uint8_t ph_style = 1;                       /* the phrasing: 0 A (as first written), 1 B (after the listening notes) */
+static uint8_t ph_piece;                           /* the noir piece playing (1..7, 138 on), for its manner */
+void gl_phrase_style(int st) { ph_style = (uint8_t)st; }
+static int prog_eff(void) { return ph_style && prog_x == 5 ? 8 : prog_x; }
 /* the noir pieces (138 on) and their progressions */
 static const uint8_t PIECE_PROG[7] = {4, 1, 3, 2, 7, 6, 5};
-static int prog_len(void) { return prog_x ? PROGS[prog_x - 1].n : 1; }
-static int prog_bars_of(void) { return prog_x ? PROGS[prog_x - 1].s[prog_i % PROGS[prog_x - 1].n].bars : 4; }
+static int prog_len(void) { return prog_x ? PROGS[prog_eff() - 1].n : 1; }
+static int prog_bars_of(void) { return prog_x ? PROGS[prog_eff() - 1].s[prog_i % PROGS[prog_eff() - 1].n].bars : 4; }
 static void prog_chord(void)
 {
-	const prog_step *st = &PROGS[prog_x - 1].s[prog_i % PROGS[prog_x - 1].n];
+	const prog_step *st = &PROGS[prog_eff() - 1].s[prog_i % PROGS[prog_eff() - 1].n];
 	const int r = (root_pc + st->root) % 12;
 	chord_n = st->n;
 	chord_mask = 0;
@@ -1124,8 +1133,14 @@ static void ph_fit(chan *c, int part, int lo, int hi, int vib)
 	if (part != 3)
 		c->last_note = nt[n - 1];
 }
+#ifdef GL_PH_TRACE
+void ph_trace(int ch, int note, float hold);   /* (a test build's hook: each phrase note as it sounds) */
+#endif
 static void ph_fire_now(chan *c, int ch, int note, float vel, float hold, float emph)
 {
+#ifdef GL_PH_TRACE
+	ph_trace(ch, note, hold);
+#endif
 	if (c->voice == GV_VIBES) {
 		nvoice *v = alloc(c, 4);
 		if (!sounding(v))
@@ -1145,8 +1160,13 @@ static void ph_pending(chan *c, int ch, float sdt)
 		ph_fire_now(c, ch, (int)c->echo_note, c->echo_vel, c->hq_dt, c->hq_vel);
 	}
 }
+static void phrase_step_b(chan *c, int ch, uint32_t step, int base);
 static void phrase_step(chan *c, int ch, uint32_t step, int base)
 {
+	if (ph_style) {
+		phrase_step_b(c, ch, step, base);
+		return;
+	}
 	const int vib = c->voice == GV_VIBES;
 	int lo, hi;
 	ph_range(c->voice, base, &lo, &hi);
@@ -1203,6 +1223,290 @@ static void phrase_step(chan *c, int ch, uint32_t step, int base)
 		if (*part == 0) {
 			(*times)++;
 			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act));
+		}
+		*pos = 255;
+	}
+}
+
+/* ---- B: the phrasing after the first listening. What A did: every piece alike, a motif of two
+ * to five notes (six rhythms, three shapes: arch, sigh, turn) played straight through, the same
+ * again on the next chord, then an answer that always stepped down to the root or fifth: too many
+ * notes too close, and the same falling close everywhere. B:
+ *   a breath inside the phrase: the motif split after its first note (or two), the rest waiting
+ *     two to six half-beats, at times a bar or two (glacial);
+ *   fewer notes: one-, two- and three-note rhythms most of the time;
+ *   the motif varied when it comes back (whole, cut short and held, a beat late, landing on another
+ *     colour, or with a neighbour leaning into the tone), and changed a little between times
+ *     rather than always replaced;
+ *   answers of four kinds: down to the root (now the rarest), up to a third or a colour, one long
+ *     tone, or none at all;
+ *   each piece its own manner (PH_MANNER): how much space, how often glacial, how sparse, and
+ *     whether its lead keeps one hook and comes home to it (Pine Lake: the hook returns, and on the
+ *     home chord it resolves to the tonic) ---- */
+static const struct { uint8_t space, glacial, sparse, hook; } PH_MANNER[8] = {
+	{50, 20, 50, 0},   /* (another piece) */
+	{75, 25, 60, 0},   /* Rain Window: pauses between the first notes and the next */
+	{65, 30, 60, 0},   /* Elevator, Paris */
+	{30, 10, 40, 1},   /* Pine Lake: the hook */
+	{60, 25, 85, 0},   /* Neon Rain: fewer notes */
+	{55, 20, 55, 0},   /* Last Ferry */
+	{60, 25, 60, 0},   /* Under the Wall */
+	{85, 50, 70, 0},   /* Velvet Doom: glacial */
+};
+static const int8_t PB_RHY[8][5] = {               /* half-beats */
+	{6, 0}, {2, 6, 0}, {1, 7, 0}, {4, 8, 0},       /* one or two notes */
+	{3, 1, 6, 0}, {1, 1, 6, 0}, {2, 2, 8, 0}, {1, 1, 2, 6, 0}};
+static const int8_t PB_HOOK[5] = {2, 2, 4, 8, 0};  /* the hook's rhythm (vibes: up the chord, a step down into its tone) */
+static void ph_new_b(chan *c, int vib)
+{
+	int8_t *rh = c->loop[0], *ct = c->loop[1];
+	const int m = ph_piece < 8 ? ph_piece : 0;
+	const float space = PH_MANNER[m].space * 0.01f, glac = PH_MANNER[m].glacial * 0.01f, sparse = PH_MANNER[m].sparse * 0.01f;
+	const int hook = PH_MANNER[m].hook && vib;
+	if (hook && rh[6] > 0)
+		return;                                        /* the hook is kept */
+	const int8_t *r = hook ? PB_HOOK : rnd() < sparse ? PB_RHY[rndi(4)] : PB_RHY[4 + rndi(4)];
+	int n = 0;
+	while (n < 5 && r[n]) {
+		rh[n] = r[n];
+		n++;
+	}
+	rh[6] = (int8_t)n;
+	/* the breath inside it: mostly after the first note */
+	rh[7] = rh[8] = 0;
+	if (n >= 2 && !hook && rnd() < space) {
+		rh[7] = (int8_t)(rnd() < 0.6f ? 1 : 1 + rndi(n - 1));
+		rh[8] = (int8_t)(rnd() < glac ? 8 + rndi(9) : 2 + rndi(5));
+	}
+	/* its shape: a question (ending a step or two up), an arch, a turn, a repeated note then a
+	 * leap, and the sigh (stepping down) now the least of them */
+	const float u = rnd();
+	const int shape = u < 0.25f ? 0 : u < 0.5f ? 1 : u < 0.65f ? 2 : u < 0.85f ? 3 : 4;
+	ct[0] = 0;
+	for (int k = 1; k < n; k++) {
+		if (vib)
+			ct[k] = (int8_t)(k == n - 1 && n > 2 ? -1 : 1);
+		else if (shape == 0)
+			ct[k] = (int8_t)(k == n - 1 ? 2 : 1);
+		else if (shape == 1)
+			ct[k] = (int8_t)(k == 1 ? 3 + rndi(2) : -1);
+		else if (shape == 2)
+			ct[k] = (int8_t)((k & 1) ? 1 : -2);
+		else if (shape == 3)
+			ct[k] = (int8_t)(k == 1 ? 0 : k == 2 ? 3 : -1);
+		else
+			ct[k] = -1;
+	}
+}
+/* change it a little between times: one length, or one step */
+static void ph_mutate(chan *c)
+{
+	int8_t *rh = c->loop[0], *ct = c->loop[1];
+	const int n = rh[6];
+	if (n < 1)
+		return;
+	const int k = rndi(n);
+	if (rnd() < 0.5f && k < n - 1)
+		rh[k] = (int8_t)(rh[k] == 1 ? 2 : rh[k] == 2 ? (rnd() < 0.5f ? 1 : 3) : 2);
+	else if (k > 0)
+		ct[k] = (int8_t)(ct[k] + (rnd() < 0.5f ? 1 : -1));
+}
+/* this part's notes; returns 0, or -1 for an answer left out */
+static int ph_fit_b(chan *c, int part, int lo, int hi, int vib)
+{
+	int8_t *rh = c->loop[0], *ct = c->loop[1], *nt = c->loop[2], *on = c->loop[3];
+	const int m = ph_piece < 8 ? ph_piece : 0;
+	const int hook = PH_MANNER[m].hook && vib;
+	const uint16_t set = vib ? (uint16_t)(chord_mask | colour_mask) : mel_mask;
+	const int center = (lo + hi) / 2;
+	const uint16_t beauty = (uint16_t)((1u << chord_pc[1]) | (1u << chord_pc[2 % chord_n]) |
+	                                   (chord_n > 3 ? (1u << chord_pc[3]) : 0u) | colour_mask);
+	const uint16_t homes = (uint16_t)((1u << chord_pc[0]) | (1u << chord_pc[2 % chord_n]));
+	int8_t dur[6], stp[6];
+	int n = 0, split = 0, gap = 0, start, land_up = 0;
+	uint16_t land = beauty;
+	if (part == 3) {
+		/* the answer: home to the tonic on the home chord (the hook), else one of four */
+		const int home = hook && chord_pc[0] == root_pc;
+		const float u = rnd();
+		const int form = home ? 0 : u < 0.2f ? 0 : u < 0.5f ? 1 : u < 0.75f ? 2 : 3;
+		if (form == 3)
+			return -1;                                 /* no answer: the space is the answer */
+		static const int8_t AR[3][4] = {{2, 2, 8, 0}, {2, 8, 0, 0}, {8, 0, 0, 0}};
+		const int8_t *r = home ? AR[0] : form == 0 ? AR[rndi(2)] : form == 1 ? AR[1] : AR[2];
+		while (n < 4 && r[n]) {
+			dur[n] = r[n];
+			stp[n] = (int8_t)(n == 0 ? 0 : form == 1 ? 1 : -1);
+			n++;
+		}
+		if (home)
+			land = (uint16_t)(1u << root_pc);
+		else if (form == 0)
+			land = homes;
+		else if (form == 1) {
+			land = (uint16_t)((1u << chord_pc[1]) | colour_mask);
+			land_up = 1;
+		} else
+			land = (uint16_t)((1u << chord_pc[1]) | (1u << chord_pc[2 % chord_n]));
+		start = (c->last_note > 0 ? c->last_note : center) + (form == 1 ? -2 : 2);
+	} else {
+		n = rh[6] > 0 ? rh[6] : 1;
+		for (int k = 0; k < n; k++) {
+			dur[k] = rh[k];
+			stp[k] = ct[k];
+		}
+		/* the breath, chosen afresh each time it is played: after the first note or the second,
+		 * two to six half-beats, at times a bar or two */
+		{
+			const float space = PH_MANNER[m].space * 0.01f, glac = PH_MANNER[m].glacial * 0.01f;
+			split = gap = 0;
+			if (n >= 2 && !hook && rnd() < space) {
+				split = n >= 3 && rnd() < 0.55f ? 2 : 1;
+				gap = rnd() < glac ? 8 + rndi(9) : 3 + rndi(5);
+			}
+		}
+		start = part == 1 ? center - 3 + rndi(5) : (nt[7] > 0 ? nt[7] : center);
+		if (part == 2) {
+			/* the motif again, varied (the hook keeps its shape: whole, cut short, or late) */
+			const float u = hook ? rnd() * 0.7f : rnd();
+			if (u < 0.3f) {
+				/* whole */
+			} else if (u < 0.5f && n > 1) {
+				n = split > 0 ? split : 1;               /* cut short, its last note held */
+				dur[n - 1] = 8;
+				split = 0;
+			} else if (u < 0.7f) {
+				c->arp_i = (uint8_t)(c->arp_i + 4);      /* a beat late */
+			} else if (u < 0.85f) {
+				const uint16_t other = (uint16_t)((chord_n > 3 ? (1u << chord_pc[3]) : 0u) | colour_mask);
+				if (other)
+					land = other;                        /* landing on another colour */
+			} else if (n < 5) {
+				dur[n] = dur[n - 1];                     /* a neighbour leaning into the tone */
+				stp[n] = (int8_t)(rnd() < 0.5f ? 1 : -1);
+				dur[n - 1] = 1;
+				n++;
+			}
+		}
+	}
+	int tmp[6];
+	tmp[0] = nearest_in(start, chord_mask, lo, hi);
+	for (int k = 1; k < n; k++)
+		tmp[k] = mel_step(tmp[k - 1], stp[k], set);
+	{
+		int x = tmp[n - 1];
+		if (land_up) {
+			while (x < tmp[n - 1] + 12 && !((land >> (x % 12)) & 1u))
+				x++;
+		} else if (part == 3 && land != beauty) {
+			while (x > tmp[n - 1] - 12 && !((land >> (x % 12)) & 1u))
+				x--;
+		} else
+			x = nearest_in(x, land, x - 5, x + 5);
+		tmp[n - 1] = x;
+	}
+	int mx = tmp[0], mn = tmp[0];
+	for (int k = 1; k < n; k++) {
+		mx = tmp[k] > mx ? tmp[k] : mx;
+		mn = tmp[k] < mn ? tmp[k] : mn;
+	}
+	int sh = 0;
+	while (mx + sh > hi && mn + sh - 12 >= lo - 2)
+		sh -= 12;
+	while (mn + sh < lo && mx + sh + 12 <= hi + 2)
+		sh += 12;
+	int acc = 0;
+	for (int k = 0; k < n; k++) {
+		if (split && k == split)
+			acc += 2 * gap;                              /* the breath inside the phrase */
+		int x = tmp[k] + sh;
+		while (x > hi)
+			x -= 12;
+		while (x < lo)
+			x += 12;
+		nt[k] = (int8_t)x;
+		on[k] = (int8_t)acc;
+		on[6 + k] = dur[k];
+		acc += 2 * dur[k];
+	}
+	nt[6] = (int8_t)n;
+	if (part == 1)
+		nt[7] = nt[0];
+	if (part != 3)
+		c->last_note = nt[n - 1];
+	return 0;
+}
+static void phrase_step_b(chan *c, int ch, uint32_t step, int base)
+{
+	const int vib = c->voice == GV_VIBES;
+	int lo, hi;
+	ph_range(c->voice, base, &lo, &hi);
+	const int s16 = (int)(step & 15u);
+	uint8_t *part = &c->lpos[0], *pos = &c->lpos[1], *idx = &c->lpos[2], *times = &c->lpos[3];
+	const float act = eff_activity(ch);
+	const int m = ph_piece < 8 ? ph_piece : 0;
+	if (*part == 0) {
+		if (s16 != 0)
+			return;
+		if (c->arp_dir) {
+			c->arp_dir--;
+			return;
+		}
+		if (c->loop[0][6] <= 0)
+			ph_new_b(c, vib);
+		else if (*times >= 2 + rndi(3)) {
+			if (rnd() < 0.5f)
+				ph_mutate(c);                          /* the same idea, changed a little */
+			else
+				ph_new_b(c, vib);
+			*times = 0;
+		}
+		*part = 1;
+		*pos = 255;
+	}
+	if (*pos == 255) {
+		if (s16 != 0)
+			return;
+		*pos = 0;
+		*idx = 0;
+		c->arp_i = (uint8_t)(rnd() < 0.5f ? 0 : 2 * (1 + rndi(2)));
+		if (ph_fit_b(c, *part, lo, hi, vib) < 0) {      /* an answer left out: rest */
+			*part = 0;
+			(*times)++;
+			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act) + (PH_MANNER[m].space > 60 ? rndi(2) : 0));
+			return;
+		}
+	}
+	const int n = c->loop[2][6];
+	const int off = c->arp_i;
+	const float hb = 30.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+	while (*idx < n && (int)*pos == off + c->loop[3][*idx]) {
+		const int k = *idx, dur = c->loop[3][6 + k], last = k == n - 1;
+		const int after_breath = k > 0 && c->loop[3][k] > c->loop[3][k - 1] + 2 * c->loop[3][6 + k - 1];
+		const float hold = (float)dur * hb * (last ? 0.92f : 1.04f);
+		float vel = 0.5f + 0.22f * (float)k / (float)n + (last ? 0.08f : 0.0f) + (after_breath ? 0.05f : 0.0f);
+		if (*part == 3)
+			vel *= 0.85f;
+		c->echo_note = (float)c->loop[2][k];
+		c->echo_vel = vel * (0.95f + 0.1f * rnd());
+		c->hq_dt = hold;
+		c->hq_vel = dur >= 6 ? 1.0f : 0.0f;
+		c->echo_at = 0.02f + 0.06f * rnd();
+		(*idx)++;
+	}
+	if (*pos < 250)
+		(*pos)++;
+	if (*idx >= n && (int)*pos >= off + c->loop[3][n - 1] + 2 * c->loop[3][6 + n - 1]) {
+		if (*part == 1)
+			*part = rnd() < 0.8f ? 2 : 3;
+		else if (*part == 2)
+			*part = rnd() < 0.7f ? 3 : 0;
+		else
+			*part = 0;
+		if (*part == 0) {
+			(*times)++;
+			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act) + (PH_MANNER[m].space > 60 ? rndi(2) : 0) +
+			                       (PH_MANNER[m].hook ? 2 + rndi(3) : 0));   /* (a hook comes back after a breath) */
 		}
 		*pos = 255;
 	}

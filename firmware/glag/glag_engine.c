@@ -4642,11 +4642,12 @@ static void control(float dt)
 			for (int k = 0; k < 2; k++)
 				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
 		{
-			const uint8_t sx = scale_x, px = prog_x, tx = tide_x;   /* (the posted piece's scale, progression and tide, kept across this reset) */
+			const uint8_t sx = scale_x, px = prog_x, tx = tide_x, pp = ph_piece;   /* (the posted piece's scale, progression, tide and manner, kept across this reset) */
 			gl_piece(0, &P);
 			scale_x = sx;
 			prog_x = px;
 			tide_x = tx;
+			ph_piece = pp;
 		}
 		space_init();
 		mode_cur = root_cur = -1;
@@ -6399,6 +6400,7 @@ void gl_piece(int i, gl_patch *out)
 	scale_x = (unsigned)(i - 106) < GL_NXSCALES ? (uint8_t)(i - 105) : 0;
 	/* (and the noir side its progressions, 138 on) */
 	prog_x = (unsigned)(i - 138) < 7u ? PIECE_PROG[i - 138] : 0;
+	ph_piece = (unsigned)(i - 138) < 7u ? (uint8_t)(i - 137) : 0;
 	/* (the space pieces, 145 on: a progression, perhaps, and their tide) */
 	tide_x = 0;
 	if ((unsigned)(i - 145) < 10u) {

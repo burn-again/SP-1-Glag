@@ -166,7 +166,8 @@ int gl_tide_info(int *sec, int *nsec, int *kind, int *bar, int *len);
 int gl_tide_kind_at(int s);
 int gl_tide_bars_at(int s);
 extern const char *const GL_TIDE_KIND[8];
-float gl_space_now(int k);          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
+float gl_space_now(int k);
+void gl_phrase_style(int st);         /* audition: the noir side's phrasing, 0 A (as first written), 1 B (after the listening notes) */          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
 void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
 void gl_rv_drift(int mode);          /* audition only: the Hall's lines drifting (1 grow/shrink, 2 diverge, 3 grow, 4 shrink) */
 void gl_rv_shim_ratio(float r);      /* audition only: the Shimmer's interval as a ratio (below 1: down; 0 its own) */
