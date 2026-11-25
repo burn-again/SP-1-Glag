@@ -312,12 +312,17 @@ static void mbox_control(chan *c, int ch, float dt)
 			v->ainc = 0.0f;
 			continue;
 		}
-		nv_perc(v, 0.002f, expmap(len, 0.5f, 4.0f) / speed, 0.4f, 0.0f, dt);
+		nv_perc(v, 0.004f, expmap(len, 0.5f, 4.0f) / speed, 0.4f, 0.0f, dt);
 		const float hz = mtof(v->note) * speed * pbend;
 		v->ic = hz_inc(hz);
 		v->ic2 = hz_inc(hz * 2.756f);
 		v->ic3 = hz_inc(hz * 5.404f);
-		v->fk = 0.35f * tone + 0.1f;              /* the partials' levels (menv, falling over 0.4 s, sets their life) */
+		/* darker as it climbs: the partials fall away above C3 (half by C5), a low-pass at
+		 * 1.2 to 4 kHz (TONE) that does not follow the note, and the high notes a little softer */
+		const float kt = clampf(fexp2(-(v->note - 48.0f) * (1.0f / 24.0f)), 0.2f, 1.0f);
+		v->fk = (0.3f * tone + 0.08f) * kt;       /* the partials' levels (menv, falling over 0.4 s, sets their life) */
+		v->fq = 1.0f - fexp2(-1.4427f * 6.2832f * (1200.0f + 2800.0f * tone) / VSR);
+		v->hold = clampf(1.0f - (v->note - 60.0f) * 0.02f, 0.55f, 1.0f);
 	}
 }
 static int mbox_render(chan *c, float *A, float *B)
@@ -330,15 +335,16 @@ static int mbox_render(chan *c, float *A, float *B)
 		any = 1;
 		uint32_t p1 = v->pc, p2 = v->pc2, p3 = v->pc3;
 		const uint32_t i1 = v->ic, i2 = v->ic2, i3 = v->ic3;
-		float amp = v->amp;
-		const float l2 = v->menv * v->fk, l3 = v->menv * v->menv * v->fk * 0.5f, ai = v->ainc;
+		float amp = v->amp, y = v->f1;
+		const float l2 = v->menv * v->fk, l3 = v->menv * v->menv * v->fk * 0.5f, ai = v->ainc, k = v->fq, tilt = v->hold;
 		float *out = v->side ? B : A;
 		for (uint32_t j = 0; j < VSUB; j++) {
-			out[j] += (sin_u(p1) + l2 * sin_u(p2) + l3 * sin_u(p3)) * amp;
+			y += k * ((sin_u(p1) + l2 * sin_u(p2) + l3 * sin_u(p3)) - y);
+			out[j] += y * amp * tilt;
 			p1 += i1; p2 += i2; p3 += i3;
 			amp += ai;
 		}
-		v->pc = p1; v->pc2 = p2; v->pc3 = p3; v->amp = amp;
+		v->pc = p1; v->pc2 = p2; v->pc3 = p3; v->amp = amp; v->f1 = y;
 	}
 	return any;
 }
@@ -440,8 +446,13 @@ static void chip_control(chan *c, int ch, float dt)
 		const float hz = mtof(n) * speed * pbend;
 		v->ic = hz_inc(hz);
 		v->bend = w;
-		const float fc = clampf(300.0f * fexp2(6.0f * tone), 1.5f * hz, 9000.0f);
+		/* the low-pass: half way at the middle of TONE, but above C3 no more than a few
+		 * harmonics in (2 to 5 times the note, TONE), so it gets rounder as it climbs */
+		float fc = 300.0f * fexp2(6.0f * tone);
+		const float cap = hz * (1.6f + 2.4f * tone) * clampf(fexp2(-(n - 48.0f) * (1.0f / 24.0f)), 0.4f, 1.0f);
+		fc = clampf(fc < cap ? fc : cap, hz * 1.1f, 6000.0f);
 		v->fq = 1.0f - fexp2(-1.4427f * 6.2832f * fc / VSR);
+		v->hold = clampf(1.0f - (n - 60.0f) * 0.02f, 0.55f, 1.0f);
 	}
 }
 static int chip_render(chan *c, float *A)
@@ -455,11 +466,11 @@ static int chip_render(chan *c, float *A)
 		uint32_t pc = v->pc;
 		const uint32_t ic = v->ic, wd = (uint32_t)(v->bend * 4294967296.0f);
 		float amp = v->amp, y1 = v->f1, y2 = v->f2;
-		const float ai = v->ainc, k = v->fq;
+		const float ai = v->ainc, k = v->fq, tilt = v->hold;
 		for (uint32_t j = 0; j < VSUB; j++) {
 			y1 += k * (0.6f * (nb_saw(pc, ic) - nb_saw(pc + wd, ic)) - y1);
 			y2 += k * (y1 - y2);
-			A[j] += y2 * amp;
+			A[j] += y2 * amp * tilt;
 			pc += ic;
 			amp += ai;
 		}

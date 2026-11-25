@@ -58,7 +58,7 @@ enum gl_voice {
 	/* audition (glag_new.h): nine light voices, after the rest so no piece changes */
 	GV_LITEKIT, GV_PERC, GV_ORGAN, GV_MBOX, GV_BREATH, GV_CHIP, GV_CHOIR, GV_KOTO, GV_GRAINS,
 	/* audition (glag_new2.h): six more */
-	GV_TRUMPET, GV_TIMPANI, GV_SAX, GV_CELLO, GV_UPRIGHT, GV_HAZE,
+	GV_TRUMPET, GV_TIMPANI, GV_SAX, GV_CELLO, GV_UPRIGHT, GV_HAZE, GV_VIBES, GV_BRUSH,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];

@@ -55,6 +55,7 @@ select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--sur
 .voice b { font: 600 15px/1.2 var(--display); }
 .voice span { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
 .voice[aria-pressed="true"] span { color: var(--surface); }
+.side { grid-column: 1 / -1; font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
 .other { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 /* keyboard */
 .kbd-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -87,7 +88,7 @@ textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--
 <header>
   <span class="eyebrow">SP-1 · Glag · instruments</span>
   <h1>Glag Instruments</h1>
-  <p class="lede">Play the fifteen new voices yourself and shape them, or put on the album of pieces built from them. It's the real Glag engine in your browser; the keys play channel 1 the way MIDI would, and every slider is the same control the SP-1 has.</p>
+  <p class="lede">Play the seventeen new voices yourself and shape them, or put on the album of pieces built from them. It's the real Glag engine in your browser; the keys play channel 1 the way MIDI would, and every slider is the same control the SP-1 has.</p>
 </header>
 
 <section aria-label="Transport">
@@ -145,15 +146,15 @@ textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--
     <div class="deck-top">
       <button class="primary" type="button" id="albPlay">Play the album</button>
       <button type="button" id="albNext">Next track</button>
-      <div class="now"><span class="now-name" id="albName">The Late Rooms</span><span class="now-meta" id="albMeta">Twelve pieces on the new voices</span></div>
+      <div class="now"><span class="now-name" id="albName">The Late Rooms</span><span class="now-meta" id="albMeta">Side A rooms, side B noir</span></div>
     </div>
     <div class="toggles">
-      <button type="button" id="albSong" aria-pressed="true">Song mode</button>
+      <button type="button" id="albSong" aria-pressed="false">Song mode</button>
       <button type="button" id="albLab" aria-pressed="false">Add the lab pieces</button>
       <button type="button" id="albShuf" aria-pressed="false">Shuffle</button>
       <label class="vol" for="albLen">Each track <select id="albLen"><option value="120">2 min</option><option value="240" selected>4 min</option><option value="360">6 min</option></select></label>
     </div>
-    <p class="cap">Each track starts fresh in its own key, fades in, plays with song mode's arcs (channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
+    <p class="cap">Built on AMB-1's ways: slow, sparse, loops of unequal lengths drifting against each other, a held layer, the bass on the root, long rooms. Side B takes the methods of Bohren &amp; der Club of Gore, Miles Davis's <i>Ascenseur pour l'échafaud</i> and Badalamenti (their pace, weight, rooms and instruments; none of their melodies). Each track starts fresh in its own key, fades in, plays as written (song mode, if you turn it on, adds its arcs: channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
   </div>
   <div class="voices" id="tracks"></div>
 </section>
@@ -175,6 +176,9 @@ const GP = { TEMPO: 0, DELAY: 1, REVERB: 2, FILTER: 3, ROOT: 4, MODE: 5, DRIFT: 
 const NEWV = 25; /* GV_LITEKIT: the first of the nine */
 const LK_DRUMS = ["kick", "rim", "snare", "clap", "snare", "tom", "hat", "tom", "hat", "bell", "open", "rim"];
 const PULSE_DRUMS = ["kick", "click", "snare", "click", "snare", "shaker", "hat", "shaker", "hat", "shaker", "open", "shaker"];
+const BRUSH_DRUMS = ["kick", "tap", "tap", "tap", "tap", "sweep", "ride", "sweep", "ride", "tap", "ride", "tap"];
+/* where the keyboard starts for each voice (its low C) */
+const START_OCT = { 2: 24, 38: 24, 35: 36, 37: 36, 5: 36, 11: 36, 36: 48, 34: 48, 27: 48, 31: 48, 40: 48, 28: 60, 15: 36, 24: 36, 25: 36, 41: 36 };
 const KIT_DRUMS = ["kick", "clank", "snare", "tissue", "Nord", "hat", "hat", "roll", "hat", "ghost", "open", "hat"];
 const ECHO_NAMES = ["dotted ¼", "½", "dotted ½", "a bar", "two bars", "⅛", "dotted ⅛", "¼", "the string"];
 const RV_NAMES = ["Hall", "Chamber", "Shimmer", "Bloom"];
@@ -188,10 +192,10 @@ const NEW_INFO = {
         chr: "the material: woodblock, log drum, tabla (bends into its note), glass" },
   27: { t: "Four drawbars, a slow Leslie", tone: "the top 2′ drawbar's brightness", len: "",
         chr: "the drawbars: flute stop to full stops; and the Leslie's speed" },
-  28: { t: "A sine and two dying partials", tone: "the partials' level: plain to glassy", len: "decay, ½ to 4 s", chr: "" },
+  28: { t: "A sine and two dying partials", tone: "the partials and a low-pass (1.2 to 4 kHz): plain to glassy; darker as it climbs", len: "decay, ½ to 4 s", chr: "" },
   29: { t: "Noise at the note, a flute's shape", tone: "the attack: soft and slow to quick", len: "the release after you let go",
         chr: "tonal (a sine under a narrow band) to airy (a wide band, no sine)" },
-  30: { t: "A soft pulse through a low-pass", tone: "the low-pass: half way (about 2.4 kHz) at the middle", len: "decay",
+  30: { t: "A soft pulse through a low-pass", tone: "the low-pass: half way at the middle, and only a few harmonics in above C3, so it rounds off as it climbs", len: "decay",
         chr: "pulse width ⅛, ¼, ½; past three quarters, an arpeggio through the chord in sixteenth triplets" },
   31: { t: "Saws through two formants", tone: "", len: "how slowly it fades in and out",
         chr: "the vowels: oo/oh to ah/eh (they drift on their own)" },
@@ -199,18 +203,22 @@ const NEW_INFO = {
         chr: "koto to sitar: how much the bridge buzzes" },
   33: { t: "Slices of the echo's tape, replayed", tone: "", len: "each grain's length",
         chr: "how far back in the tape it reaches (and, playing itself, how often it shifts pitch)", grains: 1 },
-  34: { t: "A Harmon-muted horn, phrases", tone: "how far the horn opens", len: "the release, and how long it holds a phrase's last note",
+  34: { t: "A Harmon-muted horn, a slow swell", tone: "how far the horn opens (and a quicker swell)", len: "the release, and how long its notes hold",
         chr: "the mute: cup (warmer) to harmon (nasal, narrow)" },
   35: { t: "Two membrane modes, a mallet, rolls", tone: "", len: "how long the drum rings",
         chr: "the mallet: soft felt to hard (brighter, the pitch settling after the hit)" },
-  36: { t: "A reed, an opening filter, breath", tone: "brightness: subtone to edge", len: "the release, and how long it holds a phrase's last note",
+  36: { t: "A breathy tenor, a slow swell", tone: "how far it opens (and a quicker swell)", len: "the release, and how long its notes hold",
         chr: "how breathy" },
-  37: { t: "A bowed string and its body", tone: "how quickly the bow speaks", len: "the release, and how long it bows",
+  37: { t: "A slow bow, darker as it climbs", tone: "how quickly the bow speaks", len: "the release, and how long it bows (a bow lasts six seconds at most)",
         chr: "sul tasto (warm, over the fingerboard) to ponticello (glassy, near the bridge)" },
-  38: { t: "A plucked string that walks", tone: "the pluck's brightness", len: "how long a note rings",
-        chr: "playing itself: roots and fifths, up to walking with approach notes" },
+  38: { t: "As AMB-1's bass, plucked", tone: "the pluck's brightness and the octave's weight", len: "how long a note rings, 1 to 5 s",
+        chr: "playing itself: roots, then fifths, then a passing note now and then" },
   39: { t: "Grains of the reverb's tail", tone: "", len: "each grain's length, ¼ to 1.6 s",
         chr: "how far back it reaches, and how often grains go an octave down or backwards", grains: 2 },
+  40: { t: "A vibraphone on the bells' loops", tone: "the bar's ring (its fourth harmonic)", len: "the pedal: 1.5 to 7 s",
+        chr: "the motor: off, then slow to fast and deep" },
+  41: { t: "Sweeps, taps, a quiet ride, a felt kick", tone: "the brushes' brightness", len: "the taps' and ride's decay",
+        chr: "how much ride (Activity adds sweeps, then taps, the ride, the kick)", key: "drums" },
 };
 
 /* ---- the engine, in a worklet (or on the page where there is none) ---- */
@@ -305,6 +313,7 @@ function pickVoice(v) {
   if (alb.on) { clearTimeout(alb.timer); alb.on = false; albStop(); }
   saved[st.voice] = st.cp.slice();
   st.voice = v;
+  st.oct = START_OCT[v] ?? 48;
   st.cp = saved[v] ? saved[v].slice() : defaultsFor(v);
   allOff();
   if (ctx) applyAll();
@@ -356,7 +365,7 @@ function buildKeys() {
   }
   $("oct").textContent = "C" + (st.oct / 12 - 1);
 }
-function drumNames() { return st.voice === 25 ? LK_DRUMS : st.voice === 15 ? PULSE_DRUMS : st.voice === 24 ? KIT_DRUMS : null; }
+function drumNames() { return st.voice === 25 ? LK_DRUMS : st.voice === 15 ? PULSE_DRUMS : st.voice === 24 ? KIT_DRUMS : st.voice === 41 ? BRUSH_DRUMS : null; }
 const pointerNote = new Map();
 function noteAt(x, y) { const el = document.elementFromPoint(x, y); return el && el.closest(".key") ? +el.closest(".key").dataset.n : -1; }
 $("keys").addEventListener("pointerdown", (e) => {
@@ -485,28 +494,35 @@ async function start() {
 
 /* ---- the album ---- */
 const LATE = [
-  [132, "Smoke Ring", "Muted trumpet, a walking upright, brushes, the tail coming back late"],
-  [133, "Night Sax", "A breathy sax, an upright, the organ's flute stop, a dub groove"],
-  [134, "Cello Hours", "Two cellos an octave apart, a music box, the reverb's grains"],
-  [135, "Thunder Valley", "Timpani and their rolls, a choir, a cello, the tail's grains"],
-  [136, "Brass Lantern", "A harmon-muted trumpet, a koto, log drums, an upright"],
-  [137, "Rain on Tin", "The tamed chip over an upright, a breath, the tail's grains"],
-  [138, "Salt Air", "A breathy sax over the tail's grains, a glow, a cello"],
-  [139, "Processional", "Timpani, the organ's fuller stops, a muted trumpet, a choir"],
-  [140, "Upright Walk", "The upright walking, the Lite Kit, an EP, a muted trumpet"],
-  [141, "Haze Garden", "The reverb's grains and the echo's, a music box, a breath"],
-  [142, "Last Train", "A cello and a sax trading lines over an upright, far timpani"],
-  [143, "Paper Moon", "The chip at half width, a music box, an upright, the tail's grains"],
+  [132, "Bowed Departures", "A breathing pad, a low cello's loop, vibes, AMB-1's bass", "A"],
+  [133, "Choir Tape", "A choir, a music box on unequal loops, the tail's grains", "A"],
+  [134, "Glass Hours", "Vibes on a slow motor, a low cello, grains over a drone", "A"],
+  [135, "Low Tide", "A pad, a breath's loop, an upright on the root, grains", "A"],
+  [136, "Paper Organ", "The organ's flute stop, a music box, the echo's grains", "A"],
+  [137, "Snow Chip", "The chip dark and round, vibes, a pad, the bass", "A"],
+  [138, "Rain Window", "A breathy tenor, a dull Rhodes, the double bass, brushes", "B"],
+  [139, "Harmon at Four", "A Harmon trumpet in a long echo, vibes, bass, brushes", "B"],
+  [140, "Slow Elevator", "Vibes with a deep motor, a dark pad, bass, low Rhodes", "B"],
+  [141, "Velvet Doom", "The double bass slow and heavy, a low tenor, sweeps, a drone", "B"],
+  [142, "Last Ferry", "A cello and a tenor drifting on loops of 19 and 23 beats", "B"],
+  [143, "Neon Fog", "A Rhodes, a far Harmon trumpet, grains, the double bass", "B"],
 ];
 /* each piece's measured loudness (dBFS, 90 s on the host), for matching the tracks */
-const LOUD = {118: -23.7, 119: -24.0, 120: -23.2, 121: -18.7, 122: -23.8, 123: -23.2, 124: -22.9, 125: -22.8, 126: -21.6,
-  127: -23.0, 128: -20.8, 129: -23.0, 130: -27.7, 131: -23.4, 132: -25.2, 133: -24.0, 134: -21.7, 135: -23.0, 136: -25.1,
-  137: -27.5, 138: -25.5, 139: -23.0, 140: -25.2, 141: -29.6, 142: -24.0, 143: -27.4};
-const alb = { on: false, list: [], idx: 0, timer: 0, t0: 0, song: true, lab: false, shuf: false, len: 240, tick: 0 };
+const LOUD = {118: -23.7, 119: -24.0, 120: -23.5, 121: -18.7, 122: -23.9, 123: -23.2, 124: -22.9, 125: -22.8, 126: -21.6,
+  127: -23.7, 128: -20.8, 129: -23.0, 130: -28.2, 131: -23.4, 132: -25.8, 133: -26.6, 134: -23.5, 135: -25.1, 136: -25.9,
+  137: -25.4, 138: -27.7, 139: -27.7, 140: -22.4, 141: -24.9, 142: -27.4, 143: -28.4};
+const alb = { on: false, list: [], idx: 0, timer: 0, t0: 0, song: false, lab: false, shuf: false, len: 240, tick: 0 };
 function albGain(i) { const db = Math.max(-4, Math.min(6, -23 - (LOUD[i] ?? -23))); return Math.pow(10, db / 20); }
 function albBuild() {
   const box = $("tracks"); box.innerHTML = "";
-  for (const [i, name, text] of LATE) {
+  let side = "";
+  for (const [i, name, text, sd] of LATE) {
+    if (sd !== side) {
+      side = sd;
+      const h = document.createElement("h3"); h.className = "side";
+      h.textContent = sd === "A" ? "Side A · Rooms" : "Side B · Noir";
+      box.appendChild(h);
+    }
     const b = document.createElement("button"); b.type = "button"; b.className = "voice"; b.dataset.i = i;
     b.innerHTML = "<b></b><span></span>";
     b.querySelector("b").textContent = name; b.querySelector("span").textContent = text;
@@ -548,7 +564,7 @@ function albAdvance() { alb.idx = (alb.idx + 1) % alb.list.length; if (alb.idx =
 function albStop() {
   clearTimeout(alb.timer); alb.on = false;
   $("albPlay").textContent = "Play the album"; $("albPlay").setAttribute("aria-pressed", "false");
-  $("albName").textContent = "The Late Rooms"; $("albMeta").textContent = "Twelve pieces on the new voices";
+  $("albName").textContent = "The Late Rooms"; $("albMeta").textContent = "Side A rooms, side B noir";
   document.querySelectorAll("#tracks .voice").forEach((b) => b.setAttribute("aria-pressed", "false"));
   send(["lab_song", 0], ["lab_key_hold", 0]);
   if (port) port.postMessage({ t: "fade", to: 1, secs: 0 });

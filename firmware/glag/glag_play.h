@@ -131,7 +131,7 @@ static inline float fmaxf_(float a, float b) { return a > b ? a : b; }
 enum { ROLE_HELD, ROLE_PLUCK, ROLE_BASS, ROLE_DRUMS };
 static int voice_role(int v)
 {
-	if (v == GV_PULSE || v == GV_KIT || v == GV_LITEKIT)
+	if (v == GV_PULSE || v == GV_KIT || v == GV_LITEKIT || v == GV_BRUSH)
 		return ROLE_DRUMS;
 	if (v == GV_BASS || v == GV_FUNK || v == GV_UPRIGHT)
 		return ROLE_BASS;
@@ -532,7 +532,16 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 		timp_strike(c, ch, note, vel);
 		return 0;
 	case GV_UPRIGHT:
-		upright_pluck(c, ch, note, vel);
+		v = upright_note(c, ch, note, vel, gate);
+		break;
+	case GV_VIBES:
+		v = alloc(c, 4);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
+		break;
+	case GV_LITEKIT:
+	case GV_BRUSH:
 		return 0;
 	case GV_GRAINS:
 	case GV_HAZE:
@@ -630,6 +639,12 @@ static void midi_drum(chan *c, int ch, int note, float vel)
 	int mask = MAP[note % 12];
 	if (vel < 0.5f)
 		mask &= ~(8 | 16);                           /* soft: no accent */
+	if (c->voice == GV_BRUSH) {
+		/* the brushes: C kick, D / E a tap, F / G a sweep, F# G# A# the ride, the rest a tap */
+		static const uint8_t BRM[12] = {BR_KICK, BR_TAP, BR_TAP, BR_TAP, BR_TAP, BR_SWEEP, BR_RIDE, BR_SWEEP, BR_RIDE, BR_TAP, BR_RIDE, BR_TAP};
+		br_fire(c, ch, BRM[note % 12], vel);
+		return;
+	}
 	if (c->voice == GV_LITEKIT) {
 		/* the Lite Kit: C kick, C# rim, D / E snare, D# clap, F / G toms, F# / G# hat, A# open
 		 * hat, A the bell, B the rim */
@@ -662,7 +677,7 @@ static void midi_tick(float dt)
 			midi_t[ch] = 4.0f;
 			if (midi_n[ch] < 255)
 				midi_n[ch]++;
-			if (c->voice == GV_PULSE || c->voice == GV_KIT || c->voice == GV_LITEKIT)
+			if (c->voice == GV_PULSE || c->voice == GV_KIT || c->voice == GV_LITEKIT || c->voice == GV_BRUSH)
 				midi_drum(c, ch, note, vel);
 			else {
 				nvoice *v = voice_note(c, ch, note, 0.3f + 0.7f * vel, 30.0f);
@@ -685,7 +700,8 @@ static void midi_tick(float dt)
 				if (arp_held(c->voice))
 					v->stage = ST_REL;
 				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE || c->voice == GV_BREATH ||
-				         c->voice == GV_TRUMPET || c->voice == GV_SAX || c->voice == GV_CELLO)
+				         c->voice == GV_TRUMPET || c->voice == GV_SAX || c->voice == GV_CELLO ||
+				         c->voice == GV_UPRIGHT)
 					v->hold = 0.0f;
 			}
 		}
