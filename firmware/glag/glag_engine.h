@@ -157,7 +157,16 @@ void gl_crank(void);
  * drums by the note's name in any octave: C kick, D/E snare, F#/G# hat, A# open hat, C#/D# click
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
-void gl_midi_keep(int mask);          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
+void gl_midi_keep(int mask);
+/* audition: a space piece's tide (its sections of quiet and busy, sends and space moving).
+ * gl_tide(0, on), (1, channel: a throw into the echo now), (2, 0: on to the next section);
+ * gl_tide_info: the section, how many, its kind (GL_TIDE_KIND), the bar in it and its length */
+void gl_tide(int what, float v);
+int gl_tide_info(int *sec, int *nsec, int *kind, int *bar, int *len);
+int gl_tide_kind_at(int s);
+int gl_tide_bars_at(int s);
+extern const char *const GL_TIDE_KIND[7];
+float gl_space_now(int k);          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
 void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
 void gl_rv_drift(int mode);          /* audition only: the Hall's lines drifting (1 grow/shrink, 2 diverge, 3 grow, 4 shrink) */
 void gl_rv_shim_ratio(float r);      /* audition only: the Shimmer's interval as a ratio (below 1: down; 0 its own) */
@@ -305,7 +314,7 @@ extern uint8_t gl_scope_on;
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 145                  /* an audition build: a hundred and two more (five of them labs), fourteen on the light voices, thirteen late rooms */
+#define GL_NPIECES 155                  /* an audition build: a hundred and two more (five of them labs), fourteen on the light voices, thirteen late rooms, ten space pieces */
 #elif defined(GL_TEST_PIECES)
 #define GL_NPIECES 20                   /* the CPU test build: the sixteen and the four heaviest auditions */
 #else

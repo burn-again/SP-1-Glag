@@ -370,6 +370,9 @@ static uint8_t chord_pending;
  * the chord in it, the bars it has had; and under it, the melody's notes (the scale with the
  * chord's own in place of their neighbours) and the chord's colour tones */
 static uint8_t prog_x, prog_i, prog_bars;
+/* audition: a space piece's tide (glag_new2.h): which (0 none), and each channel's activity under it */
+static uint8_t tide_x;
+static float tide_a[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 static uint16_t mel_mask, colour_mask;
 static void prog_chord(void);
 static int prog_len(void);
@@ -727,7 +730,7 @@ static int reg_base(const chan *c, int ch)
 	return HOME[c->voice] + 12 * (stepped(P.ch[ch][CP_REGISTER], 5) - 2) + jump;
 }
 
-static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * w_act[ch] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
+static float eff_activity(int ch) { return clampf(P.ch[ch][CP_ACTIVITY] * w_act[ch] * tide_a[ch] * (1.0f + 0.6f * arc), 0.0f, 1.0f); }
 /* the performance effects' state (glag_new.h, gl_perform), and their own dice */
 static struct {
 	float answer, memory, breathe, symb, regc;
@@ -4222,6 +4225,7 @@ void gl_init(uint32_t seed)
 	mode_cur = root_cur = -1;
 	chord_deg = 0;
 	prog_i = prog_bars = 0;
+	tide_reset();
 	harmony_update();
 	chord_build();
 	chord_pending = 0;
@@ -4580,6 +4584,8 @@ static void clock_step(int play)
 	chk_nf0 = notes_fired;
 #endif
 	step_nf0 = notes_fired;
+	if ((step_n & 15) == 0 && tide_x)
+		tide_bar();
 	if ((step_n & 15) == 0 && prog_x && step_n && ++prog_bars >= prog_bars_of()) {
 		prog_bars = 0;                        /* the progression: its chord's bars are up */
 		chord_pending = 2;
@@ -4635,15 +4641,17 @@ static void control(float dt)
 			for (int k = 0; k < 2; k++)
 				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
 		{
-			const uint8_t sx = scale_x, px = prog_x;   /* (the posted piece's scale and progression, kept across this reset) */
+			const uint8_t sx = scale_x, px = prog_x, tx = tide_x;   /* (the posted piece's scale, progression and tide, kept across this reset) */
 			gl_piece(0, &P);
 			scale_x = sx;
 			prog_x = px;
+			tide_x = tx;
 		}
 		space_init();
 		mode_cur = root_cur = -1;
 		chord_deg = 0;
 		prog_i = prog_bars = 0;
+		tide_reset();
 		harmony_update();
 		chord_build();
 		chord_pending = 0;
@@ -4678,6 +4686,7 @@ static void control(float dt)
 	form_tick(dt);
 	key_tick(dt);
 	autof_tick();
+	tide_control(dt);                         /* (a space piece's tide: nothing elsewhere) */
 	if (cmd_panic != seen_panic) {
 		seen_panic = cmd_panic;
 		for (int c = 0; c < GL_NCH; c++) {
@@ -6250,6 +6259,59 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{30, 25, 90, 50, 0, 30, 50, 10, 74}, {40, 25, 80, 25, 25, 65, 55, 60, 69},
 	  {35, 25, 80, 50, 20, 65, 45, 30, 61}, {25, 20, 60, 50, 0, 40, 50, 0, 50}},
 	 {20, 30, 85, 44, 4, 5, 15, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 20, {1, 1, 1, 1}, 20, 0, {0, 0, 0, 0}, 0},
+	/* ---- space (145 to 154): sparse percussion and struck voices, the echo's grains and the
+	 * reverb's, each with its tide: quiet, stirring, building, a held breath, the peak, the fall, the
+	 * ringing; the sends, the delay and the reverb moving with it (glag_new2.h, PIECE_SPACE) ---- */
+	/* struck glass and still vibes, the echo's grains and the reverb's, ping-pong; one long arc; Lydian, 72 */
+	{"Glass Workshop", {GV_PERC, GV_VIBES, GV_GRAINS, GV_HAZE},
+	 {{50, 45, 60, 50, 45, 55, 35, 100, 80}, {40, 30, 70, 50, 40, 60, 65, 0, 64},
+	  {55, 50, 55, 50, 0, 45, 50, 55, 64}, {50, 50, 80, 50, 0, 30, 50, 55, 70}},
+	 {52, 50, 70, 48, 2, 3, 30, 30}, {GR_CHAMBER, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 2, {0, 0, 0, 0}, 0},
+	/* log drums and a kalimba thrown into a dotted-eighth echo, both grain voices; two swells; Dorian, 84 */
+	{"Log Drum Night", {GV_PERC, GV_KALIMBA, GV_GRAINS, GV_HAZE},
+	 {{55, 45, 55, 50, 50, 50, 40, 33, 95}, {40, 40, 50, 50, 55, 55, 62, 50, 72},
+	  {55, 50, 50, 50, 0, 40, 50, 60, 72}, {45, 50, 80, 50, 0, 30, 50, 50, 79}},
+	 {64, 50, 72, 47, 7, 1, 30, 30}, {GR_BLOOM, GS_OCTAVE, 6}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 2, {0, 0, 0, 0}, 0},
+	/* noir: brushes circling, the double bass on D minor and C7, the tail's grains and the tape's; quiet, then sudden, then quiet; D, 60 */
+	{"Brush and Haze", {GV_BRUSH, GV_UPRIGHT, GV_GRAINS, GV_HAZE},
+	 {{45, 30, 55, 50, 40, 50, 50, 45, 81}, {40, 30, 75, 50, 20, 30, 50, 30, 95},
+	  {45, 50, 55, 50, 0, 45, 50, 50, 69}, {50, 50, 85, 50, 0, 30, 50, 60, 81}},
+	 {40, 45, 80, 46, 2, 1, 20, 30}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* timpani and their rolls far off, a music box an octave down, the grains of both; a long storm and its ringing; Aeolian, 56 */
+	{"Timpani Cathedral", {GV_TIMPANI, GV_MBOX, GV_GRAINS, GV_HAZE},
+	 {{45, 40, 70, 50, 30, 60, 50, 40, 67}, {35, 35, 60, 25, 45, 65, 60, 50, 52},
+	  {50, 50, 55, 50, 0, 45, 50, 55, 50}, {50, 50, 85, 50, 0, 30, 50, 60, 59}},
+	 {36, 45, 82, 46, 0, 5, 25, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* woodblocks and a koto into short ping-pong echoes, the grains of both; one arc; pentatonic minor, 92 */
+	{"Woodblock Rain", {GV_PERC, GV_KOTO, GV_GRAINS, GV_HAZE},
+	 {{60, 45, 80, 50, 55, 50, 38, 0, 95}, {45, 45, 60, 50, 50, 55, 62, 25, 95},
+	  {55, 50, 45, 50, 0, 40, 50, 60, 85}, {45, 50, 75, 50, 0, 30, 50, 50, 93}},
+	 {72, 50, 70, 48, 4, 7, 30, 30}, {GR_CHAMBER, GS_OCTAVE, 6}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 2, {0, 0, 0, 0}, 0},
+	/* tabla bending into its notes, a warm Rhodes, the tape's grains, the tail's; two swells; Phrygian, 76 */
+	{"Tabla Smoke", {GV_PERC, GV_RHODES, GV_GRAINS, GV_HAZE},
+	 {{55, 45, 55, 50, 45, 50, 40, 67, 92}, {35, 30, 70, 50, 35, 60, 60, 30, 72},
+	  {50, 50, 55, 50, 0, 40, 50, 55, 69}, {45, 50, 80, 50, 0, 30, 50, 55, 79}},
+	 {56, 45, 75, 47, 9, 2, 25, 30}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* the Lite Kit in half time, log drums thrown into the echo, grains of both; a long storm; Aeolian, 70 */
+	{"Dub Space", {GV_LITEKIT, GV_PERC, GV_GRAINS, GV_HAZE},
+	 {{45, 35, 45, 50, 40, 40, 50, 100, 74}, {45, 45, 55, 50, 55, 50, 62, 33, 72},
+	  {55, 50, 50, 50, 0, 40, 50, 55, 60}, {45, 50, 80, 50, 0, 30, 50, 55, 66}},
+	 {50, 55, 72, 46, 9, 5, 25, 30}, {GR_CHAMBER, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 2, {0, 0, 0, 0}, 0},
+	/* noir: brushes, vibes on a slow motor in broken chords over Badalamenti's I, vi, IV, V, the grains of both; peaks out of silence; F, 58 */
+	{"Vibes After Midnight", {GV_BRUSH, GV_VIBES, GV_GRAINS, GV_HAZE},
+	 {{40, 30, 55, 50, 35, 45, 50, 30, 76}, {45, 30, 75, 50, 40, 65, 58, 60, 88},
+	  {45, 50, 55, 50, 0, 45, 50, 50, 67}, {50, 50, 85, 50, 0, 30, 50, 60, 81}},
+	 {38, 45, 80, 46, 5, 0, 20, 30}, {GR_BLOOM, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
+	/* a marimba and struck glass, ping-pong echoes, both grain voices; two swells; Lydian, 80 */
+	{"Marimba Mist", {GV_MARIMBA, GV_PERC, GV_GRAINS, GV_HAZE},
+	 {{45, 40, 55, 50, 50, 55, 40, 40, 70}, {45, 45, 55, 50, 50, 55, 62, 100, 70},
+	  {55, 50, 50, 50, 0, 40, 50, 55, 60}, {45, 50, 80, 50, 0, 30, 50, 55, 66}},
+	 {60, 50, 72, 47, 7, 3, 30, 30}, {GR_CHAMBER, GS_OCTAVE, 0}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 2, {0, 0, 0, 0}, 0},
+	/* noir: the Lite Kit's rimshots and a clap, the double bass on the line cliche, the tape's grains and the tail's; one arc; E, 66 */
+	{"Rimshot Fog", {GV_LITEKIT, GV_UPRIGHT, GV_GRAINS, GV_HAZE},
+	 {{45, 35, 45, 50, 45, 45, 50, 75, 70}, {40, 30, 75, 50, 15, 30, 50, 30, 82},
+	  {50, 50, 55, 50, 0, 45, 50, 50, 60}, {50, 50, 85, 50, 0, 30, 50, 60, 70}},
+	 {46, 45, 80, 46, 4, 5, 20, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 8, {1, 1, 1, 1}, 12, 0, {0, 0, 0, 0}, 0},
 #elif defined(GL_TEST_PIECES)
 	/* the CPU test build: the four heaviest audition pieces, as 17 to 20 */
 	R_SHIFTED_METAL, R_WAREHOUSE, R_STRING_DRUM_MASS, R_HARPSI_DRILL,
@@ -6334,7 +6396,14 @@ void gl_piece(int i, gl_patch *out)
 	scale_x = (unsigned)(i - 106) < GL_NXSCALES ? (uint8_t)(i - 105) : 0;
 	/* (and the noir side its progressions, 138 on) */
 	prog_x = (unsigned)(i - 138) < 7u ? PIECE_PROG[i - 138] : 0;
+	/* (the space pieces, 145 on: a progression, perhaps, and their tide) */
+	tide_x = 0;
+	if ((unsigned)(i - 145) < 10u) {
+		prog_x = PIECE_SPACE[i - 145][0];
+		tide_x = PIECE_SPACE[i - 145][1];
+	}
 #else
+	tide_x = 0;
 	scale_x = 0;
 	prog_x = 0;
 #endif

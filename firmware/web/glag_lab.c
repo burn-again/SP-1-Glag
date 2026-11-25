@@ -98,6 +98,12 @@ EXPORT void lab_macro(int c, float depth, float per) { gl_macro(c, depth, per); 
 /* the album: song mode's arcs, and each piece kept in its own key */
 EXPORT void lab_song(int on) { gl_world(GW_SONG, on ? 1.0f : 0.0f); }
 EXPORT void lab_key_hold(int on) { gl_world(GW_KEY_HOLD, on ? 1.0f : 0.0f); }
+/* the space page: the tide, and what the space is doing */
+EXPORT int lab_tide_info(int k) { int a[5]; gl_tide_info(&a[0], &a[1], &a[2], &a[3], &a[4]); return (unsigned)k < 5u ? a[k] : 0; }
+EXPORT int lab_tide_kind_at(int s) { return gl_tide_kind_at(s); }
+EXPORT int lab_tide_bars_at(int s) { return gl_tide_bars_at(s); }
+EXPORT void lab_tide(int what, float v) { gl_tide(what, v); }
+EXPORT float lab_space_now(int k) { return gl_space_now(k); }
 EXPORT float lab_glow(int c) { return gl_glow[c & 3]; }
 EXPORT float lab_beat(void) { return gl_beat; }
 EXPORT int lab_ducked(void) { return gl_ducked(); }

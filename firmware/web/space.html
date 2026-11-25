@@ -1,0 +1,458 @@
+<meta charset="utf-8">
+<title>Glag Space</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* layout: one column: the deck (what plays, the tide's map, the space now), the presets, then hands-on
+   controls for the space, the two grain voices and the performance holds; the Glag pages' tokens */
+:root {
+  --bg: #eef1f5; --surface: #ffffff; --fg: #18202b; --muted: #5a6474; --line: #d6dce4;
+  --accent: #3a6ea5; --accent-2: #2f8a6e; --warn: #b05a2c; --chip: #e5eaf0;
+  --hush: #c9d6e6; --stir: #9fbbd9; --build: #6f97c4; --gap: #e9ecf1; --peak: #3a6ea5; --fall: #8d7bb5; --ring: #b7c9de;
+  --display: "Sora", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36;
+  --hush: #263445; --stir: #2f4a69; --build: #3d6491; --gap: #1b222c; --peak: #79a9dc; --fall: #6f5f99; --ring: #33475f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36;
+  --hush: #263445; --stir: #2f4a69; --build: #3d6491; --gap: #1b222c; --peak: #79a9dc; --fall: #6f5f99; --ring: #33475f; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 920px; margin: 0 auto; padding-block: 36px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 30px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 34px/1.1 var(--display); margin: 0; }
+h2 { font: 600 21px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 15px/1.3 var(--display); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 16.5px; color: var(--muted); }
+section { display: grid; gap: 14px; min-width: 0; }
+.cap { font-size: 13px; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+button { font: 500 14px/1.2 var(--body); color: var(--fg); background: var(--chip); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 13px; cursor: pointer; touch-action: manipulation; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--surface); border-color: transparent; font-weight: 600; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: transparent; }
+select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%; }
+.deck { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.now { display: grid; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.now-name { font: 600 18px/1.2 var(--display); }
+.now-meta { font: 400 12.5px/1.4 var(--mono); color: var(--muted); }
+.vol { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+/* the tide's map */
+.tide { display: grid; gap: 8px; }
+.strip { display: flex; gap: 3px; height: 46px; }
+.seg { position: relative; border-radius: 6px; overflow: hidden; min-width: 0; background: var(--chip); display: flex; align-items: flex-end; }
+.seg i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); opacity: .9; }
+.seg span { position: relative; font: 500 10.5px/1 var(--mono); padding: 0 5px 6px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.seg.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+.k-hush { --k: var(--hush); } .k-stir { --k: var(--stir); } .k-build { --k: var(--build); } .k-gap { --k: var(--gap); }
+.k-peak { --k: var(--peak); } .k-fall { --k: var(--fall); } .k-ring { --k: var(--ring); }
+.seg { background: color-mix(in srgb, var(--k) 45%, var(--chip)); }
+.seg i { background: var(--k); }
+.seg.k-peak.cur span, .seg.k-build.cur span, .seg.k-fall.cur span { color: var(--surface); }
+.tide-now { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.kind { font: 700 26px/1 var(--display); letter-spacing: -.01em; }
+/* the space now */
+.space { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.meter { display: grid; gap: 5px; }
+.meter-h { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.meter-h b { color: var(--fg); font-weight: 600; }
+.bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
+.bar.alt i { background: var(--accent-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 11.5px/1 var(--mono); padding: 6px 8px; border-radius: 6px; background: var(--chip); color: var(--muted); }
+.chip.on { background: var(--warn); color: var(--surface); }
+.chans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ch { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; display: grid; gap: 6px; min-width: 0; }
+.ch-n { font: 500 11px/1 var(--mono); color: var(--muted); }
+.ch-v { font: 600 14px/1.2 var(--display); overflow-wrap: anywhere; }
+.mini { display: grid; grid-template-columns: 34px 1fr; gap: 6px; align-items: center; font: 400 10.5px/1 var(--mono); color: var(--muted); }
+.mini .bar { height: 5px; }
+/* presets */
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 10px; }
+.preset { text-align: left; display: grid; gap: 5px; background: var(--surface); padding: 12px 13px; border-radius: 10px; }
+.preset b { font: 600 15px/1.25 var(--display); }
+.preset span { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.preset em { font: 400 11.5px/1.3 var(--mono); font-style: normal; color: var(--muted); }
+.preset[aria-pressed="true"] span, .preset[aria-pressed="true"] em { color: var(--surface); }
+/* hands on */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; display: grid; gap: 10px; align-content: start; }
+.ctl { display: grid; gap: 3px; }
+.ctl-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; }
+.ctl-h b { font-weight: 600; }
+.ctl-h output { font: 500 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+.ctl p { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.pads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pads button { padding: 16px 8px; display: grid; gap: 3px; user-select: none; -webkit-user-select: none; }
+.pads button b { font: 600 14px/1.1 var(--display); }
+.pads button small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.pads button.held { background: var(--accent); border-color: transparent; color: var(--surface); }
+.pads button.held small { color: var(--surface); }
+@media (max-width: 560px) { .chans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pads { grid-template-columns: repeat(2, minmax(0, 1fr)); } .seg span { font-size: 9px; padding-inline: 3px; } }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">SP-1 · Glag · space</span>
+  <h1>Glag Space</h1>
+  <p class="lede">Sparse percussion and struck voices, with both grain voices feeding on what they leave behind: Grains replays slices of the echo's tape, Haze replays the reverb's tail. Each piece has a tide, a slow shape of quiet, stirring, building, a held breath, the peak, the fall and the ringing, and the sends, the delay and the reverb move with it.</p>
+</header>
+
+<section aria-label="Now playing">
+  <div class="deck">
+    <div class="row">
+      <button class="primary" id="start" type="button">Start sound</button>
+      <div class="now"><span class="now-name" id="nowName">Glass Workshop</span><span class="now-meta" id="nowMeta">Press Start, then pick a piece</span></div>
+      <button type="button" id="tideOn" aria-pressed="true">Tide running</button>
+      <button type="button" id="next">Next section</button>
+      <label class="vol" for="vol">Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    </div>
+    <div class="tide">
+      <div class="tide-now"><span class="kind" id="kind">hush</span><span class="now-meta" id="kindMeta">the tide's map: each section as long as its bars</span></div>
+      <div class="strip" id="strip" aria-hidden="true"></div>
+    </div>
+    <div class="space">
+      <div class="meter"><div class="meter-h"><span>Delay</span><b class="mono" id="dlv">–</b></div><div class="bar"><i id="dlb"></i></div></div>
+      <div class="meter"><div class="meter-h"><span>Reverb</span><b class="mono" id="rvv">–</b></div><div class="bar alt"><i id="rvb"></i></div></div>
+      <div class="meter"><div class="meter-h"><span>Echo time</span><b class="mono" id="etv">–</b></div>
+        <div class="chips"><span class="chip" id="hv">reverb held</span><span class="chip" id="he">echo held</span><span class="chip" id="hh">tape</span></div></div>
+    </div>
+    <div class="chans" id="chans"></div>
+  </div>
+</section>
+
+<section>
+  <h2>The pieces</h2>
+  <div class="presets" id="presets"></div>
+</section>
+
+<section>
+  <h2>The space</h2>
+  <p class="cap">These set the centre the tide moves around: it adds to the delay and reverb and scales the sends from here.</p>
+  <div class="grid">
+    <div class="card" id="spaceCard"></div>
+    <div class="card" id="sendCard"></div>
+  </div>
+</section>
+
+<section>
+  <h2>The grain voices</h2>
+  <div class="grid">
+    <div class="card" id="grainCard"></div>
+    <div class="card" id="hazeCard"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Hands on the tape</h2>
+  <p class="cap">Hold a pad (mouse, touch or the key shown). The tide uses the same holds at its section changes, so a section change can let go of one you are holding.</p>
+  <div class="pads" id="pads"></div>
+</section>
+</div>
+
+<script>
+const PRESETS = [
+  [145, "Glass Workshop", "Struck glass and still vibes, the echo's grains and the reverb's, ping-pong echoes.", "Arc · Lydian · 72"],
+  [146, "Log Drum Night", "Log drums and a kalimba thrown into a dotted-eighth ping-pong echo, both grain voices.", "Waves · Dorian · 84"],
+  [147, "Brush and Haze", "Noir: brushes circling, the double bass on D minor and C7, the tail's grains and the tape's.", "Breath · D · 60"],
+  [148, "Timpani Cathedral", "Timpani and their rolls far off, a music box an octave down, the grains of both.", "Storm · Aeolian · 56"],
+  [149, "Woodblock Rain", "Woodblocks and a koto into short ping-pong echoes, the grains of both.", "Arc · pentatonic minor · 92"],
+  [150, "Tabla Smoke", "Tabla bending into its notes, a warm Rhodes, the tape's grains and the tail's.", "Waves · Phrygian · 76"],
+  [151, "Dub Space", "The Lite Kit in half time, log drums thrown into the echo, ping-pong, grains of both.", "Storm · Aeolian · 70"],
+  [152, "Vibes After Midnight", "Noir: brushes, vibes on a slow motor in broken chords over I, vi, IV, V, the grains of both.", "Breath · F · 58"],
+  [153, "Marimba Mist", "A marimba and struck glass, ping-pong echoes, both grain voices.", "Waves · Lydian · 80"],
+  [154, "Rimshot Fog", "Noir: the Lite Kit's rimshots and a clap, the double bass on the line cliché, both grain voices.", "Arc · E · 66"],
+];
+/* measured on the host (3 min each): loudness and peak, to match the pieces without clipping */
+const LOUD = {145: [-25.8, .63], 146: [-26.6, .61], 147: [-27.7, .31], 148: [-26.7, .65], 149: [-31.5, .76],
+  150: [-28.5, .58], 151: [-29.0, .44], 152: [-27.2, .37], 153: [-28.5, .61], 154: [-26.7, .46]};
+const KINDS = ["hush", "stir", "build", "gap", "peak", "fall", "ring"];
+const KIND_TEXT = { hush: "sparse, long tails", stir: "waking, a throw into the echo", build: "busier, the echo tighter",
+  gap: "a held breath: a stab hangs in the held reverb", peak: "everything at once", fall: "the tape stops or turns back", ring: "almost nothing plays; it all rings out" };
+const ECHO_NAMES = ["dotted ¼", "½", "dotted ½", "a bar", "two bars", "⅛", "dotted ⅛", "¼", "the string"];
+const RV_NAMES = ["Hall", "Chamber", "Shimmer", "Bloom"];
+const HEADS = ["", "repeat", "stop", "reverse"];
+
+/* ---- the engine, in a worklet (or on the page where there is none) ---- */
+class LabCore {
+  constructor(o) {
+    this.w = new WebAssembly.Instance(new WebAssembly.Module(o.wasm), {}).exports;
+    this.w.lab_init(o.seed);
+    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0; this.pos = 0;
+    this.ratio = 48000 / (typeof sampleRate !== "undefined" && sampleRate > 0 ? sampleRate : 48000);
+    this.frames = 0; this.sent = 0; this.pk = 0; this.g = 1; this.gt = 1; this.gs = 0; this.kinds = "";
+  }
+  cmd(m) {
+    const w = this.w;
+    if (m.t === "call") { for (const [f, ...a] of m.calls) w[f](...a); this.kinds = ""; }
+    else if (m.t === "fade") { this.gt = m.to; this.gs = Math.abs(m.to - this.g) / Math.max(1, m.secs * (typeof sampleRate !== "undefined" ? sampleRate : 48000)); if (m.secs <= 0) this.g = m.to; }
+  }
+  run(L, R) {
+    const w = this.w, ratio = this.ratio;
+    const need = Math.ceil(this.pos + L.length * ratio) + 2;
+    while (this.n < need) {
+      const a = new Float32Array(w.memory.buffer, w.lab_render(48), 96);
+      for (let i = 0; i < 96; i++) this.fifo[(this.r + this.n * 2 + i) & 4095] = a[i];
+      this.n += 48; this.frames += 48;
+    }
+    for (let i = 0; i < L.length; i++) {
+      const k = Math.floor(this.pos), fr = this.pos - k;
+      const i0 = (this.r + 2 * k) & 4095, i1 = (this.r + 2 * k + 2) & 4095;
+      L[i] = this.fifo[i0] + (this.fifo[i1] - this.fifo[i0]) * fr;
+      R[i] = this.fifo[(i0 + 1) & 4095] + (this.fifo[(i1 + 1) & 4095] - this.fifo[(i0 + 1) & 4095]) * fr;
+      this.pos += ratio;
+      if (this.g !== this.gt) this.g = this.g < this.gt ? Math.min(this.gt, this.g + this.gs) : Math.max(this.gt, this.g - this.gs);
+      L[i] *= this.g; R[i] *= this.g;
+    }
+    const adv = Math.floor(this.pos);
+    this.r = (this.r + 2 * adv) & 4095; this.n -= adv; this.pos -= adv;
+    if (this.frames - this.sent < 2400) return null;
+    this.sent = this.frames;
+    const tide = [0, 1, 2, 3, 4].map((k) => w.lab_tide_info(k));
+    const m = { t: "st", glow: [0, 1, 2, 3].map((c) => w.lab_glow(c)), tide, sp: Array.from({ length: 16 }, (_, k) => w.lab_space_now(k)) };
+    if (this.kinds !== String(tide[1])) { this.kinds = String(tide[1]); m.kinds = Array.from({ length: tide[1] }, (_, s) => w.lab_tide_kind_at(s)); m.bars = m.kinds.map((_, s) => w.lab_tide_bars_at(s)); }
+    return m;
+  }
+}
+const WORKLET = LabCore.toString() + `
+class LabNode extends AudioWorkletProcessor {
+  constructor(o) { super(); this.core = new LabCore(o.processorOptions); this.port.onmessage = (e) => this.core.cmd(e.data); }
+  process(_, outs) { const o = outs[0]; const m = this.core.run(o[0], o[1] || o[0]); if (m) this.port.postMessage(m); return true; }
+}
+registerProcessor("glag-space", LabNode);`;
+
+const $ = (id) => document.getElementById(id);
+let wasmBytes = null, W = null, ctx = null, port = null, current = 145, voiceNames = [], kinds = [], lens = [];
+const base = { cp: [], g: [], space: [] };
+function cstr(p) { const u = new Uint8Array(W.memory.buffer); let s = ""; while (u[p]) s += String.fromCharCode(u[p++]); return s; }
+function send(...calls) { if (port) port.postMessage({ t: "call", calls }); }
+
+/* a piece's own settings, read from a second copy of the engine on the page */
+function readBase(i) {
+  W.lab_piece(i, 1);
+  base.voices = [0, 1, 2, 3].map((c) => W.lab_voice(c));
+  base.cp = [0, 1, 2, 3].map((c) => Array.from({ length: 9 }, (_, p) => W.lab_get_cp(c, p)));
+  base.g = Array.from({ length: 8 }, (_, k) => W.lab_get_gp(k));
+  base.space = [0, 1, 2, 3].map((k) => W.lab_get_space(k));
+}
+function gainFor(i) { const [l, pk] = LOUD[i] || [-27, .5]; return Math.min(Math.pow(10, (-26.5 - l) / 20), 0.92 / pk); }
+
+function play(i) {
+  current = i;
+  readBase(i);
+  $("nowName").textContent = PRESETS.find((p) => p[0] === i)[1];
+  $("nowMeta").textContent = PRESETS.find((p) => p[0] === i)[3];
+  document.querySelectorAll(".preset").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+  buildChans(); buildControls();
+  W.lab_piece(i, 1);
+  { const n = W.lab_tide_info(1); lens = Array.from({ length: n }, (_, s) => W.lab_tide_bars_at(s)); buildStrip(Array.from({ length: n }, (_, s) => W.lab_tide_kind_at(s))); }
+  if (!port) return;
+  port.postMessage({ t: "fade", to: 0, secs: 0 });
+  send(["lab_piece", i, (Math.random() * 4294967295) >>> 0], ["lab_tide", 0, $("tideOn").getAttribute("aria-pressed") === "true" ? 1 : 0]);
+  port.postMessage({ t: "fade", to: gainFor(i), secs: 2 });
+}
+
+/* ---- the live view ---- */
+function buildChans() {
+  $("chans").innerHTML = "";
+  base.voices.forEach((v, c) => {
+    const d = document.createElement("div"); d.className = "ch"; d.id = "ch" + c;
+    d.innerHTML = '<span class="ch-n">CH ' + (c + 1) + '</span><span class="ch-v"></span>' +
+      '<div class="mini"><span>play</span><div class="bar"><i></i></div></div>' +
+      '<div class="mini"><span>echo</span><div class="bar"><i></i></div></div>' +
+      '<div class="mini"><span>verb</span><div class="bar alt"><i></i></div></div>';
+    d.querySelector(".ch-v").textContent = voiceNames[v];
+    $("chans").appendChild(d);
+  });
+}
+function buildStrip(k) {
+  kinds = k;
+  /* section lengths: the scripts' own bars (the engine varies them by a bar each time round) */
+  $("strip").innerHTML = "";
+  k.forEach((kind, s) => {
+    const el = document.createElement("div");
+    el.className = "seg k-" + KINDS[kind]; el.dataset.s = s;
+    el.innerHTML = "<i></i><span></span>";
+    el.querySelector("span").textContent = KINDS[kind];
+    el.style.flex = String(lens[s] || 3);
+    $("strip").appendChild(el);
+  });
+}
+function onState(m) {
+  const [sec, nsec, kind, bar, len] = m.tide;
+  if (m.kinds && m.kinds.length) { lens = m.bars.slice(); buildStrip(m.kinds); }
+  if (nsec && lens[sec] !== len && len) { lens[sec] = len; const el = $("strip").children[sec]; if (el) el.style.flex = String(len); }
+  if (nsec) {
+    const name = KINDS[kind];
+    if ($("kind").textContent !== name) { $("kind").textContent = name; }
+    $("kindMeta").textContent = KIND_TEXT[name] + " · bar " + Math.min(bar + 1, len) + " of " + len;
+    [...$("strip").children].forEach((el, s) => {
+      el.classList.toggle("cur", s === sec);
+      el.querySelector("i").style.transform = "scaleX(" + (s < sec ? 1 : s === sec ? Math.min(1, (bar + 1) / Math.max(1, len)) : 0) + ")";
+    });
+  }
+  const sp = m.sp;
+  $("dlv").textContent = Math.round(sp[0] * 100); $("dlb").style.width = Math.round(sp[0] * 100) + "%";
+  $("rvv").textContent = Math.round(sp[1] * 100); $("rvb").style.width = Math.round(sp[1] * 100) + "%";
+  $("etv").textContent = ECHO_NAMES[sp[2]] || "–";
+  const hold = sp[11] | 0;
+  $("hv").classList.toggle("on", !!(hold & 1));
+  $("he").classList.toggle("on", !!(hold & 2));
+  $("hh").classList.toggle("on", hold >> 2 > 0);
+  $("hh").textContent = hold >> 2 ? "tape " + HEADS[hold >> 2] : "tape";
+  for (let c = 0; c < 4; c++) {
+    const el = $("ch" + c); if (!el) continue;
+    const b = el.querySelectorAll(".bar i");
+    const playv = Math.min(1, (base.cp[c] ? base.cp[c][0] : 0.5) * sp[12 + c]) * Math.max(0.25, Math.min(1, m.glow[c] * 2 + 0.25));
+    b[0].style.width = Math.round(Math.min(1, playv) * 100) + "%";
+    b[1].style.width = Math.round(sp[3 + c] * 100) + "%";
+    b[2].style.width = Math.round(sp[7 + c] * 100) + "%";
+  }
+}
+
+/* ---- controls ---- */
+function ctl(box, name, desc, val, fmt, onInput, opts = {}) {
+  const d = document.createElement("div"); d.className = "ctl";
+  const id = "c" + (box.id || "x") + "-" + name.replace(/\W+/g, "");
+  d.innerHTML = '<div class="ctl-h"><label><b></b></label><output></output></div><input type="range"><p></p>';
+  d.querySelector("b").textContent = name; d.querySelector("label").htmlFor = id;
+  const inp = d.querySelector("input"), out = d.querySelector("output");
+  inp.id = id; inp.min = opts.min ?? 0; inp.max = opts.max ?? 1; inp.step = opts.step ?? 0.01; inp.value = val;
+  out.textContent = fmt(+inp.value);
+  const p = d.querySelector("p"); if (desc) p.textContent = desc; else p.remove();
+  inp.addEventListener("input", () => { out.textContent = fmt(+inp.value); onInput(+inp.value); });
+  box.appendChild(d);
+}
+const pct = (x) => Math.round(x * 100);
+function toggle(box, label, on, onChange) {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.setAttribute("aria-pressed", String(on));
+  b.addEventListener("click", () => { const v = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", String(v)); onChange(v); });
+  box.appendChild(b);
+}
+function buildControls() {
+  const sc = $("spaceCard"); sc.innerHTML = "<h3>The room and the tape</h3>";
+  ctl(sc, "Delay", "how much echo, and how long it feeds back; the tide adds to it", base.g[1], pct, (x) => send(["lab_set_gp", 1, x]));
+  ctl(sc, "Reverb", "how long the room rings; the tide adds to it", base.g[2], pct, (x) => send(["lab_set_gp", 2, x]));
+  ctl(sc, "Echo time", "the tape's length; the tide changes it in builds, and the heads swoop to each new one", base.space[2], (x) => ECHO_NAMES[x], (x) => send(["lab_set_space", 2, x]), { min: 0, max: 8, step: 1 });
+  ctl(sc, "Room", "", base.space[0], (x) => RV_NAMES[x], (x) => send(["lab_set_space", 0, x]), { min: 0, max: 3, step: 1 });
+  const row = document.createElement("div"); row.className = "row"; sc.appendChild(row);
+  toggle(row, "Ping-pong", !!(base.space[3] & 2), (v) => { base.space[3] = v ? base.space[3] | 2 : base.space[3] & ~2; send(["lab_set_space", 3, base.space[3]]); });
+  toggle(row, "Reverse swells", !!(base.space[3] & 1), (v) => { base.space[3] = v ? base.space[3] | 1 : base.space[3] & ~1; send(["lab_set_space", 3, base.space[3]]); });
+  const sd = $("sendCard"); sd.innerHTML = "<h3>Each channel's sends</h3>";
+  for (let c = 0; c < 4; c++) {
+    const v = voiceNames[base.voices[c]];
+    ctl(sd, (c + 1) + " · " + v + " → echo", "", base.cp[c][4], pct, (x) => send(["lab_set_cp", c, 4, x]));
+    ctl(sd, (c + 1) + " · " + v + " → reverb", "", base.cp[c][5], pct, (x) => send(["lab_set_cp", c, 5, x]));
+  }
+  const g = $("grainCard"), h = $("hazeCard");
+  const gc = base.voices.indexOf(33), hc = base.voices.indexOf(39);
+  g.innerHTML = "<h3>Grains · the echo's tape</h3>"; h.innerHTML = "<h3>Haze · the reverb's tail</h3>";
+  if (gc >= 0) {
+    ctl(g, "How many", "", base.cp[gc][0], pct, (x) => send(["lab_set_cp", gc, 0, x]));
+    ctl(g, "Spread", "how often a grain leaves its pitch: an octave, a fifth, half speed", base.cp[gc][7], pct, (x) => send(["lab_set_cp", gc, 7, x]));
+    ctl(g, "Length", "each grain, 40 to 450 ms", base.cp[gc][2], pct, (x) => send(["lab_set_cp", gc, 2, x]));
+    ctl(g, "Level", "", base.cp[gc][8], pct, (x) => send(["lab_set_cp", gc, 8, x]));
+  } else g.insertAdjacentHTML("beforeend", '<p class="cap">This piece has no Grains channel.</p>');
+  if (hc >= 0) {
+    ctl(h, "How many", "", base.cp[hc][0], pct, (x) => send(["lab_set_cp", hc, 0, x]));
+    ctl(h, "Strangeness", "how far back it reaches, and how often a grain goes an octave down or backwards", base.cp[hc][7], pct, (x) => send(["lab_set_cp", hc, 7, x]));
+    ctl(h, "Length", "each grain, ¼ to 1.6 s", base.cp[hc][2], pct, (x) => send(["lab_set_cp", hc, 2, x]));
+    ctl(h, "Level", "", base.cp[hc][8], pct, (x) => send(["lab_set_cp", hc, 8, x]));
+  } else h.insertAdjacentHTML("beforeend", '<p class="cap">This piece has no Haze channel.</p>');
+}
+const PADS = [
+  ["Hold echo", "the loop goes round, nothing in", "E", () => send(["lab_perform", 3, 1]), () => send(["lab_perform", 3, 0])],
+  ["Hold reverb", "the tail hangs, notes go on", "R", () => send(["lab_perform", 4, 1]), () => send(["lab_perform", 4, 0])],
+  ["Throw", "the first two channels into the echo", "T", () => send(["lab_tide", 1, -1]), () => {}],
+  ["Repeat", "the last echo-length slice, round", "Q", () => send(["lab_perform", 5, 1]), () => send(["lab_perform", 5, 0])],
+  ["Tape stop", "the tape slows to nothing", "W", () => send(["lab_perform", 5, 2]), () => send(["lab_perform", 5, 0])],
+  ["Reverse", "the tape runs backwards", "A", () => send(["lab_perform", 5, 3]), () => send(["lab_perform", 5, 0])],
+];
+const keyMap = new Map();
+function holdable(b, on, off, key) {
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); on(); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((t) => b.addEventListener(t, off));
+  b.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); on(); } });
+  b.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") off(); });
+  keyMap.set(key.toLowerCase(), [on, off]);
+}
+function buildPads() {
+  for (const [name, text, key, down, up] of PADS) {
+    const b = document.createElement("button"); b.type = "button";
+    b.innerHTML = "<b></b><small></small>";
+    b.querySelector("b").textContent = name + " (" + key + ")"; b.querySelector("small").textContent = text;
+    const on = () => { if (b.classList.contains("held")) return; b.classList.add("held"); if (!ctx) start(); down(); };
+    const off = () => { if (!b.classList.contains("held")) return; b.classList.remove("held"); up(); };
+    holdable(b, on, off, key);
+    $("pads").appendChild(b);
+  }
+}
+document.addEventListener("keydown", (e) => { if (e.repeat || ["INPUT", "SELECT"].includes(e.target.tagName)) return; const k = keyMap.get(e.key.toLowerCase()); if (k) k[0](); });
+document.addEventListener("keyup", (e) => { const k = keyMap.get(e.key.toLowerCase()); if (k) k[1](); });
+window.addEventListener("blur", () => { for (const [, [, off]] of keyMap) off(); });
+
+async function start() {
+  if (ctx) {
+    if (ctx.state === "running") { await ctx.suspend(); $("start").textContent = "Start sound"; } else { await ctx.resume(); $("start").textContent = "Stop sound"; }
+    return;
+  }
+  try { ctx = new AudioContext({ sampleRate: 48000 }); } catch (e) { ctx = new AudioContext(); }
+  const opt = { wasm: wasmBytes.slice(0), seed: (Math.random() * 4294967295) >>> 0 };
+  try {
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+    const node = new AudioWorkletNode(ctx, "glag-space", { numberOfOutputs: 1, outputChannelCount: [2], processorOptions: opt });
+    node.port.onmessage = (e) => { if (e.data.t === "st") onState(e.data); };
+    node.connect(ctx.destination);
+    port = node.port;
+  } catch (err) {
+    const core = new LabCore(opt), sp = ctx.createScriptProcessor(1024, 0, 2);
+    sp.onaudioprocess = (e) => { const m = core.run(e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)); if (m) onState(m); };
+    sp.connect(ctx.destination);
+    port = { postMessage: (m) => core.cmd(m) };
+  }
+  $("start").textContent = "Stop sound";
+  send(["lab_volume", +$("vol").value]);
+  play(current);
+}
+
+async function boot() {
+  wasmBytes = await (await fetch("glag_lab.wasm")).arrayBuffer();
+  W = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}).exports;
+  W.lab_init(1);
+  for (let v = 0; v < W.lab_nvoices(); v++) voiceNames.push(cstr(W.lab_voice_name(v)));
+  for (const [i, name, text, meta] of PRESETS) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "preset"; b.dataset.i = i;
+    b.setAttribute("aria-pressed", "false");
+    b.innerHTML = "<b></b><span></span><em></em>";
+    b.querySelector("b").textContent = name; b.querySelector("span").textContent = text; b.querySelector("em").textContent = meta;
+    b.addEventListener("click", () => { if (!ctx) { current = i; start(); } else play(i); });
+    $("presets").appendChild(b);
+  }
+  buildPads();
+  readBase(current); buildChans(); buildControls();
+  document.querySelector('.preset[data-i="145"]').setAttribute("aria-pressed", "true");
+  /* the first piece's map before the sound starts, from the page's copy of the engine */
+  W.lab_piece(current, 1);
+  const n = W.lab_tide_info(1);
+  lens = Array.from({ length: n }, (_, s) => W.lab_tide_bars_at(s));
+  buildStrip(Array.from({ length: n }, (_, s) => W.lab_tide_kind_at(s)));
+}
+$("start").addEventListener("click", start);
+$("vol").addEventListener("input", (e) => send(["lab_volume", +e.target.value]));
+$("tideOn").addEventListener("click", () => { const on = $("tideOn").getAttribute("aria-pressed") !== "true"; $("tideOn").setAttribute("aria-pressed", String(on)); $("tideOn").textContent = on ? "Tide running" : "Holding here"; send(["lab_tide", 0, on ? 1 : 0]); });
+$("next").addEventListener("click", () => send(["lab_tide", 2, 0]));
+boot().catch((e) => { $("nowMeta").textContent = "Could not load the engine: " + e.message; });
+</script>
