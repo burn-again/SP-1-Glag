@@ -149,13 +149,13 @@ textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--
       <div class="now"><span class="now-name" id="albName">The Late Rooms</span><span class="now-meta" id="albMeta">Side A rooms, side B noir</span></div>
     </div>
     <div class="toggles">
-      <span class="cap">Noir phrasing</span><button type="button" id="phA" aria-pressed="false">A · as before</button><button type="button" id="phB" aria-pressed="true">B · after your notes</button>
+      <span class="cap">Noir phrasing</span><button type="button" id="phA" aria-pressed="false">A · as before</button><button type="button" id="phB" aria-pressed="false">B · after your notes</button><button type="button" id="phC" aria-pressed="true">C · a conversation</button>
       <button type="button" id="albSong" aria-pressed="false">Song mode</button>
       <button type="button" id="albLab" aria-pressed="false">Add the lab pieces</button>
       <button type="button" id="albShuf" aria-pressed="false">Shuffle</button>
       <label class="vol" for="albLen">Each track <select id="albLen"><option value="120">2 min</option><option value="240" selected>4 min</option><option value="360">6 min</option></select></label>
     </div>
-    <p class="cap">Built on AMB-1's ways: slow, sparse, loops of unequal lengths drifting against each other, a held layer, the bass on the root, long rooms. Side B follows Bohren &amp; der Club of Gore, Miles Davis's <i>Ascenseur pour l'échafaud</i>, Badalamenti, Vangelis's <i>Blade Runner</i>, Chet Baker and Bowie and Eno's <i>Subterraneans</i>: each piece has its own chord progression drawn from the outline of theirs (D minor and C7 four bars each; IV–I then ii, III7, vi, vi°, ♭VII, V7, I; I, vi, IV, V coloured with sevenths and ninths; minor chords moving to distant minors; the noir line cliché), and the horns, cello and vibes sing in phrases: a motif that leans into a long chord tone, the motif again on the next chord, an answer that settles, a breath. Vibrato only on the long tones, late. None of their melodies. <b>Noir phrasing A/B</b> switches the same track, from its start and with the same dice, between the phrasing as it was (A) and after your notes (B): breaths inside the phrase (often after the first note or two, sometimes a bar or two long), fewer notes, the motif varied when it returns, answers that do not always fall to the root, Pine Lake's hook coming home, and Velvet Doom leaving its line cliché behind every other time round. Each track starts fresh in its own key, fades in, plays as written (song mode, if you turn it on, adds its arcs: channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
+    <p class="cap">Built on AMB-1's ways: slow, sparse, loops of unequal lengths drifting against each other, a held layer, the bass on the root, long rooms. Side B follows Bohren &amp; der Club of Gore, Miles Davis's <i>Ascenseur pour l'échafaud</i>, Badalamenti, Vangelis's <i>Blade Runner</i>, Chet Baker and Bowie and Eno's <i>Subterraneans</i>: each piece has its own chord progression drawn from the outline of theirs (D minor and C7 four bars each; IV–I then ii, III7, vi, vi°, ♭VII, V7, I; I, vi, IV, V coloured with sevenths and ninths; minor chords moving to distant minors; the noir line cliché), and the horns, cello and vibes sing in phrases: a motif that leans into a long chord tone, the motif again on the next chord, an answer that settles, a breath. Vibrato only on the long tones, late. None of their melodies. <b>Noir phrasing A/B</b> switches the same track, from its start and with the same dice, between the phrasing as it was (A) and after your notes (B): breaths inside the phrase (often after the first note or two, sometimes a bar or two long), fewer notes, the motif varied when it returns, answers that do not always fall to the root, Pine Lake's hook coming home, and Velvet Doom leaving its line cliché behind every other time round. C moves between the two on purpose over each four minutes: sparse at the start, the conversation filling in, a pulling back, the fullest, a coda; the lead's phrases answered by the Rhodes (in Last Ferry, the cello) with the lead's own last notes, lower; the brushes coming in and fading with it. Each track starts fresh in its own key, fades in, plays as written (song mode, if you turn it on, adds its arcs: channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
   </div>
   <div class="voices" id="tracks"></div>
 </section>
@@ -515,10 +515,11 @@ const LATE = [
 const LOUD = {118: -23.7, 119: -24.0, 120: -23.5, 121: -18.7, 122: -23.9, 123: -23.2, 124: -22.9, 125: -22.8, 126: -21.6,
   127: -23.7, 128: -20.8, 129: -23.0, 130: -28.2, 131: -23.4, 132: -24.8, 133: -26.3, 134: -23.9, 135: -25.1, 136: -25.8,
   137: -25.3, 138: -23.2, 139: -23.2, 140: -22.8, 141: -23.1, 142: -23.4, 143: -23.3, 144: -23.3};
-const alb = { on: false, list: [], idx: 0, timer: 0, t0: 0, seed: 1, ph: 1, song: false, lab: false, shuf: false, len: 240, tick: 0 };
+const alb = { on: false, list: [], idx: 0, timer: 0, t0: 0, seed: 1, ph: 2, song: false, lab: false, shuf: false, len: 240, tick: 0 };
 /* side B measured in each phrasing (dBFS, 2 min) */
-const LOUD_AB = [{138: -23.6, 139: -26.6, 140: -22.5, 141: -23.1, 142: -23.3, 143: -23.0, 144: -23.7},
-                 {138: -22.6, 139: -24.2, 140: -22.6, 141: -23.8, 142: -24.8, 143: -23.3, 144: -24.4}];
+const LOUD_AB = [{138: -23.6, 139: -26.6, 140: -22.5, 141: -23.1, 142: -23.3, 143: -23.0, 144: -22.6},
+                 {138: -22.6, 139: -24.3, 140: -22.6, 141: -23.9, 142: -25.1, 143: -24.6, 144: -23.7},
+                 {138: -24.6, 139: -25.5, 140: -22.7, 141: -24.5, 142: -27.5, 143: -21.1, 144: -22.9}];
 function albGain(i) { const l = LOUD_AB[alb.ph][i] ?? LOUD[i] ?? -23; const db = Math.max(-4, Math.min(6, -23 - l)); return Math.pow(10, db / 20); }
 function albBuild() {
   const box = $("tracks"); box.innerHTML = "";
@@ -589,7 +590,7 @@ $("albNext").addEventListener("click", () => { if (!alb.on) { albStart(null); re
 /* A/B: the same track again from its start, with the same dice, in the other phrasing */
 function setPhrasing(v) {
   alb.ph = v;
-  $("phA").setAttribute("aria-pressed", String(v === 0)); $("phB").setAttribute("aria-pressed", String(v === 1));
+  $("phA").setAttribute("aria-pressed", String(v === 0)); $("phB").setAttribute("aria-pressed", String(v === 1)); $("phC").setAttribute("aria-pressed", String(v === 2));
   send(["lab_phrase_style", v]);
   if (alb.on && port) {
     const i = alb.list[alb.idx];
@@ -605,6 +606,7 @@ function setPhrasing(v) {
 }
 $("phA").addEventListener("click", () => setPhrasing(0));
 $("phB").addEventListener("click", () => setPhrasing(1));
+$("phC").addEventListener("click", () => setPhrasing(2));
 $("albSong").addEventListener("click", () => { alb.song = !alb.song; $("albSong").setAttribute("aria-pressed", String(alb.song)); if (alb.on) send(["lab_song", alb.song ? 1 : 0]); });
 $("albLab").addEventListener("click", () => { alb.lab = !alb.lab; $("albLab").setAttribute("aria-pressed", String(alb.lab)); });
 $("albShuf").addEventListener("click", () => { alb.shuf = !alb.shuf; $("albShuf").setAttribute("aria-pressed", String(alb.shuf)); });

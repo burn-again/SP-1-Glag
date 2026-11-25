@@ -25,6 +25,10 @@
  *                  kick (ACTIVITY adds them in that order; CHARACTER the ride) (est. 0.5)
  */
 
+/* (the noir side's phrasing and its arc, defined below; the brushes follow it) */
+static uint8_t ph_style, ph_piece;
+static float c_int(void);
+
 /* ---- the phrase loops (horns, cello). A channel's loop is in its bells' memory (a voice that is
  * not the Bells): the degree at each beat in loop[0..1] (-1: none), its length in beats in
  * loop[2..3]; lpos[0] the beat ---- */
@@ -809,7 +813,17 @@ static void br_fire(chan *c, int ch, int m, float vel)
 static void br_step(chan *c, int ch, uint32_t step)
 {
 	br_state *S = BR(c);
-	const float act = eff_activity(ch), chr = P.ch[ch][CP_CHAR];
+	float act = eff_activity(ch);
+	const float chr = P.ch[ch][CP_CHAR];
+	if (ph_style == 2 && ph_piece) {
+		/* C: the brushes with the arc: taps coming in as it fills, fading almost out at its
+		 * sparest and coming back */
+		const float p = c_int();
+		act *= 0.6f + 1.0f * p;
+		const float want = 0.15f + 0.85f * clampf((p - 0.15f) * 2.2f, 0.0f, 1.0f);
+		arc_d[ch] += (want - arc_d[ch]) * 0.02f;
+	} else
+		arc_d[ch] = 1.0f;
 	const int s16 = (int)(step & 15u);
 	int m = 0;
 	float vel = 0.8f + 0.2f * rnd();
@@ -1011,8 +1025,10 @@ static void ph_range(int voice, int base, int *lo, int *hi)
 	home = HOME[voice];
 	int off = base - home;                             /* REGISTER: down, never up */
 	off = off > 0 ? 0 : off;
-	*lo = l + off;
-	*hi = h + off;
+	/* and never under the instrument's own floor (a tenor's low A-flat, a trumpet's E, a cello's C) */
+	const int floor_ = voice == GV_TRUMPET ? 52 : voice == GV_SAX ? 44 : voice == GV_CELLO ? 36 : 53;
+	*lo = l + off < floor_ ? floor_ : l + off;
+	*hi = h + off < *lo + 12 ? *lo + 12 : h + off;
 }
 static int mel_step(int note, int k, uint16_t set)
 {
@@ -1257,6 +1273,37 @@ static const int8_t PB_RHY[8][5] = {               /* half-beats */
 	{6, 0}, {2, 6, 0}, {1, 7, 0}, {4, 8, 0},       /* one or two notes */
 	{3, 1, 6, 0}, {1, 1, 6, 0}, {2, 2, 8, 0}, {1, 1, 2, 6, 0}};
 static const int8_t PB_HOOK[5] = {2, 2, 4, 8, 0};  /* the hook's rhythm (vibes: up the chord, a step down into its tone) */
+/* ---- C: between A and B, on purpose. Each piece's lead moves along an arc over four minutes:
+ * sparse at the start, the conversation filling in, a pulling back, the fullest, then a coda. At the
+ * top of the arc it phrases as A did (busier rhythms, few breaths, short rests); at the bottom, as B
+ * or sparer (one- and two-note rhythms, breaths inside the phrase, glacial ones, long rests). And
+ * call and response: when the lead finishes a phrase, its responder (the Rhodes; in Last Ferry the
+ * cello) answers in the gap at the next bar with the lead's last notes, lower, and the lead waits a
+ * bar for it. More answering the fuller it gets. The brushes follow the arc too: the taps come in
+ * as it fills, and at its sparest they fade almost out before coming back */
+static const int8_t C_LEAD[8] = {-1, 0, 0, 0, 1, 0, 2, 1};   /* by piece: the lead's channel */
+static const int8_t C_RESP[8] = {-1, 1, 3, 3, 3, 1, -1, 2};  /* and its responder's (-1 none) */
+static const uint8_t C_FLOOR[8] = {0, 0, 0, 20, 0, 0, 0, 45}; /* (Velvet Doom never quite empty; the hook never long gone) */
+static float ph_p = 0.5f;                                    /* the arc, now (0 sparest .. 1 fullest) */
+static struct { int8_t notes[6], rh[6], ct[6]; uint8_t n, pending; } conv;
+static int ph_resp_start;
+static float c_int(void)
+{
+	static const float KX[7] = {0.0f, 35.0f, 75.0f, 110.0f, 150.0f, 195.0f, 240.0f};
+	static const float KY[7] = {0.2f, 0.45f, 0.85f, 0.5f, 0.95f, 0.35f, 0.2f};
+	const float bpm = gl_tempo_bpm(P.g[GP_TEMPO]);
+	float t = (float)step_n * (15.0f / bpm);
+	t -= 240.0f * (float)(int)(t * (1.0f / 240.0f));
+	int k = 1;
+	while (k < 6 && t > KX[k])
+		k++;
+	float x = (t - KX[k - 1]) / (KX[k] - KX[k - 1]);
+	x = x * x * (3.0f - 2.0f * x);
+	const float p = KY[k - 1] + (KY[k] - KY[k - 1]) * x;
+	const int m = ph_piece < 8 ? ph_piece : 0;
+	const float fl = C_FLOOR[m] * 0.01f;
+	return fl + (1.0f - fl) * p;
+}
 static void ph_new_b(chan *c, int vib)
 {
 	int8_t *rh = c->loop[0], *ct = c->loop[1];
@@ -1265,7 +1312,20 @@ static void ph_new_b(chan *c, int vib)
 	const int hook = PH_MANNER[m].hook && vib;
 	if (hook && rh[6] > 0)
 		return;                                        /* the hook is kept */
-	const int8_t *r = hook ? PB_HOOK : rnd() < sparse ? PB_RHY[rndi(4)] : PB_RHY[4 + rndi(4)];
+	const int8_t *r;
+	if (hook)
+		r = PB_HOOK;
+	else if (ph_style == 2) {                          /* C: the arc decides */
+		if (ph_p > 0.62f) {
+			static const uint8_t FULL[3] = {0, 2, 4};     /* toward the top: A's fullest rhythms (four and five notes) */
+			r = PH_RHY[ph_p > 0.8f ? FULL[rndi(3)] : rndi(6)];
+		}
+		else if (ph_p < 0.35f)
+			r = PB_RHY[rndi(4)];                       /* at the bottom: one or two notes */
+		else
+			r = rnd() < (ph_p - 0.35f) * 3.7f ? PB_RHY[4 + rndi(4)] : PB_RHY[rndi(4)];
+	} else
+		r = rnd() < sparse ? PB_RHY[rndi(4)] : PB_RHY[4 + rndi(4)];
 	int n = 0;
 	while (n < 5 && r[n]) {
 		rh[n] = r[n];
@@ -1329,7 +1389,8 @@ static int ph_fit_b(chan *c, int part, int lo, int hi, int vib)
 		/* the answer: home to the tonic on the home chord (the hook), else one of four */
 		const int home = hook && chord_pc[0] == root_pc;
 		const float u = rnd();
-		const int form = home ? 0 : u < 0.2f ? 0 : u < 0.5f ? 1 : u < 0.75f ? 2 : 3;
+		const float none = ph_style == 2 ? 0.25f * (1.2f - ph_p) : 0.25f;
+		const int form = home ? 0 : u < 0.2f ? 0 : u < 0.5f ? 1 : u < 1.0f - none ? 2 : 3;
 		if (form == 3)
 			return -1;                                 /* no answer: the space is the answer */
 		static const int8_t AR[3][4] = {{2, 2, 8, 0}, {2, 8, 0, 0}, {8, 0, 0, 0}};
@@ -1358,14 +1419,18 @@ static int ph_fit_b(chan *c, int part, int lo, int hi, int vib)
 		/* the breath, chosen afresh each time it is played: after the first note or the second,
 		 * two to six half-beats, at times a bar or two */
 		{
-			const float space = PH_MANNER[m].space * 0.01f, glac = PH_MANNER[m].glacial * 0.01f;
+			float space = PH_MANNER[m].space * 0.01f, glac = PH_MANNER[m].glacial * 0.01f;
+			if (ph_style == 2) {                          /* (C: the breaths with the arc: none near the top, always near the bottom) */
+				space = ph_p > 0.7f ? 0.0f : ph_p < 0.35f ? 1.0f : space * (1.4f - ph_p);
+				glac = ph_p < 0.35f ? glac * 1.5f : ph_p < 0.55f ? glac * 0.5f : 0.0f;
+			}
 			split = gap = 0;
 			if (n >= 2 && !hook && rnd() < space) {
 				split = n >= 3 && rnd() < 0.55f ? 2 : 1;
 				gap = rnd() < glac ? 8 + rndi(9) : 3 + rndi(5);
 			}
 		}
-		start = part == 1 ? center - 3 + rndi(5) : (nt[7] > 0 ? nt[7] : center);
+		start = part == 1 ? (ph_resp_start ? ph_resp_start : center - 3 + rndi(5)) : (nt[7] > 0 ? nt[7] : center);
 		if (part == 2) {
 			/* the motif again, varied (the hook keeps its shape: whole, cut short, or late) */
 			const float u = hook ? rnd() * 0.7f : rnd();
@@ -1445,7 +1510,39 @@ static void phrase_step_b(chan *c, int ch, uint32_t step, int base)
 	uint8_t *part = &c->lpos[0], *pos = &c->lpos[1], *idx = &c->lpos[2], *times = &c->lpos[3];
 	const float act = eff_activity(ch);
 	const int m = ph_piece < 8 ? ph_piece : 0;
-	if (*part == 0) {
+	const int cmode = ph_style == 2 && m > 0;
+	if (cmode)
+		ph_p = c_int();
+	if (cmode && ch == C_RESP[m]) {
+		/* the responder: silent but to answer, at the bar after a call, with the call's own
+		 * rhythm and shape (three notes at most), starting below where the call ended */
+		if (*part == 0) {
+			if (!conv.pending || s16 != 0)
+				return;
+			conv.pending = 0;
+			const int n = conv.n < 3 ? conv.n : 3;
+			for (int k = 0; k < n; k++) {
+				c->loop[0][k] = conv.rh[k];
+				c->loop[1][k] = conv.ct[k];
+			}
+			c->loop[0][n - 1] = (int8_t)(c->loop[0][n - 1] < 6 ? 6 : c->loop[0][n - 1]);
+			c->loop[0][6] = (int8_t)n;
+			*part = 1;
+			*pos = 0;
+			*idx = 0;
+			*times = 200;                                 /* (an answer: once, then quiet) */
+			c->arp_i = 2;
+			int st = conv.notes[conv.n - 1] - 3 - rndi(6);
+			while (st > hi) st -= 12;
+			while (st < lo) st += 12;
+			ph_resp_start = st;
+			const float keep = ph_p;
+			ph_p = 1.0f;                                  /* (no breath inside an answer) */
+			ph_fit_b(c, 1, lo, hi, vib);
+			ph_p = keep;
+			ph_resp_start = 0;
+		}
+	} else if (*part == 0) {
 		if (s16 != 0)
 			return;
 		if (c->arp_dir) {
@@ -1467,6 +1564,10 @@ static void phrase_step_b(chan *c, int ch, uint32_t step, int base)
 	if (*pos == 255) {
 		if (s16 != 0)
 			return;
+		if (c->hq_n) {                                  /* (C: the lead waiting a bar for its answer) */
+			c->hq_n--;
+			return;
+		}
 		*pos = 0;
 		*idx = 0;
 		c->arp_i = (uint8_t)(rnd() < 0.5f ? 0 : 2 * (1 + rndi(2)));
@@ -1474,6 +1575,8 @@ static void phrase_step_b(chan *c, int ch, uint32_t step, int base)
 			*part = 0;
 			(*times)++;
 			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act) + (PH_MANNER[m].space > 60 ? rndi(2) : 0));
+			if (cmode)
+				c->arp_dir = (uint8_t)((float)c->arp_dir * (1.3f - ph_p));
 			return;
 		}
 	}
@@ -1497,16 +1600,39 @@ static void phrase_step_b(chan *c, int ch, uint32_t step, int base)
 	if (*pos < 250)
 		(*pos)++;
 	if (*idx >= n && (int)*pos >= off + c->loop[3][n - 1] + 2 * c->loop[3][6 + n - 1]) {
+		if (*times == 200) {                            /* (the responder's answer, done) */
+			*part = 0;
+			*times = 0;
+			c->arp_dir = 0;
+			*pos = 255;
+			return;
+		}
+		/* C: a call answered: what the lead just played, for its responder, and a bar's wait */
+		if (cmode && ch == C_LEAD[m] && C_RESP[m] >= 0 && *part != 2 && !conv.pending &&
+		    rnd() < (ph_p > 0.75f ? 0.25f : ph_p < 0.3f ? 0.3f : 0.85f)) {   /* (the conversation, most in the middle of the arc) */
+			conv.n = (uint8_t)n;
+			for (int k = 0; k < n && k < 6; k++) {
+				conv.notes[k] = c->loop[2][k];
+				conv.rh[k] = c->loop[3][6 + k];
+				conv.ct[k] = (int8_t)(k ? (c->loop[2][k] > c->loop[2][k - 1] ? 1 : c->loop[2][k] < c->loop[2][k - 1] ? -1 : 0) : 0);
+			}
+			conv.pending = 1;
+			c->hq_n = 1;
+		}
+		const float again = cmode ? (ph_p > 0.6f ? 1.0f : ph_p < 0.35f ? 0.35f : 0.75f) : 0.8f;
+		const float answer = cmode ? (ph_p > 0.6f ? 1.0f : ph_p < 0.35f ? 0.3f : 0.7f) : 0.7f;
 		if (*part == 1)
-			*part = rnd() < 0.8f ? 2 : 3;
+			*part = rnd() < again ? 2 : (rnd() < answer ? 3 : 0);
 		else if (*part == 2)
-			*part = rnd() < 0.7f ? 3 : 0;
+			*part = rnd() < answer ? 3 : 0;
 		else
 			*part = 0;
 		if (*part == 0) {
 			(*times)++;
 			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act) + (PH_MANNER[m].space > 60 ? rndi(2) : 0) +
 			                       (PH_MANNER[m].hook ? 2 + rndi(3) : 0));   /* (a hook comes back after a breath) */
+			if (cmode)                                  /* C: near the top a bar at most; at the bottom two to four */
+				c->arp_dir = (uint8_t)(ph_p > 0.7f ? rndi(2) : ph_p < 0.35f ? 2 + rndi(3) : 1 + rndi(2));
 		}
 		*pos = 255;
 	}
@@ -1649,6 +1775,25 @@ static void rhodes_voicing(chan *c, int base, float vel, int damp)
 static void rhodes_step(chan *c, int ch, uint32_t step, float act, int base)
 {
 	const int s16 = (int)(step & 15u);
+	const int m = ph_piece < 8 ? ph_piece : 0;
+	if (ph_style == 2 && m > 0 && ch == C_RESP[m] && conv.pending && s16 == 0 && c->hq_i >= c->hq_n) {
+		/* C: the Rhodes answers the lead, single notes, the call's last ones an octave or two down,
+		 * a beat apart, a little behind the bar */
+		conv.pending = 0;
+		const int n = conv.n < 3 ? conv.n : 3, from = conv.n - n;
+		for (int k = 0; k < n; k++) {
+			int x = conv.notes[from + k] - 12;
+			while (x > base + 10) x -= 12;
+			while (x < base - 7) x += 12;
+			c->hq[k] = (int8_t)x;
+		}
+		c->hq_n = (uint8_t)n;
+		c->hq_i = 0;
+		c->hq_t = 0.08f;
+		c->hq_dt = 60.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+		c->hq_vel = 0.42f;
+		return;
+	}
 	if (s16 == 0 && (c->seen_chord != chord_count || rnd() < 0.15f * act)) {
 		const int fresh = c->seen_chord != chord_count;
 		c->seen_chord = chord_count;
@@ -1863,9 +2008,11 @@ static void tide_reset(void)
 	for (int c = 0; c < 4; c++) {
 		tide_a[c] = 1.0f;
 		tide_d[c] = 1.0f;
+		arc_d[c] = 1.0f;
 		tide_throw[c] = 0.0f;
 	}
 	tide_echo_t = 255;
+	conv.pending = 0;
 }
 /* each bar */
 static void tide_bar(void)

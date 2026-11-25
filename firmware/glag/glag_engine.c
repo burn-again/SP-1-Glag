@@ -374,6 +374,7 @@ static uint8_t prog_x, prog_i, prog_bars;
 static uint8_t tide_x;
 static float tide_a[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 static float tide_d[4] = {1.0f, 1.0f, 1.0f, 1.0f};   /* (and its dry level: the sends left as they are) */
+static float arc_d[4] = {1.0f, 1.0f, 1.0f, 1.0f};    /* (audition: the noir side's C take, a drum fading out and back) */
 static uint16_t mel_mask, colour_mask;
 static void prog_chord(void);
 static int prog_len(void);
@@ -5131,7 +5132,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 				VV = VD;
 			}
 			if (!st) {
-				const float gd = g * tide_d[c];      /* (the dry level; the sends go on at g) */
+				const float gd = g * tide_d[c] * arc_d[c];   /* (the dry level; the sends go on at g) */
 				float al = (1.0f - pan) * gd, ar = pan * gd;
 				for (uint32_t i = 0; i < VSUB; i++) {
 					float a0 = ca[i];
@@ -5147,7 +5148,7 @@ void gl_render(int16_t *lr, uint32_t n, float gain)
 			if (vo == GV_KIT)
 				es *= 2.0f, vs *= 2.0f;                  /* (its sides at half: its sends as a mono voice's) */
 			float pa = clampf(pan - sp, 0.0f, 1.0f), pb = clampf(pan + sp, 0.0f, 1.0f);
-			const float gd = g * tide_d[c];
+			const float gd = g * tide_d[c] * arc_d[c];
 			float al = (1.0f - pa) * gd, ar = pa * gd, bl = (1.0f - pb) * gd, br = pb * gd;
 			for (uint32_t i = 0; i < VSUB; i++) {
 				float a0 = ca[i], b0 = cb[i];
