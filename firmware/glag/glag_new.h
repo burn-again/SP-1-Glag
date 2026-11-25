@@ -473,6 +473,10 @@ static void held_control(chan *c, int ch, float dt)
 	c->lfo1 += (uint32_t)(sdt * (0.75f + 0.3f * chr) * 4294967296.0f);   /* the Leslie, slow */
 	for (int i = 0; i < 3; i++) {
 		nvoice *v = &c->v[i];
+		if (midi_live(ch)) {                      /* played: each voice a key, held while it is */
+			if (v->mnote == 0 && (v->stage == ST_ATT || v->stage == ST_DEC) && !arp_live(ch))
+				v->stage = ST_REL;
+		} else {
 		const int want = playing && i < nv && (organ || c->gap[i] <= 0.0f);
 		const int pc = chord_pc[i % chord_n];
 		const float from = v->note > 0.0f ? v->note : (float)(base + 4 * i);
@@ -490,6 +494,7 @@ static void held_control(chan *c, int ch, float dt)
 			}
 		} else if (v->stage != ST_IDLE)
 			v->stage = ST_REL;
+		}
 		const float att = organ ? 0.012f : 0.4f + 1.2f * len, rel = organ ? 0.08f : 0.8f + 2.0f * len;
 		if (v->stage == ST_ATT) {
 			v->env += sdt / att;
@@ -504,7 +509,10 @@ static void held_control(chan *c, int ch, float dt)
 				v->stage = ST_IDLE;
 			}
 		}
-		if (!organ) {
+		if (!organ && midi_live(ch)) {
+			c->cyc[i] += sdt / (9.0f + 5.0f * (float)i);           /* the vowel's drift, no breaths */
+			c->cyc[i] -= c->cyc[i] >= 1.0f ? 1.0f : 0.0f;
+		} else if (!organ) {
 			/* the choir breathes: a phrase of 4 to 20 s (LENGTH), then a rest */
 			v->t += sdt;
 			if (v->stage == ST_DEC && v->t > 4.0f + 16.0f * len + 2.0f * (float)i) {
@@ -618,6 +626,43 @@ static void grains_step(chan *c, int ch, uint32_t step)
 	v->t = 0.0f;
 	v->hold = 1.0f / (dur * VSR);
 	v->vel = 0.5f + 0.4f * rnd();
+	v->side = (uint8_t)(rnd32() & 1u);
+	v->stage = ST_DEC;
+	notes_fired++;
+	c->glow = v->vel;
+}
+/* keys held on a Grains channel (MIDI): a cloud of grains at that pitch while held */
+static uint8_t gr_key[GL_NCH][4];
+static void grains_note(chan *c, int ch, int note, float vel);
+static void grains_keys(chan *c, int ch, float dt)
+{
+	for (int k = 0; k < 4; k++)
+		if (gr_key[ch][k] && rnd() < dt * (6.0f + 30.0f * eff_activity(ch) * eff_activity(ch)))
+			grains_note(c, ch, gr_key[ch][k] - 1, 0.7f);
+}
+/* a grain played by a key: read back at the key's distance from middle C (an octave each way at
+ * most, as the fast grains must not overtake the tape's head) */
+static void grains_note(chan *c, int ch, int note, float vel)
+{
+	int k = 0;
+	for (int i = 0; i < 4; i++)
+		if (c->v[i].stage == ST_IDLE) {
+			k = i;
+			break;
+		} else if (c->v[i].t > c->v[k].t)
+			k = i;                                    /* (else the oldest) */
+	nvoice *v = &c->v[k];
+	const float r = clampf(fexp2((float)(note - 60) * (1.0f / 12.0f)), 0.5f, 2.0f);
+	const float dur = expmap(P.ch[ch][CP_LENGTH], 0.04f, 0.45f);
+	float back = (0.08f + 1.6f * P.ch[ch][CP_CHAR] * rnd()) * 8000.0f;
+	const float need = dur * 8000.0f * (r - 1.0f) + 200.0f;
+	back = back > need ? back : need;
+	v->pc = grain_w() - (uint32_t)back;
+	v->fk = 0.0f;
+	v->fq = r * (8000.0f / VSR);
+	v->t = 0.0f;
+	v->hold = 1.0f / (dur * VSR);
+	v->vel = 2.5f * (0.4f + 0.5f * vel);           /* (the tape is quiet: keyed grains stand out of it) */
 	v->side = (uint8_t)(rnd32() & 1u);
 	v->stage = ST_DEC;
 	notes_fired++;

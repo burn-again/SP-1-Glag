@@ -82,6 +82,19 @@ EXPORT void lab_morph_clear(void)
 	for (int k = 0; k < GL_NCH * GL_NCP + GL_NGP; k++)
 		m_tgt[k] = 0.0f;
 }
+/* the instrument page: one channel played by keys, its patch set control by control */
+EXPORT void lab_note(int c, int note, int vel) { gl_midi_note(c, note, vel); }
+EXPORT void lab_keep(int mask) { gl_midi_keep(mask); }
+EXPORT int lab_nvoices(void) { return GV_COUNT; }
+EXPORT void lab_set_voice(int c, int v) { if ((unsigned)c < GL_NCH && (unsigned)v < GV_COUNT) { base.voice[c] = (uint8_t)v; post_now(); } }
+EXPORT void lab_set_cp(int c, int p, float v) { if ((unsigned)c < GL_NCH && (unsigned)p < GL_NCP) { base.ch[c][p] = clamp01(v); post_now(); } }
+EXPORT float lab_get_cp(int c, int p) { return ((unsigned)c < GL_NCH && (unsigned)p < GL_NCP) ? base.ch[c][p] : 0.0f; }
+EXPORT void lab_set_gp(int g, float v) { if ((unsigned)g < GL_NGP) { base.g[g] = clamp01(v); post_now(); } }
+EXPORT float lab_get_gp(int g) { return (unsigned)g < GL_NGP ? base.g[g] : 0.0f; }
+EXPORT void lab_set_space(int i, int v) { if ((unsigned)i < GL_NSP) { base.space[i] = (uint8_t)v; post_now(); } }
+EXPORT int lab_get_space(int i) { return (unsigned)i < GL_NSP ? base.space[i] : 0; }
+EXPORT void lab_set_chx(int c, int v) { if ((unsigned)c < GL_NCH) { base.chx[c] = (uint8_t)v; post_now(); } }
+EXPORT void lab_macro(int c, float depth, float per) { gl_macro(c, depth, per); }
 EXPORT float lab_glow(int c) { return gl_glow[c & 3]; }
 EXPORT float lab_beat(void) { return gl_beat; }
 EXPORT int lab_ducked(void) { return gl_ducked(); }

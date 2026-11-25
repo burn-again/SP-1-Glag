@@ -491,6 +491,42 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 		nv_trigger(v, (float)note, vel, 1.0f, 0);
 		v->hold = gate;
 		break;
+	/* the lab's voices (glag_new.h), played by MIDI or arp mode: each in its own way */
+	case GV_BREATH:
+		v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
+		v->hold = gate;
+		break;
+	case GV_KOTO: {
+		int k = c->ks_next;
+		if (!c->ks_len[k] && budget_used() + 1 > fm_cap)
+			return 0;
+		c->ks_next = (uint8_t)((k + 1) % 4);
+		ks_pluck(c, k, mtof(ivl_note(ch, (float)note)) * speed * pbend, vel, 0.35f + 0.6f * tone, 0.62f + 0.33f * tone,
+		         expmap(P.ch[ch][CP_LENGTH], 0.5f, 5.0f), 1);
+		break;
+	}
+	case GV_ORGAN:
+	case GV_CHOIR:
+		/* a held chord's three voices, each taking a key while it is held (held_control) */
+		v = alloc(c, 3);
+		v->note = v->ratio = (float)ivl_note(ch, (float)note);
+		v->vel = c->voice == GV_ORGAN ? 0.55f : 0.35f + 0.25f * vel;
+		v->stage = ST_ATT;
+		v->t = 0.0f;
+		notes_fired++;
+		break;
+	case GV_GRAINS:
+		grains_note(c, ch, note, vel);
+		if (midi_live(ch))
+			for (int k = 0; k < 4; k++)
+				if (!gr_key[ch][k]) {
+					gr_key[ch][k] = (uint8_t)(note + 1);
+					break;
+				}
+		return 0;
 	default: {
 		/* the FM voices (and, in arp mode, the held ones struck short): each its own ratio */
 		int n = c->voice == GV_BELLS || c->voice == GV_SHIMMER || c->voice == GV_PAD ? 4 :
@@ -562,6 +598,9 @@ void gl_midi_note(int ch, int note, int vel)
 	mq_w = w + 1u;
 }
 static int midi_live(int ch) { return midi_t[ch] > 0.0f; }
+/* audition (the lab's instrument page): channels kept under MIDI, their own sequencers resting */
+static uint8_t midi_keep;
+void gl_midi_keep(int mask) { midi_keep = (uint8_t)mask; }
 static const int8_t KIT_LANE[12] = {0, 3, 1, 4, 5, 2, 2, 8, 2, 7, 6, 2};
 static void midi_drum(chan *c, int ch, int note, float vel)
 {
@@ -571,6 +610,16 @@ static void midi_drum(chan *c, int ch, int note, float vel)
 	int mask = MAP[note % 12];
 	if (vel < 0.5f)
 		mask &= ~(8 | 16);                           /* soft: no accent */
+	if (c->voice == GV_LITEKIT) {
+		/* the Lite Kit: C kick, C# rim, D / E snare, D# clap, F / G toms, F# / G# hat, A# open
+		 * hat, A the bell, B the rim */
+		static const uint8_t LKM[12] = {LK_K, LK_R, LK_S, LK_C, LK_S, LK_T, LK_H, LK_T, LK_H, LK_B, LK_O, LK_R};
+		lk_state *L = LK(c);
+		L->tone = eff_tone(ch);
+		L->len = P.ch[ch][CP_LENGTH];
+		lk_fire(c, ch, LKM[note % 12], vel);
+		return;
+	}
 	if (c->voice == GV_KIT) {
 		/* the kit: C kick, C# clank, D / E snare (E the Nord hit), D# tissue, F# / G# hat,
 		 * G roll, A ghost, A# open hat, the rest the hat */
@@ -593,7 +642,7 @@ static void midi_tick(float dt)
 			midi_t[ch] = 4.0f;
 			if (midi_n[ch] < 255)
 				midi_n[ch]++;
-			if (c->voice == GV_PULSE || c->voice == GV_KIT)
+			if (c->voice == GV_PULSE || c->voice == GV_KIT || c->voice == GV_LITEKIT)
 				midi_drum(c, ch, note, vel);
 			else {
 				nvoice *v = voice_note(c, ch, note, 0.3f + 0.7f * vel, 30.0f);
@@ -605,6 +654,9 @@ static void midi_tick(float dt)
 				midi_n[ch]--;
 			if (c->voice == GV_KIT)
 				kit_hold(c, KIT_LANE[note % 12], 0);
+			for (int k = 0; k < 4; k++)
+				if (gr_key[ch][k] == note + 1)
+					gr_key[ch][k] = 0;
 			for (int i = 0; i < NV; i++) {        /* its voice lets go */
 				nvoice *v = &c->v[i];
 				if (v->mnote != note + 1)
@@ -612,14 +664,18 @@ static void midi_tick(float dt)
 				v->mnote = 0;
 				if (arp_held(c->voice))
 					v->stage = ST_REL;
-				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE)
+				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE || c->voice == GV_BREATH)
 					v->hold = 0.0f;
 			}
 		}
 		mq_r++;
 	}
 	for (int ch = 0; ch < 4; ch++) {
-		if (midi_n[ch])
+		if (CH[ch].voice == GV_GRAINS)
+			grains_keys(&CH[ch], ch, dt);
+		else
+			memset(gr_key[ch], 0, sizeof gr_key[ch]);
+		if (midi_n[ch] || ((midi_keep >> ch) & 1u))
 			midi_t[ch] = 4.0f;
 		else if (midi_t[ch] > 0.0f)
 			midi_t[ch] -= dt;                        /* 4 s after the last: its own music back */

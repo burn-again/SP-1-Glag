@@ -155,6 +155,7 @@ void gl_crank(void);
  * drums by the note's name in any octave: C kick, D/E snare, F#/G# hat, A# open hat, C#/D# click
  * (General MIDI's 36, 38, 42, 46 land right). */
 void gl_midi_note(int ch, int note, int vel);
+void gl_midi_keep(int mask);          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
 void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
 void gl_rv_drift(int mode);          /* audition only: the Hall's lines drifting (1 grow/shrink, 2 diverge, 3 grow, 4 shrink) */
 void gl_rv_shim_ratio(float r);      /* audition only: the Shimmer's interval as a ratio (below 1: down; 0 its own) */

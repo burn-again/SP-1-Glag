@@ -1,0 +1,491 @@
+<meta charset="utf-8">
+<title>Glag Instruments</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* layout: one column: the transport, the voices, the keyboard, then the voice's settings and the
+   space around it; the same tokens as the Glag Lab page */
+:root {
+  --bg: #eef1f5; --surface: #ffffff; --fg: #18202b; --muted: #5a6474; --line: #d6dce4;
+  --accent: #3a6ea5; --accent-2: #2f8a6e; --warn: #b05a2c; --chip: #e5eaf0; --press: #d9e6f5;
+  --white-key: #ffffff; --black-key: #1f2733; --black-fg: #c9d2de;
+  --display: "Sora", "Inter", system-ui, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36; --press: #24364b;
+  --white-key: #dfe5ec; --black-key: #0b0f14; --black-fg: #98a3b3; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10151c; --surface: #18202a; --fg: #e3e8ef; --muted: #98a3b3; --line: #2a3441;
+  --accent: #79a9dc; --accent-2: #5cc6a4; --warn: #e2925f; --chip: #212a36; --press: #24364b;
+  --white-key: #dfe5ec; --black-key: #0b0f14; --black-fg: #98a3b3; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 36px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 30px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 34px/1.1 var(--display); margin: 0; }
+h2 { font: 600 21px/1.2 var(--display); margin: 0; }
+h3 { font: 600 15px/1.3 var(--display); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 16.5px; color: var(--muted); }
+section { display: grid; gap: 14px; min-width: 0; }
+.cap { font-size: 13px; color: var(--muted); }
+button { font: 500 14px/1.2 var(--body); color: var(--fg); background: var(--chip); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 13px; cursor: pointer; touch-action: manipulation; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--surface); border-color: transparent; font-weight: 600; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: transparent; }
+select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%; }
+.deck { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; }
+.deck-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.now { display: grid; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.now-name { font: 600 18px/1.2 var(--display); }
+.now-meta { font: 400 12.5px/1.4 var(--mono); color: var(--muted); }
+.light { width: 60px; height: 6px; border-radius: 3px; background: var(--chip); overflow: hidden; flex: none; }
+.light i { display: block; height: 100%; width: 0; background: var(--accent-2); }
+.vol { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* voices */
+.voices { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 8px; }
+.voice { text-align: left; display: grid; gap: 4px; background: var(--surface); padding: 11px 12px; border-radius: 10px; }
+.voice b { font: 600 15px/1.2 var(--display); }
+.voice span { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.voice[aria-pressed="true"] span { color: var(--surface); }
+.other { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* keyboard */
+.kbd-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.kbd-bar .mono { font: 500 13px/1 var(--mono); min-width: 3ch; text-align: center; }
+.keys { position: relative; height: 150px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.key { position: absolute; top: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 0 0 6px 6px;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 6px; gap: 2px;
+  font: 500 10px/1.1 var(--mono); }
+.key.w { height: 150px; background: var(--white-key); color: #5a6474; z-index: 1; }
+.key.b { height: 92px; background: var(--black-key); color: var(--black-fg); z-index: 2; border-color: var(--black-key); }
+.key.on { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.key small { font-size: 9.5px; opacity: .8; }
+.key .drum { font: 600 10px/1.1 var(--body); }
+@media (max-width: 560px) { .key small { display: none; } .key .drum { font-size: 8.5px; } }
+/* settings */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; display: grid; gap: 10px; align-content: start; }
+.ctl { display: grid; gap: 3px; }
+.ctl-h { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; }
+.ctl-h b { font-weight: 600; }
+.ctl-h output { font: 500 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+.ctl p { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.ctl.idle { opacity: .55; }
+.copy { display: grid; gap: 8px; }
+textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">SP-1 · Glag · instruments</span>
+  <h1>Glag Instruments</h1>
+  <p class="lede">Play the nine new voices yourself and shape them. It's the real Glag engine in your browser; the keys play channel 1 the way MIDI would, and every slider is the same control the SP-1 has.</p>
+</header>
+
+<section aria-label="Transport">
+  <div class="deck">
+    <div class="deck-top">
+      <button class="primary" id="start" type="button">Start sound</button>
+      <span class="light" aria-hidden="true" title="output level"><i id="glow"></i></span>
+      <div class="now"><span class="now-name" id="nowName">Organ</span><span class="now-meta" id="nowMeta">Press Start, then play</span></div>
+      <label class="vol" for="vol">Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    </div>
+    <div class="toggles">
+      <button type="button" id="self" aria-pressed="false">Let it play itself</button>
+      <button type="button" id="sus" aria-pressed="false">Sustain (Tab)</button>
+      <button type="button" id="backing" aria-pressed="false">Backing</button>
+      <select id="piece" aria-label="Backing piece"></select>
+    </div>
+    <p class="cap" id="hint">Keys play the voice; its own sequencer rests. "Let it play itself" hands it back to Glag's sequencer, so you hear the Activity and Register settings at work. Backing brings in the other three channels of a piece, in its key and tempo.</p>
+  </div>
+</section>
+
+<section>
+  <h2>The new voices</h2>
+  <div class="voices" id="voices"></div>
+  <div class="other">
+    <label class="cap" for="older">Or an older voice:</label>
+    <select id="older"></select>
+  </div>
+</section>
+
+<section>
+  <h2>Play</h2>
+  <div class="kbd-bar">
+    <button type="button" id="octDn" aria-label="Octave down">Oct −</button>
+    <span class="mono" id="oct">C3</span>
+    <button type="button" id="octUp" aria-label="Octave up">Oct +</button>
+    <label class="vol" for="vel">Velocity <input id="vel" type="range" min="1" max="127" step="1" value="100"></label>
+  </div>
+  <div class="keys" id="keys" role="group" aria-label="Keyboard"></div>
+  <p class="cap">Computer keys: the bottom row Z to M (with S D G H J for the sharps) is the lower octave, Q to U (with 2 3 5 6 7) the upper; [ and ] move the octave. Drum voices play a drum per note name, shown on the keys.</p>
+</section>
+
+<section>
+  <h2>The voice</h2>
+  <div class="grid" id="vctl"></div>
+</section>
+
+<section>
+  <h2>The space</h2>
+  <div class="grid" id="gctl"></div>
+</section>
+
+<section>
+  <h2>Keep a setting</h2>
+  <div class="card copy">
+    <p class="cap">When something sounds right, copy this and send it to me; it's everything needed to make it a preset.</p>
+    <textarea id="dump" readonly aria-label="The current settings"></textarea>
+    <div class="toggles"><button type="button" id="copy">Copy</button><button type="button" id="reset">Reset this voice</button></div>
+  </div>
+</section>
+</div>
+
+<script>
+/* the engine's numbers: channel controls (CP_*), globals (GP_*), space slots (GL_SP_*) */
+const CP = { ACT: 0, TONE: 1, LEN: 2, REG: 3, ECHO: 4, VERB: 5, PAN: 6, CHAR: 7, LEVEL: 8 };
+const GP = { TEMPO: 0, DELAY: 1, REVERB: 2, FILTER: 3, ROOT: 4, MODE: 5, DRIFT: 6, MOTION: 7 };
+const NEWV = 25; /* GV_LITEKIT: the first of the nine */
+const LK_DRUMS = ["kick", "rim", "snare", "clap", "snare", "tom", "hat", "tom", "hat", "bell", "open", "rim"];
+const PULSE_DRUMS = ["kick", "click", "snare", "click", "snare", "shaker", "hat", "shaker", "hat", "shaker", "open", "shaker"];
+const KIT_DRUMS = ["kick", "clank", "snare", "tissue", "Nord", "hat", "hat", "roll", "hat", "ghost", "open", "hat"];
+const ECHO_NAMES = ["dotted ¼", "½", "dotted ½", "a bar", "two bars", "⅛", "dotted ⅛", "¼", "the string"];
+const RV_NAMES = ["Hall", "Chamber", "Shimmer", "Bloom"];
+const NOTE = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const MODES = ["Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian", "Pent maj", "Pent min"];
+/* what each control does on each new voice (read off the engine's code); blank: it does nothing on keys */
+const NEW_INFO = {
+  25: { t: "Kick, snare, hats, clap, rim, toms, a bell", tone: "the hats' and the rim's brightness", len: "every drum's decay",
+        chr: "the groove it plays by itself: four on the floor, breaks, clave, minimal, dub", key: "drums" },
+  26: { t: "Struck resonators with a click", tone: "the click", len: "how long it rings",
+        chr: "the material: woodblock, log drum, tabla (bends into its note), glass" },
+  27: { t: "Four drawbars, a slow Leslie", tone: "the top 2′ drawbar's brightness", len: "",
+        chr: "the drawbars: flute stop to full stops; and the Leslie's speed" },
+  28: { t: "A sine and two dying partials", tone: "the partials' level: plain to glassy", len: "decay, ½ to 4 s", chr: "" },
+  29: { t: "Noise at the note, a flute's shape", tone: "the attack: soft and slow to quick", len: "the release after you let go",
+        chr: "tonal (a sine under a narrow band) to airy (a wide band, no sine)" },
+  30: { t: "A band-limited pulse, an arpeggio", tone: "", len: "decay",
+        chr: "pulse width ⅛, ¼, ½; past three quarters, a 50 Hz arpeggio through the chord" },
+  31: { t: "Saws through two formants", tone: "", len: "how slowly it fades in and out",
+        chr: "the vowels: oo/oh to ah/eh (they drift on their own)" },
+  32: { t: "Four plucked strings, a buzzing bridge", tone: "the pluck's brightness", len: "how long it rings, ½ to 5 s",
+        chr: "koto to sitar: how much the bridge buzzes" },
+  33: { t: "Slices of the echo's tape, replayed", tone: "", len: "each grain's length",
+        chr: "how far back in the tape it reaches (and, playing itself, how often it shifts pitch)", grains: 1 },
+};
+
+/* ---- the engine, in a worklet (or on the page where there is none) ---- */
+class LabCore {
+  constructor(o) {
+    this.w = new WebAssembly.Instance(new WebAssembly.Module(o.wasm), {}).exports;
+    this.w.lab_init(o.seed);
+    this.fifo = new Float32Array(4096); this.r = 0; this.n = 0; this.pos = 0;
+    this.ratio = 48000 / (typeof sampleRate !== "undefined" && sampleRate > 0 ? sampleRate : 48000);
+    this.frames = 0; this.sent = 0; this.pk = 0;
+  }
+  cmd(m) {
+    const w = this.w;
+    if (m.t === "call") { for (const [f, ...a] of m.calls) w[f](...a); }
+  }
+  run(L, R) {
+    const w = this.w, ratio = this.ratio;
+    const need = Math.ceil(this.pos + L.length * ratio) + 2;
+    while (this.n < need) {
+      const a = new Float32Array(w.memory.buffer, w.lab_render(48), 96);
+      for (let i = 0; i < 96; i++) this.fifo[(this.r + this.n * 2 + i) & 4095] = a[i];
+      this.n += 48; this.frames += 48;
+    }
+    for (let i = 0; i < L.length; i++) {
+      const k = Math.floor(this.pos), fr = this.pos - k;
+      const i0 = (this.r + 2 * k) & 4095, i1 = (this.r + 2 * k + 2) & 4095;
+      L[i] = this.fifo[i0] + (this.fifo[i1] - this.fifo[i0]) * fr;
+      R[i] = this.fifo[(i0 + 1) & 4095] + (this.fifo[(i1 + 1) & 4095] - this.fifo[(i0 + 1) & 4095]) * fr;
+      this.pos += ratio;
+      const a = Math.abs(L[i]) + Math.abs(R[i]); if (a > this.pk) this.pk = a;
+    }
+    const adv = Math.floor(this.pos);
+    this.r = (this.r + 2 * adv) & 4095; this.n -= adv; this.pos -= adv;
+    if (this.frames - this.sent < 2400) return null;
+    this.sent = this.frames;
+    const pk = this.pk; this.pk = 0;
+    return { t: "st", glow: pk * 2 };
+  }
+}
+const WORKLET = LabCore.toString() + `
+class LabNode extends AudioWorkletProcessor {
+  constructor(o) { super(); this.core = new LabCore(o.processorOptions); this.port.onmessage = (e) => this.core.cmd(e.data); }
+  process(_, outs) { const o = outs[0]; const m = this.core.run(o[0], o[1] || o[0]); if (m) this.port.postMessage(m); return true; }
+}
+registerProcessor("glag-inst", LabNode);`;
+
+const $ = (id) => document.getElementById(id);
+let wasmBytes = null, W = null, ctx = null, port = null;
+let voiceNames = [], pieceNames = [];
+const st = {
+  voice: 27, cp: [0.5, 0.5, 0.5, 0.5, 0.3, 0.4, 0.5, 0.5, 0.8], g: [0.4, 0.3, 0.5, 0.5, 0, 0, 0.3, 0.3], space: [0, 0, 1],
+  self: false, sus: false, backing: false, piece: 118, oct: 48, macro: 0,
+};
+const saved = {}; /* each voice's settings as you left them */
+function cstr(p) { const u = new Uint8Array(W.memory.buffer); let s = ""; while (u[p]) s += String.fromCharCode(u[p++]); return s; }
+function send(...calls) { if (port) port.postMessage({ t: "call", calls }); }
+
+/* a voice's starting point: the channel of a new piece that uses it, else of any piece */
+function defaultsFor(v) {
+  const n = W.lab_npieces();
+  for (const from of [118, 0]) for (let i = from; i < n; i++) {
+    W.lab_piece(i, 1);
+    for (let c = 0; c < 4; c++) if (W.lab_voice(c) === v)
+      return Array.from({ length: 9 }, (_, p) => W.lab_get_cp(c, p));
+  }
+  return [0.5, 0.5, 0.5, 0.5, 0.3, 0.4, 0.5, 0.5, 0.8];
+}
+function pieceGlobals(i) {
+  W.lab_piece(i, 1);
+  return { g: Array.from({ length: 8 }, (_, k) => W.lab_get_gp(k)), space: [0, 1, 2].map((k) => W.lab_get_space(k)) };
+}
+
+/* everything posted at once: the backing piece (or Paper Cathedral, its other channels silent),
+   then channel 1 as the page has it, then the globals */
+function applyAll() {
+  const calls = [["lab_piece", st.piece, (Math.random() * 4294967295) >>> 0]];
+  if (!st.backing) for (let c = 1; c < 4; c++) calls.push(["lab_set_cp", c, CP.LEVEL, 0]);
+  calls.push(["lab_set_voice", 0, st.voice]);
+  st.cp.forEach((x, p) => calls.push(["lab_set_cp", 0, p, x]));
+  calls.push(["lab_set_chx", 0, 0]);
+  for (let c = 0; c < 4; c++) if (c === 0 || !st.backing) calls.push(["lab_macro", c, c === 0 ? st.macro : 0, 16]);
+  st.g.forEach((x, k) => calls.push(["lab_set_gp", k, x]));
+  st.space.forEach((x, k) => calls.push(["lab_set_space", k, x]));
+  calls.push(["lab_keep", st.self ? 0 : 1]);
+  send(...calls);
+}
+
+function pickVoice(v) {
+  saved[st.voice] = st.cp.slice();
+  st.voice = v;
+  st.cp = saved[v] ? saved[v].slice() : defaultsFor(v);
+  allOff();
+  if (ctx) applyAll();
+  render();
+}
+
+/* ---- the keyboard ---- */
+const held = new Map(); /* midi note -> sources holding it (pointer ids, key names) */
+const sustained = new Set();
+function noteOn(n, src) {
+  if (!held.has(n)) { held.set(n, new Set()); if (!sustained.has(n)) send(["lab_note", 0, n, +$("vel").value]); sustained.delete(n); }
+  held.get(n).add(src);
+  keyEl(n, true);
+}
+function noteOff(n, src) {
+  const s = held.get(n); if (!s) return;
+  s.delete(src); if (s.size) return;
+  held.delete(n);
+  if (st.sus) { sustained.add(n); return; }
+  send(["lab_note", 0, n, 0]); keyEl(n, false);
+}
+function allOff() {
+  for (const n of new Set([...held.keys(), ...sustained])) { send(["lab_note", 0, n, 0]); keyEl(n, false); }
+  held.clear(); sustained.clear();
+}
+function keyEl(n, on) { const el = document.querySelector('.key[data-n="' + n + '"]'); if (el) el.classList.toggle("on", on); }
+const LOWER = ["z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m"];
+const UPPER = ["q", "2", "w", "3", "e", "r", "5", "t", "6", "y", "7", "u", "i"];
+function keyFor(k) { /* semitone above the octave's C, or -1 */
+  const a = LOWER.indexOf(k); if (a >= 0) return a;
+  const b = UPPER.indexOf(k); if (b >= 0) return 12 + b;
+  return k === "," ? 12 : -1;
+}
+function buildKeys() {
+  const box = $("keys"); box.innerHTML = "";
+  const nW = 15, ww = 100 / nW, drums = drumNames();
+  let wi = 0;
+  for (let s = 0; s < 25; s++) {
+    const pc = s % 12, black = [1, 3, 6, 8, 10].includes(pc), n = st.oct + s;
+    const el = document.createElement("div");
+    el.className = "key " + (black ? "b" : "w"); el.dataset.n = n;
+    if (black) { el.style.left = "calc(" + (wi * ww - ww * 0.3) + "% )"; el.style.width = (ww * 0.6) + "%"; }
+    else { el.style.left = (wi * ww) + "%"; el.style.width = ww + "%"; wi++; }
+    const lab = s < 12 ? LOWER[s] : UPPER[s - 12];
+    el.innerHTML = (drums ? '<span class="drum"></span>' : "") + "<small></small>";
+    if (drums) el.querySelector(".drum").textContent = drums[pc];
+    el.querySelector("small").textContent = (lab || "").toUpperCase() + (pc === 0 ? " · C" + (n / 12 - 1) : "");
+    box.appendChild(el);
+  }
+  $("oct").textContent = "C" + (st.oct / 12 - 1);
+}
+function drumNames() { return st.voice === 25 ? LK_DRUMS : st.voice === 15 ? PULSE_DRUMS : st.voice === 24 ? KIT_DRUMS : null; }
+const pointerNote = new Map();
+function noteAt(x, y) { const el = document.elementFromPoint(x, y); return el && el.closest(".key") ? +el.closest(".key").dataset.n : -1; }
+$("keys").addEventListener("pointerdown", (e) => {
+  e.preventDefault(); if (!ctx) start();
+  $("keys").setPointerCapture(e.pointerId);
+  const n = noteAt(e.clientX, e.clientY); if (n < 0) return;
+  pointerNote.set(e.pointerId, n); noteOn(n, "p" + e.pointerId);
+});
+$("keys").addEventListener("pointermove", (e) => {
+  if (!pointerNote.has(e.pointerId)) return;
+  const n = noteAt(e.clientX, e.clientY), was = pointerNote.get(e.pointerId);
+  if (n < 0 || n === was) return;
+  noteOff(was, "p" + e.pointerId); pointerNote.set(e.pointerId, n); noteOn(n, "p" + e.pointerId);
+});
+const lift = (e) => { if (!pointerNote.has(e.pointerId)) return; noteOff(pointerNote.get(e.pointerId), "p" + e.pointerId); pointerNote.delete(e.pointerId); };
+["pointerup", "pointercancel", "lostpointercapture"].forEach((t) => $("keys").addEventListener(t, lift));
+const downKeys = new Map();
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName) && e.key !== "Tab") return;
+  const k = e.key.toLowerCase();
+  if (k === "tab") { e.preventDefault(); if (!e.repeat) setSus(!st.sus); return; }
+  if (e.repeat) return;
+  if (k === "[") return octave(-12);
+  if (k === "]") return octave(12);
+  const s = keyFor(k); if (s < 0) return;
+  if (!ctx) start();
+  const n = st.oct + s; downKeys.set(k, n); noteOn(n, "k" + k);
+});
+document.addEventListener("keyup", (e) => { const k = e.key.toLowerCase(); if (downKeys.has(k)) { noteOff(downKeys.get(k), "k" + k); downKeys.delete(k); } });
+window.addEventListener("blur", () => { for (const [k, n] of downKeys) noteOff(n, "k" + k); downKeys.clear(); });
+function octave(d) { allOff(); st.oct = Math.max(24, Math.min(84, st.oct + d)); buildKeys(); }
+function setSus(on) {
+  st.sus = on; $("sus").setAttribute("aria-pressed", String(on));
+  if (!on) for (const n of sustained) { send(["lab_note", 0, n, 0]); keyEl(n, false); }
+  if (!on) sustained.clear();
+}
+
+/* ---- the controls ---- */
+function ctl(box, name, desc, val, fmt, onInput, opts = {}) {
+  const d = document.createElement("div"); d.className = "ctl" + (opts.idle ? " idle" : "");
+  const id = "c" + Math.random().toString(36).slice(2, 8);
+  d.innerHTML = '<div class="ctl-h"><label><b></b></label><output></output></div><input type="range"><p></p>';
+  d.querySelector("b").textContent = name; d.querySelector("label").htmlFor = id;
+  const inp = d.querySelector("input"), out = d.querySelector("output");
+  inp.id = id; inp.min = opts.min ?? 0; inp.max = opts.max ?? 1; inp.step = opts.step ?? 0.01; inp.value = val;
+  out.textContent = fmt(+inp.value);
+  const p = d.querySelector("p"); if (desc) p.textContent = desc; else p.remove();
+  inp.addEventListener("input", () => { out.textContent = fmt(+inp.value); onInput(+inp.value); dump(); });
+  box.appendChild(d);
+}
+const pct = (x) => Math.round(x * 100);
+function render() {
+  const v = st.voice, info = NEW_INFO[v];
+  $("nowName").textContent = voiceNames[v];
+  $("nowMeta").textContent = info ? info.t : "an older voice";
+  document.querySelectorAll(".voice").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.v === v)));
+  $("older").value = v < NEWV ? String(v) : "";
+  buildKeys();
+  const box = $("vctl"); box.innerHTML = "";
+  const c1 = document.createElement("div"); c1.className = "card"; box.appendChild(c1);
+  const c2 = document.createElement("div"); c2.className = "card"; box.appendChild(c2);
+  const set = (p) => (x) => { st.cp[p] = x; send(["lab_set_cp", 0, p, x]); };
+  const d = (k, fallback) => info ? (info[k] || (k === "tone" ? "no effect on this voice" : k === "len" ? "no effect on this voice" : "no effect on this voice")) : fallback;
+  ctl(c1, "Character", d("chr", "the voice's own control"), st.cp[CP.CHAR], pct, set(CP.CHAR), { idle: info && !info.chr });
+  ctl(c1, "Tone", d("tone", "brightness"), st.cp[CP.TONE], pct, set(CP.TONE), { idle: info && !info.tone });
+  ctl(c1, "Length", d("len", "how long notes last"), st.cp[CP.LEN], pct, set(CP.LEN), { idle: info && !info.len });
+  ctl(c1, "Level", "", st.cp[CP.LEVEL], pct, set(CP.LEVEL));
+  ctl(c2, "Echo send", info && info.grains ? "the grains read the echo's tape; send other channels into it (Backing) or there's nothing to read" : "", st.cp[CP.ECHO], pct, set(CP.ECHO));
+  ctl(c2, "Reverb send", "", st.cp[CP.VERB], pct, set(CP.VERB));
+  ctl(c2, "Pan", "", st.cp[CP.PAN], (x) => x < 0.48 ? "L" + pct(0.5 - x) * 2 : x > 0.52 ? "R" + pct(x - 0.5) * 2 : "C", set(CP.PAN));
+  ctl(c2, "Activity", "how much it plays by itself (Let it play itself)", st.cp[CP.ACT], pct, set(CP.ACT), { idle: !st.self });
+  ctl(c2, "Register", "its octave when it plays itself (the keys play where you press)", Math.round(st.cp[CP.REG] * 4), (x) => ["−2", "−1", "0", "+1", "+2"][x] + " oct",
+    (x) => { st.cp[CP.REG] = x / 4; send(["lab_set_cp", 0, CP.REG, x / 4]); }, { min: 0, max: 4, step: 1, idle: !st.self && v !== 25 });
+  ctl(c2, "Macro", "a slow wandering of its controls over 16 s (as the SP-1's channel macro)", st.macro, pct, (x) => { st.macro = x; send(["lab_macro", 0, x, 16]); });
+  renderGlobals();
+  dump();
+}
+function renderGlobals() {
+  const box = $("gctl"); box.innerHTML = "";
+  const a = document.createElement("div"); a.className = "card"; box.appendChild(a);
+  const b = document.createElement("div"); b.className = "card"; box.appendChild(b);
+  const sg = (k) => (x) => { st.g[k] = x; send(["lab_set_gp", k, x]); };
+  ctl(a, "Reverb", "", st.space[0], (x) => RV_NAMES[x], (x) => { st.space[0] = x; send(["lab_set_space", 0, x]); }, { min: 0, max: 3, step: 1 });
+  ctl(a, "Reverb amount", "", st.g[GP.REVERB], pct, sg(GP.REVERB));
+  ctl(a, "Echo amount", "", st.g[GP.DELAY], pct, sg(GP.DELAY));
+  ctl(a, "Echo time", "", st.space[2], (x) => ECHO_NAMES[x], (x) => { st.space[2] = x; send(["lab_set_space", 2, x]); }, { min: 0, max: 8, step: 1 });
+  ctl(a, "Filter", "the master filter: low-pass left, high-pass right", st.g[GP.FILTER], (x) => x < 0.48 ? "LP " + pct(0.5 - x) * 2 : x > 0.52 ? "HP " + pct(x - 0.5) * 2 : "open", sg(GP.FILTER));
+  ctl(b, "Tempo", "the echo's time, the arpeggio and grooves, and the sequencer", st.g[GP.TEMPO], (x) => Math.round(20 + 100 * x) + " BPM", sg(GP.TEMPO));
+  ctl(b, "Key", "the chord the Chip's arpeggio and the self-playing parts use", Math.round(st.g[GP.ROOT] * 11), (x) => NOTE[x], (x) => { st.g[GP.ROOT] = x / 11; send(["lab_set_gp", GP.ROOT, x / 11]); }, { min: 0, max: 11, step: 1 });
+  ctl(b, "Mode", "", Math.round(st.g[GP.MODE] * 7), (x) => MODES[x], (x) => { st.g[GP.MODE] = x / 7; send(["lab_set_gp", GP.MODE, x / 7]); }, { min: 0, max: 7, step: 1 });
+  ctl(b, "Drift", "how often the chord moves", st.g[GP.DRIFT], pct, sg(GP.DRIFT));
+}
+function dump() {
+  const r = (x) => Math.round(x * 100) / 100;
+  $("dump").value = JSON.stringify({ voice: voiceNames[st.voice], character: r(st.cp[CP.CHAR]), tone: r(st.cp[CP.TONE]), length: r(st.cp[CP.LEN]),
+    level: r(st.cp[CP.LEVEL]), echo: r(st.cp[CP.ECHO]), verb: r(st.cp[CP.VERB]), pan: r(st.cp[CP.PAN]), activity: r(st.cp[CP.ACT]),
+    register: r(st.cp[CP.REG]), macro: r(st.macro), reverb: RV_NAMES[st.space[0]], reverbAmt: r(st.g[GP.REVERB]), echoAmt: r(st.g[GP.DELAY]),
+    echoTime: ECHO_NAMES[st.space[2]], filter: r(st.g[GP.FILTER]), bpm: Math.round(20 + 100 * st.g[GP.TEMPO]),
+    key: NOTE[Math.round(st.g[GP.ROOT] * 11)] + " " + MODES[Math.round(st.g[GP.MODE] * 7)], backing: st.backing ? pieceNames[st.piece] : null });
+}
+
+async function start() {
+  if (ctx) {
+    if (ctx.state === "running") { allOff(); await ctx.suspend(); $("start").textContent = "Start sound"; } else { await ctx.resume(); $("start").textContent = "Stop sound"; }
+    return;
+  }
+  try { ctx = new AudioContext({ sampleRate: 48000 }); } catch (e) { ctx = new AudioContext(); }
+  const opt = { wasm: wasmBytes.slice(0), seed: (Math.random() * 4294967295) >>> 0 };
+  const onSt = (m) => { $("glow").style.width = Math.round(Math.min(1, m.glow) * 100) + "%"; };
+  try {
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
+    const node = new AudioWorkletNode(ctx, "glag-inst", { numberOfOutputs: 1, outputChannelCount: [2], processorOptions: opt });
+    node.port.onmessage = (e) => { if (e.data.t === "st") onSt(e.data); };
+    node.connect(ctx.destination);
+    port = node.port;
+  } catch (err) {
+    const core = new LabCore(opt), sp = ctx.createScriptProcessor(1024, 0, 2);
+    sp.onaudioprocess = (e) => { const m = core.run(e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)); if (m) onSt(m); };
+    sp.connect(ctx.destination);
+    port = { postMessage: (m) => core.cmd(m) };
+  }
+  $("start").textContent = "Stop sound";
+  send(["lab_volume", +$("vol").value]);
+  applyAll();
+}
+
+async function boot() {
+  wasmBytes = await (await fetch("glag_lab.wasm")).arrayBuffer();
+  W = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}).exports;
+  W.lab_init(1);
+  const nv = W.lab_nvoices();
+  for (let v = 0; v < nv; v++) voiceNames.push(cstr(W.lab_voice_name(v)));
+  for (let i = 0; i < W.lab_npieces(); i++) pieceNames.push(cstr(W.lab_name(i)));
+  const pg = pieceGlobals(118); st.g = pg.g; st.space = pg.space;
+  for (let v = NEWV; v < nv; v++) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "voice"; b.dataset.v = v;
+    b.innerHTML = "<b></b><span></span>";
+    b.querySelector("b").textContent = voiceNames[v];
+    b.querySelector("span").textContent = NEW_INFO[v] ? NEW_INFO[v].t : "";
+    b.addEventListener("click", () => pickVoice(v));
+    $("voices").appendChild(b);
+  }
+  const o0 = document.createElement("option"); o0.value = ""; o0.textContent = "—"; $("older").appendChild(o0);
+  for (let v = 0; v < NEWV; v++) { const o = document.createElement("option"); o.value = v; o.textContent = voiceNames[v]; $("older").appendChild(o); }
+  $("older").addEventListener("change", (e) => { if (e.target.value !== "") pickVoice(+e.target.value); });
+  pieceNames.forEach((n, i) => { const o = document.createElement("option"); o.value = i; o.textContent = (i + 1) + ". " + n; $("piece").appendChild(o); });
+  $("piece").value = String(st.piece);
+  $("piece").addEventListener("change", (e) => {
+    st.piece = +e.target.value; const pg = pieceGlobals(st.piece); st.g = pg.g; st.space = pg.space;
+    if (!st.backing) setBacking(true); else if (ctx) applyAll();
+    renderGlobals(); dump();
+  });
+  st.cp = defaultsFor(st.voice);
+  render();
+}
+function setBacking(on) { st.backing = on; $("backing").setAttribute("aria-pressed", String(on)); if (ctx) applyAll(); dump(); }
+$("start").addEventListener("click", start);
+$("vol").addEventListener("input", (e) => send(["lab_volume", +e.target.value]));
+$("self").addEventListener("click", () => { st.self = !st.self; $("self").setAttribute("aria-pressed", String(st.self)); allOff(); send(["lab_keep", st.self ? 0 : 1]); render(); });
+$("sus").addEventListener("click", () => setSus(!st.sus));
+$("backing").addEventListener("click", () => setBacking(!st.backing));
+$("octDn").addEventListener("click", () => octave(-12));
+$("octUp").addEventListener("click", () => octave(12));
+$("copy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("dump").value); $("copy").textContent = "Copied"; } catch (e) { $("dump").select(); } setTimeout(() => { $("copy").textContent = "Copy"; }, 1500); });
+$("reset").addEventListener("click", () => { st.cp = defaultsFor(st.voice); st.macro = 0; if (ctx) applyAll(); render(); });
+boot().catch((e) => { $("nowMeta").textContent = "Could not load the engine: " + e.message; });
+</script>
