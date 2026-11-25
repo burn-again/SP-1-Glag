@@ -54,7 +54,7 @@ select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--sur
 .seg i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); opacity: .9; }
 .seg span { position: relative; font: 500 10.5px/1 var(--mono); padding: 0 5px 6px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: clip; }
 .seg.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
-.k-hush { --k: var(--hush); } .k-stir { --k: var(--stir); } .k-build { --k: var(--build); } .k-gap { --k: var(--gap); }
+.k-seed { --k: var(--build); } .k-hush { --k: var(--hush); } .k-stir { --k: var(--stir); } .k-build { --k: var(--build); } .k-gap { --k: var(--gap); }
 .k-peak { --k: var(--peak); } .k-fall { --k: var(--fall); } .k-ring { --k: var(--ring); }
 .seg { background: color-mix(in srgb, var(--k) 45%, var(--chip)); }
 .seg i { background: var(--k); }
@@ -108,7 +108,7 @@ select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--sur
 <header>
   <span class="eyebrow">SP-1 · Glag · space</span>
   <h1>Glag Space</h1>
-  <p class="lede">Sparse percussion and struck voices, with both grain voices feeding on what they leave behind: Grains replays slices of the echo's tape, Haze replays the reverb's tail. Each piece has a tide, a slow shape of quiet, stirring, building, a held breath, the peak, the fall and the ringing, and the sends, the delay and the reverb move with it.</p>
+  <p class="lede">Sparse percussion and struck voices, with both grain voices feeding on what they leave behind: Grains replays slices of the echo's tape, Haze replays the reverb's tail. The hits never stop, so the buffers always have something; each piece has a tide that pulls their dry sound back and pushes it forward, as song mode moves levels, while the sends, the delay and reverb amounts move and the echo time walks through its lengths like FFWD and RWD on the Harmony page.</p>
 </header>
 
 <section aria-label="Now playing">
@@ -166,22 +166,22 @@ select { font: 400 14px/1.2 var(--body); color: var(--fg); background: var(--sur
 <script>
 const PRESETS = [
   [145, "Glass Workshop", "Struck glass and still vibes, the echo's grains and the reverb's, ping-pong echoes.", "Arc · Lydian · 72"],
-  [146, "Log Drum Night", "Log drums and a kalimba thrown into a dotted-eighth ping-pong echo, both grain voices.", "Waves · Dorian · 84"],
+  [146, "Log Drum Night", "Low log drums and a kalimba thrown into a dotted-eighth ping-pong echo, both grain voices.", "Waves · Dorian · 84"],
   [147, "Brush and Haze", "Noir: brushes circling, the double bass on D minor and C7, the tail's grains and the tape's.", "Breath · D · 60"],
-  [148, "Timpani Cathedral", "Timpani and their rolls far off, a music box an octave down, the grains of both.", "Storm · Aeolian · 56"],
-  [149, "Woodblock Rain", "Woodblocks and a koto into short ping-pong echoes, the grains of both.", "Arc · pentatonic minor · 92"],
-  [150, "Tabla Smoke", "Tabla bending into its notes, a warm Rhodes, the tape's grains and the tail's.", "Waves · Phrygian · 76"],
-  [151, "Dub Space", "The Lite Kit in half time, log drums thrown into the echo, ping-pong, grains of both.", "Storm · Aeolian · 70"],
-  [152, "Vibes After Midnight", "Noir: brushes, vibes on a slow motor in broken chords over I, vi, IV, V, the grains of both.", "Breath · F · 58"],
+  [148, "Timpani Cathedral", "Timpani on soft felt far off, a music box an octave down, the grains of both.", "Storm · Aeolian · 56"],
+  [149, "Koto Rain", "A koto and a kalimba into short ping-pong echoes, the grains of both.", "Arc · pentatonic minor · 92"],
+  [150, "Rhodes Smoke", "Low log drums and a warm Rhodes, the tape's grains and the tail's.", "Waves · Phrygian · 76"],
+  [151, "Dub Bells", "Vibes on a slow motor and the double bass into a dotted-quarter ping-pong echo, grains of both.", "Storm · Aeolian · 70"],
+  [152, "Vibes After Midnight", "Noir: brushes, vibes in broken chords over I, vi, IV, V, the grains of both.", "Breath · F · 58"],
   [153, "Marimba Mist", "A marimba and struck glass, ping-pong echoes, both grain voices.", "Waves · Lydian · 80"],
-  [154, "Rimshot Fog", "Noir: the Lite Kit's rimshots and a clap, the double bass on the line cliché, both grain voices.", "Arc · E · 66"],
+  [154, "Music Box Fog", "Noir: a music box an octave down, the double bass on the line cliché, both grain voices.", "Arc · E · 66"],
 ];
 /* measured on the host (3 min each): loudness and peak, to match the pieces without clipping */
-const LOUD = {145: [-25.8, .63], 146: [-26.6, .61], 147: [-27.7, .31], 148: [-26.7, .65], 149: [-31.5, .76],
-  150: [-28.5, .58], 151: [-29.0, .44], 152: [-27.2, .37], 153: [-28.5, .61], 154: [-26.7, .46]};
-const KINDS = ["hush", "stir", "build", "gap", "peak", "fall", "ring"];
-const KIND_TEXT = { hush: "sparse, long tails", stir: "waking, a throw into the echo", build: "busier, the echo tighter",
-  gap: "a held breath: a stab hangs in the held reverb", peak: "everything at once", fall: "the tape stops or turns back", ring: "almost nothing plays; it all rings out" };
+const LOUD = {145: [-25.2, .56], 146: [-24.1, .59], 147: [-26.3, .27], 148: [-23.2, .68], 149: [-30.4, .60],
+  150: [-25.4, .40], 151: [-28.2, .37], 152: [-30.6, .28], 153: [-24.6, .55], 154: [-26.4, .45]};
+const KINDS = ["seed", "hush", "stir", "build", "gap", "peak", "fall", "ring"];
+const KIND_TEXT = { seed: "the first hits thrown into the echo and the reverb, so the grains have something", hush: "the hits pulled back; their echoes, the tail and the grains forward", stir: "coming forward, a throw into the echo, the echo time walking longer",
+  build: "up front, the echo time stepping back and forth", gap: "the hits drop away for a bar: a stab hangs in the held reverb", peak: "everything forward", fall: "the tape stops or turns back", ring: "the hits far back; it all rings out, the echo time walking" };
 const ECHO_NAMES = ["dotted ¼", "½", "dotted ½", "a bar", "two bars", "⅛", "dotted ⅛", "¼", "the string"];
 const RV_NAMES = ["Hall", "Chamber", "Shimmer", "Bloom"];
 const HEADS = ["", "repeat", "stop", "reverse"];

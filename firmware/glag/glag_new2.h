@@ -785,7 +785,7 @@ static void br_fire(chan *c, int ch, int m, float vel)
 		S->sw_p0 = br_rnd(S);
 	}
 	if (m & BR_TAP) {                             /* laid on the head, then dragged off it */
-		S->tp_a = vel * 0.5f;
+		S->tp_a = vel * 0.32f;
 		S->tp_k = fexp2(-9.9658f / ((0.05f + 0.08f * len) * VSR));
 		S->dr_a = vel * 0.12f;
 		S->dr_k = fexp2(-9.9658f / ((0.18f + 0.15f * len) * VSR));
@@ -817,12 +817,7 @@ static void br_step(chan *c, int ch, uint32_t step)
 		m |= BR_SWEEP;
 	if ((s16 == 4 || s16 == 12) && act > 0.3f && rnd() < 0.6f + act)
 		m |= BR_TAP;
-	if (act > 0.5f && chr > 0.15f) {
-		if ((s16 & 3) == 0 && rnd() < 0.5f + 0.5f * chr)
-			m |= BR_RIDE;
-		if ((s16 == 7 || s16 == 15) && rnd() < (act - 0.5f) * 2.0f * chr)
-			m |= BR_RIDE;
-	}
+	(void)chr;                                     /* (the ride is gone: its narrow bands sang like a kettle) */
 	if (s16 == 0 && act > 0.7f && rnd() < 0.5f)
 		m |= BR_KICK;
 	if (!m && act > 0.4f && (s16 & 1) && rnd() < 0.03f * act) {
@@ -1360,67 +1355,78 @@ static void rhodes_step(chan *c, int ch, uint32_t step, float act, int base)
 }
 
 /* ================================================================ the tide (the space pieces) */
-/* Audition: a piece's own slow shape for its space. Sections, each so many bars: every channel's
- * activity and its echo and reverb sends (percent of the piece's own), the delay and reverb amounts
- * (added), the echo's time, and something at its start (a throw into the echo, the reverb or the
- * echo held through it, the tape repeating, stopping or reversing for two beats). The values
- * glide over the section's first bars. Each time round it varies: the lengths by a bar or two, each
- * channel's share by a fifth, the event now and then another, which channel is thrown, and
- * sometimes the first two channels trade places in the lead. Channels by convention: the
- * percussion, a struck voice, the Grains (the echo's tape), Haze (the reverb's tail) */
-enum { TK_HUSH, TK_STIR, TK_BUILD, TK_GAP, TK_PEAK, TK_FALL, TK_RING, TK_N };
+/* Audition: a piece's own slow shape for its space. The hits never stop (every channel keeps at
+ * least four fifths of its activity, so the echo's tape and the reverb always have something for
+ * the grains); what moves is how loud each channel is dry, as song mode moves its levels: pulled
+ * back, its echoes and the reverb's tail and the grains come forward. Sections, each so many bars:
+ * every channel's dry level, activity and echo and reverb sends (percent of the piece's own), the
+ * delay and reverb amounts (added), the echo's time walking a step longer or shorter every so many
+ * bars as the Harmony page's FFWD and RWD do (the heads swooping to each new length), and something
+ * at its start (a throw into the echo, the reverb or echo held, the tape repeating, stopping or
+ * reversing for two beats). The first is a seed: two bars of hits thrown into the echo and reverb,
+ * so the grains have something from the start. Each time round: the lengths by a bar or two, each
+ * channel's share, the event now and then another, which channel is thrown. Channels by
+ * convention: two struck voices, the Grains (the echo's tape), Haze (the reverb's tail) */
+enum { TK_SEED, TK_HUSH, TK_STIR, TK_BUILD, TK_GAP, TK_PEAK, TK_FALL, TK_RING, TK_N };
 enum { TE_NONE, TE_THROW, TE_HOLDV, TE_HOLDE, TE_REPEAT, TE_STOP, TE_REV };
-const char *const GL_TIDE_KIND[TK_N] = {"hush", "stir", "build", "gap", "peak", "fall", "ring"};
+const char *const GL_TIDE_KIND[TK_N] = {"seed", "hush", "stir", "build", "gap", "peak", "fall", "ring"};
 typedef struct {
 	uint8_t kind, bars, glide;
-	uint8_t act[4], echo[4], verb[4];
+	uint8_t dry[4], act[4], echo[4], verb[4];
 	int8_t dl, rv;
-	uint8_t echo_t;                        /* 255 the piece's own, 254 as it is */
+	int8_t walk;                           /* the echo's time: 0 still, 1 longer, -1 shorter, 2 back and forth */
+	uint8_t every;                         /* (bars between its steps) */
 	uint8_t ev;
 } tide_sec;
 #define E100 {100, 100, 100, 100}
+#define SEED {TK_SEED, 2, 0, {100, 100, 30, 30}, {110, 110, 60, 60}, {160, 160, 100, 100}, {150, 150, 100, 100}, 10, 10, 0, 1, TE_THROW}
 static const tide_sec TD_ARC[] = {        /* one long arc */
-	{TK_HUSH, 8, 4, {45, 30, 35, 90}, E100, {110, 110, 100, 100}, 0, 10, 255, TE_NONE},
-	{TK_STIR, 6, 4, {85, 65, 65, 90}, {130, 120, 110, 100}, E100, 8, 0, 254, TE_THROW},
-	{TK_BUILD, 4, 4, {120, 100, 120, 100}, {160, 140, 130, 100}, {85, 85, 100, 100}, 18, -5, GL_NECHO - 3, TE_NONE},
-	{TK_GAP, 1, 0, {0, 0, 10, 60}, E100, {150, 150, 100, 120}, 18, 15, 254, TE_HOLDV},
-	{TK_PEAK, 4, 0, {150, 130, 150, 120}, {170, 150, 140, 110}, E100, 25, 0, 254, TE_THROW},
-	{TK_FALL, 2, 0, {40, 40, 90, 110}, {120, 120, 150, 120}, {150, 150, 120, 130}, 15, 20, 254, TE_STOP},
-	{TK_RING, 6, 2, {12, 10, 45, 100}, E100, {170, 170, 120, 120}, 12, 25, 255, TE_NONE}};
+	SEED,
+	{TK_HUSH, 8, 4, {35, 30, 95, 100}, {90, 85, 80, 100}, {130, 130, 100, 100}, {150, 150, 100, 100}, 5, 12, 1, 4, TE_NONE},
+	{TK_STIR, 6, 4, {70, 60, 85, 90}, {100, 95, 95, 100}, {140, 140, 100, 100}, {120, 120, 100, 100}, 10, 5, 1, 2, TE_THROW},
+	{TK_BUILD, 4, 3, {100, 90, 75, 80}, {115, 110, 110, 100}, {160, 150, 120, 100}, {95, 95, 100, 100}, 18, 0, 2, 1, TE_NONE},
+	{TK_GAP, 1, 0, {12, 12, 100, 110}, {100, 100, 100, 100}, {160, 160, 100, 100}, {150, 150, 100, 120}, 18, 15, 0, 1, TE_HOLDV},
+	{TK_PEAK, 4, 0, {110, 100, 90, 90}, {120, 115, 115, 110}, {170, 150, 130, 110}, E100, 25, 0, -1, 2, TE_THROW},
+	{TK_FALL, 2, 0, {55, 55, 100, 110}, {90, 90, 100, 100}, {130, 130, 140, 120}, {150, 150, 120, 130}, 15, 20, 0, 1, TE_STOP},
+	{TK_RING, 6, 2, {22, 18, 100, 110}, {85, 80, 80, 100}, {120, 120, 100, 100}, {170, 170, 120, 120}, 12, 25, -1, 2, TE_NONE}};
 static const tide_sec TD_WAVES[] = {      /* two swells */
-	{TK_HUSH, 6, 4, {50, 40, 40, 90}, E100, {110, 110, 100, 100}, 0, 10, 255, TE_NONE},
-	{TK_STIR, 4, 3, {105, 95, 90, 100}, {150, 140, 120, 100}, E100, 15, 0, 254, TE_THROW},
-	{TK_RING, 4, 2, {20, 20, 60, 110}, {110, 110, 110, 100}, {160, 160, 110, 120}, 10, 20, 254, TE_NONE},
-	{TK_HUSH, 4, 3, {45, 35, 40, 90}, E100, E100, 0, 10, 255, TE_NONE},
-	{TK_BUILD, 4, 3, {115, 100, 110, 110}, {160, 150, 130, 100}, E100, 18, 0, 254, TE_REPEAT},
-	{TK_PEAK, 2, 0, {145, 130, 140, 120}, {170, 150, 140, 110}, E100, 25, 0, 254, TE_THROW},
-	{TK_RING, 6, 1, {10, 10, 50, 100}, E100, {170, 170, 120, 120}, 12, 25, 255, TE_REV}};
+	SEED,
+	{TK_HUSH, 6, 4, {35, 30, 90, 100}, {90, 85, 80, 100}, {130, 130, 100, 100}, {140, 140, 100, 100}, 5, 10, 1, 3, TE_NONE},
+	{TK_STIR, 4, 3, {90, 80, 85, 90}, {105, 100, 95, 100}, {150, 140, 120, 100}, E100, 15, 0, 2, 1, TE_THROW},
+	{TK_RING, 4, 2, {25, 20, 100, 110}, {85, 80, 85, 100}, {120, 120, 110, 100}, {160, 160, 110, 120}, 10, 20, -1, 2, TE_NONE},
+	{TK_HUSH, 4, 3, {35, 30, 90, 100}, {90, 85, 80, 100}, {130, 130, 100, 100}, {140, 140, 100, 100}, 5, 10, 0, 1, TE_NONE},
+	{TK_BUILD, 4, 3, {100, 90, 80, 85}, {115, 110, 110, 105}, {160, 150, 130, 100}, E100, 18, 0, 1, 1, TE_REPEAT},
+	{TK_PEAK, 2, 0, {110, 100, 90, 90}, {120, 115, 115, 110}, {170, 150, 140, 110}, E100, 25, 0, 0, 1, TE_THROW},
+	{TK_RING, 6, 1, {20, 15, 100, 110}, {85, 80, 80, 100}, {120, 120, 100, 100}, {170, 170, 120, 120}, 12, 25, -1, 2, TE_REV}};
 static const tide_sec TD_STORM[] = {      /* a long build */
-	{TK_HUSH, 8, 4, {35, 30, 30, 90}, E100, E100, 0, 12, 255, TE_NONE},
-	{TK_STIR, 8, 6, {70, 55, 60, 90}, {120, 115, 110, 100}, E100, 6, 0, 254, TE_NONE},
-	{TK_BUILD, 8, 6, {100, 85, 100, 100}, {150, 130, 120, 100}, {90, 90, 100, 100}, 15, 0, 7, TE_THROW},
-	{TK_BUILD, 4, 3, {130, 110, 130, 110}, {170, 150, 140, 100}, {85, 85, 100, 100}, 25, 0, 6, TE_REPEAT},
-	{TK_GAP, 1, 0, {0, 0, 0, 70}, E100, {160, 160, 100, 120}, 25, 20, 254, TE_HOLDV},
-	{TK_PEAK, 6, 0, {150, 140, 150, 130}, {180, 160, 150, 110}, E100, 28, 0, 254, TE_THROW},
-	{TK_FALL, 2, 0, {30, 30, 80, 110}, E100, {160, 160, 120, 130}, 15, 22, 254, TE_STOP},
-	{TK_RING, 8, 2, {8, 8, 40, 100}, E100, {180, 180, 120, 120}, 12, 28, 255, TE_HOLDE}};
-static const tide_sec TD_BREATH[] = {     /* peaks out of silence */
-	{TK_HUSH, 4, 2, {40, 30, 30, 90}, E100, E100, 0, 10, 255, TE_NONE},
-	{TK_PEAK, 2, 0, {140, 120, 130, 110}, {160, 150, 130, 100}, E100, 20, 0, 254, TE_THROW},
-	{TK_RING, 4, 0, {10, 10, 50, 110}, E100, {170, 170, 120, 120}, 10, 22, 254, TE_HOLDV},
-	{TK_HUSH, 4, 2, {45, 35, 40, 90}, E100, E100, 0, 10, 255, TE_NONE},
-	{TK_STIR, 2, 1, {90, 70, 70, 100}, {140, 120, 110, 100}, E100, 10, 0, 5, TE_NONE},
-	{TK_GAP, 1, 0, {0, 0, 10, 70}, E100, {150, 150, 100, 120}, 15, 15, 254, TE_HOLDV},
-	{TK_PEAK, 2, 0, {150, 130, 140, 120}, {170, 150, 140, 110}, E100, 25, 0, 254, TE_REPEAT},
-	{TK_RING, 6, 0, {10, 8, 45, 100}, E100, {175, 175, 120, 120}, 12, 25, 255, TE_STOP}};
+	SEED,
+	{TK_HUSH, 8, 4, {30, 25, 90, 100}, {90, 85, 75, 100}, {130, 130, 100, 100}, {150, 150, 100, 100}, 5, 12, 0, 1, TE_NONE},
+	{TK_STIR, 8, 6, {60, 50, 85, 95}, {100, 95, 90, 100}, {130, 125, 110, 100}, {120, 120, 100, 100}, 8, 5, 1, 4, TE_NONE},
+	{TK_BUILD, 8, 6, {90, 80, 80, 90}, {110, 105, 105, 100}, {150, 130, 120, 100}, {100, 100, 100, 100}, 15, 0, -1, 2, TE_THROW},
+	{TK_BUILD, 4, 3, {110, 100, 75, 85}, {120, 115, 120, 110}, {170, 150, 140, 100}, {90, 90, 100, 100}, 25, 0, 2, 1, TE_REPEAT},
+	{TK_GAP, 1, 0, {10, 10, 100, 110}, {100, 100, 100, 100}, {170, 170, 100, 100}, {160, 160, 100, 120}, 25, 20, 0, 1, TE_HOLDV},
+	{TK_PEAK, 6, 0, {115, 105, 90, 95}, {120, 120, 120, 115}, {180, 160, 150, 110}, E100, 28, 0, -1, 3, TE_THROW},
+	{TK_FALL, 2, 0, {50, 50, 100, 110}, {90, 90, 100, 100}, E100, {160, 160, 120, 130}, 15, 22, 0, 1, TE_STOP},
+	{TK_RING, 8, 2, {18, 15, 100, 110}, {85, 80, 80, 100}, {120, 120, 100, 100}, {180, 180, 120, 120}, 12, 28, 1, 3, TE_HOLDE}};
+static const tide_sec TD_BREATH[] = {     /* swells out of the tails */
+	SEED,
+	{TK_HUSH, 4, 2, {30, 25, 95, 100}, {90, 85, 80, 100}, {130, 130, 100, 100}, {140, 140, 100, 100}, 5, 10, 0, 1, TE_NONE},
+	{TK_PEAK, 2, 0, {110, 100, 85, 90}, {115, 110, 110, 105}, {160, 150, 130, 100}, E100, 20, 0, 1, 1, TE_THROW},
+	{TK_RING, 4, 0, {20, 15, 100, 110}, {85, 80, 85, 100}, {120, 120, 100, 100}, {170, 170, 120, 120}, 10, 22, -1, 2, TE_HOLDV},
+	{TK_HUSH, 4, 2, {35, 30, 95, 100}, {90, 85, 80, 100}, {130, 130, 100, 100}, {140, 140, 100, 100}, 5, 10, 0, 1, TE_NONE},
+	{TK_STIR, 2, 1, {80, 70, 85, 95}, {105, 100, 95, 100}, {140, 130, 110, 100}, E100, 10, 0, 2, 1, TE_NONE},
+	{TK_GAP, 1, 0, {12, 12, 100, 110}, {100, 100, 100, 100}, {160, 160, 100, 100}, {150, 150, 100, 120}, 15, 15, 0, 1, TE_HOLDV},
+	{TK_PEAK, 2, 0, {110, 100, 90, 90}, {120, 115, 115, 110}, {170, 150, 140, 110}, E100, 25, 0, -1, 1, TE_REPEAT},
+	{TK_RING, 6, 0, {20, 15, 100, 110}, {85, 80, 80, 100}, {120, 120, 100, 100}, {175, 175, 120, 120}, 12, 25, 1, 2, TE_STOP}};
 static const struct { const tide_sec *s; uint8_t n; } TIDES[4] = {
-	{TD_ARC, 7}, {TD_WAVES, 7}, {TD_STORM, 8}, {TD_BREATH, 8}};
+	{TD_ARC, 8}, {TD_WAVES, 8}, {TD_STORM, 9}, {TD_BREATH, 9}};
 /* the space pieces (145 on): their progression (0 the drift) and their tide */
 static const uint8_t PIECE_SPACE[10][2] = {
 	{0, 1}, {0, 2}, {1, 4}, {0, 3}, {0, 1}, {0, 2}, {0, 3}, {3, 4}, {0, 2}, {5, 1}};
 static void space_derive(float bpm);
 static uint8_t tide_on = 1, tide_s, tide_bars, tide_len, tide_held, tide_swap, tide_started;
-static float tide_cur[3][4], tide_tgt[3][4], tide_cdl, tide_crv, tide_tdl, tide_trv, tide_k;
+static float tide_cur[4][4], tide_tgt[4][4], tide_cdl, tide_crv, tide_tdl, tide_trv, tide_k;
+static int8_t tide_wdir = 1;
 static float tide_f[4] = {1.0f, 1.0f, 1.0f, 1.0f}, tide_throw[4], tide_head_t, tide_dt_acc;
 static uint8_t tide_echo_t = 255;
 static float tide_holdv_t;
@@ -1476,25 +1482,27 @@ static void tide_enter(int s, int now)
 	tide_len = t->bars;
 	if (t->bars >= 4)
 		tide_len = (uint8_t)(t->bars - 1 + rndi(3));    /* a bar more or less */
-	if (s == 0) {                                     /* a new time round: new shares */
+	if (s <= 1) {                                     /* a new time round: new shares */
 		for (int c = 0; c < 4; c++)
 			tide_f[c] = 0.8f + 0.4f * rnd();
 		tide_swap = rnd() < 0.3f;
 	}
 	for (int c = 0; c < 4; c++) {
 		const int cc = tide_swap && c < 2 ? 1 - c : c;   /* (the first two trading the lead) */
-		tide_tgt[0][c] = (float)t->act[cc] * 0.01f * (t->kind == TK_GAP ? 1.0f : tide_f[c]);
+		const float f = 0.85f + 0.15f * tide_f[c];   /* (each channel's share this time round) */
+		tide_tgt[0][c] = (float)t->act[cc] * 0.01f * f;
+		if (c < 2 && tide_tgt[0][c] < 0.8f)
+			tide_tgt[0][c] = 0.8f;                       /* the hits never stop */
 		tide_tgt[1][c] = (float)t->echo[c] * 0.01f;
 		tide_tgt[2][c] = (float)t->verb[c] * 0.01f;
+		tide_tgt[3][c] = (float)t->dry[cc] * 0.01f * (t->kind == TK_GAP ? 1.0f : tide_f[c]);
 	}
 	tide_tdl = (float)t->dl * 0.01f;
 	tide_trv = (float)t->rv * 0.01f;
-	if (t->echo_t != 254)
-		tide_echo_t = t->echo_t;
 	const float gs = (float)t->glide * 4.0f * beat;
 	tide_k = gs > 0.01f ? gs : 0.0f;
 	if (now || t->glide == 0) {
-		for (int k = 0; k < 3; k++)
+		for (int k = 0; k < 4; k++)
 			for (int c = 0; c < 4; c++)
 				tide_cur[k][c] = tide_tgt[k][c];
 		tide_cdl = tide_tdl;
@@ -1504,6 +1512,7 @@ static void tide_enter(int s, int now)
 	int ev = t->ev;
 	if (!now && rnd() < 0.35f) {
 		static const uint8_t ALT[TK_N][3] = {
+			{TE_THROW, TE_THROW, TE_THROW},
 			{TE_NONE, TE_NONE, TE_HOLDE}, {TE_THROW, TE_NONE, TE_REPEAT}, {TE_REPEAT, TE_THROW, TE_NONE},
 			{TE_HOLDV, TE_HOLDV, TE_NONE}, {TE_THROW, TE_REPEAT, TE_NONE}, {TE_STOP, TE_REV, TE_HOLDE},
 			{TE_NONE, TE_HOLDE, TE_REV}};
@@ -1549,6 +1558,7 @@ static void tide_reset(void)
 	tide_started = 0;
 	for (int c = 0; c < 4; c++) {
 		tide_a[c] = 1.0f;
+		tide_d[c] = 1.0f;
 		tide_throw[c] = 0.0f;
 	}
 	tide_echo_t = 255;
@@ -1563,14 +1573,36 @@ static void tide_bar(void)
 		tide_enter(0, 1);
 		return;
 	}
-	if (++tide_bars >= tide_len)
-		tide_enter((tide_s + 1) % TIDES[tide_x - 1].n, 0);
+	if (++tide_bars >= tide_len) {
+		const int nx = (tide_s + 1) % TIDES[tide_x - 1].n;
+		tide_enter(nx ? nx : 1, 0);                      /* (the seed only opens the piece) */
+		return;
+	}
+	/* the echo's time walking, as FFWD and RWD on the Harmony page: a step through the lengths
+	 * (an eighth to a bar), the heads swooping to each */
+	const tide_sec *t = &TIDES[tide_x - 1].s[tide_s];
+	if (t->walk && t->every && tide_bars % t->every == 0) {
+		const uint8_t cur = tide_echo_t == 255 ? Pb.space[GL_SP_ECHO] : tide_echo_t;
+		int pos = 4;
+		for (int k = 1; k < GL_NECHO; k++)
+			if (GL_ECHO_ORDER[k] == cur)
+				pos = k;
+		int d = t->walk == 2 ? tide_wdir : t->walk;
+		if (pos + d < 1 || pos + d > GL_NECHO - 2) {
+			d = -d;                                    /* (at the end of the lengths: back the other way) */
+			tide_wdir = (int8_t)-tide_wdir;
+		}
+		if (t->walk == 2)
+			tide_wdir = (int8_t)-tide_wdir;
+		tide_echo_t = GL_ECHO_ORDER[pos + d];
+	}
 }
 /* each control tick: glide, and lay it onto the playing patch (the posted one, Pb, is the centre) */
 static void tide_control(float dt)
 {
 	if (!tide_x || !tide_on || !tide_started) {
-		if (tide_a[0] != 1.0f || tide_a[1] != 1.0f || tide_a[2] != 1.0f || tide_a[3] != 1.0f) {
+		if (tide_a[0] != 1.0f || tide_a[1] != 1.0f || tide_a[2] != 1.0f || tide_a[3] != 1.0f ||
+		    tide_d[0] != 1.0f || tide_d[1] != 1.0f || tide_d[2] != 1.0f || tide_d[3] != 1.0f) {
 			tide_reset();                          /* (off: everything back as posted) */
 			for (int c = 0; c < GL_NCH; c++) {
 				P.ch[c][CP_ECHO] = Pb.ch[c][CP_ECHO];
@@ -1584,13 +1616,14 @@ static void tide_control(float dt)
 		return;
 	}
 	const float k = tide_k > 0.0f ? 1.0f - fexp2(-1.4427f * 3.0f * dt / tide_k) : 1.0f;
-	for (int j = 0; j < 3; j++)
+	for (int j = 0; j < 4; j++)
 		for (int c = 0; c < 4; c++)
 			tide_cur[j][c] += (tide_tgt[j][c] - tide_cur[j][c]) * k;
 	tide_cdl += (tide_tdl - tide_cdl) * k;
 	tide_crv += (tide_trv - tide_crv) * k;
 	for (int c = 0; c < GL_NCH; c++) {
 		tide_a[c] = tide_cur[0][c] > 0.0005f ? tide_cur[0][c] : 0.0005f;
+		tide_d[c] = tide_cur[3][c];
 		float th = 0.0f;
 		if (tide_throw[c] > 0.0f) {
 			tide_throw[c] -= dt;

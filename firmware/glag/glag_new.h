@@ -287,14 +287,17 @@ static int perc_render(chan *c, float *A)
 		float y1 = v->f1, y2 = v->f2, z1 = v->idx2, z2 = v->menv2, amp = v->amp, ck = v->menv;
 		const float a1 = v->fk, b1 = v->fq, a2 = v->hold, b2 = v->fb, g1 = v->ratio, g2 = v->bend;
 		const float ai = v->ainc, cl = v->iinc;
+		float sl = 0.0f;
 		for (uint32_t j = 0; j < VSUB; j++) {
-			float x = ck * (ck > 0.99f ? 1.0f : 0.5f * nb_noise(&v->pm));   /* the strike: an impulse, then ~1 ms of noise */
+			float x = ck * (ck > 0.99f ? 1.0f : 0.3f * nb_noise(&v->pm));   /* the strike: a pulse, then ~1 ms of noise, */
 			ck *= 0.8f;
+			sl += 0.18f * (x - sl);                  /* softened (a low-pass near 1 kHz): no click */
+			x = sl;
 			float n1 = a1 * y1 - b1 * y2 + g1 * x;
 			float n2 = a2 * z1 - b2 * z2 + g2 * x;
 			y2 = y1; y1 = n1;
 			z2 = z1; z1 = n2;
-			A[j] += (n1 + n2 + x * cl * 0.3f) * amp;
+			A[j] += (n1 + n2) * amp * (1.0f + 0.0f * cl);
 			amp += ai;
 		}
 		v->f1 = y1; v->f2 = y2; v->idx2 = z1; v->menv2 = z2; v->amp = amp; v->menv = ck;
