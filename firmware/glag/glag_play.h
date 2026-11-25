@@ -505,7 +505,7 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 		if (!c->ks_len[k] && budget_used() + 1 > fm_cap)
 			return 0;
 		c->ks_next = (uint8_t)((k + 1) % 4);
-		ks_pluck(c, k, mtof(ivl_note(ch, (float)note)) * speed * pbend, vel, 0.35f + 0.6f * tone, 0.62f + 0.33f * tone,
+		ks_pluck(c, k, mtof(ivl_note(ch, (float)note)) * speed * pbend, vel, KOTO_EA0 + KOTO_EA1 * tone, 0.62f + 0.33f * tone,
 		         expmap(P.ch[ch][CP_LENGTH], 0.5f, 5.0f), 1);
 		break;
 	}

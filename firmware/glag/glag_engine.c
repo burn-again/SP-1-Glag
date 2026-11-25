@@ -316,7 +316,7 @@ typedef struct {
 	/* kalimba */
 	int16_t ks[KS_BUF];
 	uint16_t ks_len[KS_N], ks_i[KS_N], ks_fill[KS_N];
-	float ks_g[KS_N], ks_a[KS_N], ks_ea[KS_N], ks_elp[KS_N], ks_vel[KS_N];
+	float ks_g[KS_N], ks_a[KS_N], ks_ea[KS_N], ks_elp[KS_N], ks_elp2[KS_N], ks_vel[KS_N];
 	float ks_env[KS_N], ks_kd[KS_N];   /* an estimate of the string's level, for stopping it */
 	/* harp, harpsichord: a tuning all-pass in the loop (its coefficient, memories), and how long
 	 * until the damper falls (harpsichord) */
@@ -1423,6 +1423,13 @@ static float syncopation(int ch)
 }
 
 /* ---- plucked strings (kalimba, harp, harpsichord) ---- */
+/* the koto's nail: its excitation's low-pass (at TONE 0 and the rise to TONE 1), two poles, and the
+ * level that keeps it as loud as the one-pole nail it replaced (Koto Rain: same RMS, no clicks) */
+#ifndef KOTO_EA0
+#define KOTO_EA0 0.2f
+#define KOTO_EA1 0.35f
+#define KOTO_COMP 1.25f
+#endif
 static int ks_count(int voice) { return voice == GV_KALIMBA ? 3 : voice == GV_KOTO ? 4 : KS_N; }
 /* string k plucked at hz: its excitation (noise through a one-pole low-pass, ea), the loop's
  * filter a (0.5: dark, toward 1: bright), -60 dB in T seconds. The excitation is written into
@@ -1441,7 +1448,7 @@ static void ks_pluck(chan *c, int k, float hz, float vel, float ea, float a, flo
 		c->ks_x1[k] = c->ks_y1[k] = 0.0f;
 	}
 	c->ks_ea[k] = ea;
-	c->ks_elp[k] = 0.0f;
+	c->ks_elp[k] = c->ks_elp2[k] = 0.0f;
 	c->ks_vel[k] = vel;
 	c->ks_fill[k] = (uint16_t)len;
 	c->ks_len[k] = (uint16_t)len;
@@ -2137,7 +2144,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 				break;
 			c->ks_next = (uint8_t)((k + 1) % 4);
 			float hz = mtof(ivl_note(ch, (float)note)) * speed * pbend;
-			ks_pluck(c, k, hz, vel, 0.35f + 0.6f * eff_tone(ch), 0.62f + 0.33f * eff_tone(ch),
+			ks_pluck(c, k, hz, vel, KOTO_EA0 + KOTO_EA1 * eff_tone(ch), 0.62f + 0.33f * eff_tone(ch),
 			         expmap(P.ch[ch][CP_LENGTH], 0.5f, 5.0f), 1);
 		} else if (c->voice == GV_KALIMBA) {
 			int k = c->ks_next;
@@ -4088,8 +4095,11 @@ static int chan_render(chan *c, float *A, float *B)
 			float *out = (k & 1) ? B : A;
 			uint32_t n = 0;
 			if (c->ks_fill[k]) {
-				float ea = c->ks_ea[k], lp = c->ks_elp[k], vel = c->ks_vel[k];
+				float ea = c->ks_ea[k], lp = c->ks_elp[k], lp2 = c->ks_elp2[k], vel = c->ks_vel[k];
 				uint32_t m = c->ks_fill[k] < VSUB ? c->ks_fill[k] : VSUB;
+				/* the koto's nail through a second pole: one pole let a burst of noise near the
+				 * top through, a click at every pluck (the device's click count, Koto Rain) */
+				const int two = c->voice == GV_KOTO;
 				const int shaped = c->ks_hold[k] < 0.0f;
 				const int at = len - (int)c->ks_fill[k];
 				for (; n < m; n++) {
@@ -4102,11 +4112,16 @@ static int chan_render(chan *c, float *A, float *B)
 					}
 					lp += ea * (src - lp);
 					float x = lp * vel;                      /* the string's units: 1.0 = 16000 */
+					if (two) {
+						lp2 += ea * (lp - lp2);
+						x = lp2 * vel * KOTO_COMP;
+					}
 					b[i] = (int16_t)(x * 16000.0f);
 					out[n] += x * 1.8f;
 					i = i + 1 == len ? 0 : i + 1;
 				}
 				c->ks_elp[k] = lp;
+				c->ks_elp2[k] = lp2;
 				c->ks_fill[k] = (uint16_t)(c->ks_fill[k] - m);
 			}
 			float y = (float)b[i];                     /* carried: one load per sample */
