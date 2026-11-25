@@ -165,6 +165,17 @@ static const uint16_t XSCALE[GL_NXSCALES] = {
 	0x18B, /* Pelog: 0 1 3 7 8 */
 };
 static uint8_t scale_x;                    /* 0 the Mode control's; n: XSCALE[n - 1] */
+/* (audition: the noir songs' room and echo. REVERB's range was made for the ambient pieces, 5 to
+ * 25 s, and the echo's feedback (0.45 to 0.85) for their slow bar-long repeats: at the noir side's
+ * 42-58 bpm, a repeat every 2-3 s keeping 57 % of the last rang on for half a minute. There the
+ * room's decay time is room_noir of the usual and the echo's feedback echo_noir of it (1, 1: the
+ * old)) */
+static float room_x = 1.0f, room_noir = 0.38f, echo_x = 1.0f, echo_noir = 0.62f;
+void gl_room_noir(float k, float e)
+{
+	room_noir = k > 0.05f ? k : 0.05f;
+	echo_noir = clampf(e, 0.0f, 1.0f);
+}
 
 int gl_cp_steps(int cp) { return cp == CP_REGISTER ? 5 : 0; }
 int gl_gp_steps(int gp) { return gp == GP_ROOT ? 12 : gp == GP_MODE ? GL_NMODES : 0; }
@@ -4673,11 +4684,14 @@ static void control(float dt)
 			sp_was[k] = P.space[k];
 		{
 			const uint8_t sx = scale_x, px = prog_x, tx = tide_x, pp = ph_piece;   /* (the posted piece's scale, progression, tide and manner, kept across this reset) */
+			const float rx = room_x, ex = echo_x;
 			gl_piece(0, &P);
 			scale_x = sx;
 			prog_x = px;
 			tide_x = tx;
 			ph_piece = pp;
+			room_x = rx;
+			echo_x = ex;
 		}
 		if (keep) {                               /* the space as it was: its room, echo and amounts, ringing */
 			for (int k = 0; k < GL_NSP; k++)
@@ -6438,6 +6452,8 @@ void gl_piece(int i, gl_patch *out)
 	/* (and the noir side its progressions, 138 on) */
 	prog_x = (unsigned)(i - 138) < 7u ? PIECE_PROG[i - 138] : 0;
 	ph_piece = (unsigned)(i - 138) < 7u ? (uint8_t)(i - 137) : 0;
+	room_x = ph_piece ? room_noir : 1.0f;
+	echo_x = ph_piece ? echo_noir : 1.0f;
 	/* (the space pieces, 145 on: a progression, perhaps, and their tide) */
 	tide_x = 0;
 	if ((unsigned)(i - 145) < 10u) {

@@ -105,6 +105,7 @@ EXPORT int lab_tide_bars_at(int s) { return gl_tide_bars_at(s); }
 EXPORT void lab_tide(int what, float v) { gl_tide(what, v); }
 EXPORT float lab_space_now(int k) { return gl_space_now(k); }
 EXPORT void lab_phrase_style(int st) { gl_phrase_style(st); }
+EXPORT void lab_room_noir(float k, float e) { gl_room_noir(k, e); }
 EXPORT float lab_glow(int c) { return gl_glow[c & 3]; }
 EXPORT float lab_beat(void) { return gl_beat; }
 EXPORT int lab_ducked(void) { return gl_ducked(); }

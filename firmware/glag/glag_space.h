@@ -195,7 +195,7 @@ static void tape_derive(float bpm, float dl, int echo)
 		t = b * 60.0f / bpm;
 	}
 	tp.len_want = clampf(t, 0.1f, 3.9f) * TAPE_SR;
-	tp.fb = 0.45f + 0.4f * dl;
+	tp.fb = (0.45f + 0.4f * dl) * echo_x;               /* (echo_x 1 but on the noir side: audition) */
 	tp.string = echo == GL_ECHO_STRING;
 	if (tp.string) {
 		/* Karplus-Strong: one cycle of the chord's root (C3 .. B3) round the loop, fed back hard,
@@ -417,6 +417,7 @@ static void rv_derive(float rvv)
 	float dec = clampf(0.75f + 0.22f * rvv, 0.0f, 0.975f);
 	/* the same decay time as a plate whose ~0.725 s loop loses dec^4 */
 	float rt = 3.0f * 0.725f / (-4.0f * flog2(dec) * 0.30103f) * d->rt_k;
+	rt *= room_x;                                   /* (1.0 but on the noir side: audition) */
 	if (rv_hold)
 		rt = 3000.0f;
 	for (int k = 0; k < rv.nl; k++)
