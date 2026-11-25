@@ -540,6 +540,13 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 			make_room(v);
 		nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
 		break;
+	case GV_RHODES:
+		v = alloc(c, 4);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
+		v->hold = gate;
+		break;
 	case GV_LITEKIT:
 	case GV_BRUSH:
 		return 0;
@@ -701,7 +708,7 @@ static void midi_tick(float dt)
 					v->stage = ST_REL;
 				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE || c->voice == GV_BREATH ||
 				         c->voice == GV_TRUMPET || c->voice == GV_SAX || c->voice == GV_CELLO ||
-				         c->voice == GV_UPRIGHT)
+				         c->voice == GV_UPRIGHT || c->voice == GV_RHODES)
 					v->hold = 0.0f;
 			}
 		}

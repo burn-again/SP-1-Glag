@@ -137,7 +137,7 @@ const char *const GL_VOICE_NAME[GV_COUNT] = {"Pad", "Bells", "Bass", "Piano", "M
                                              "Ribbon", "Funk", "Harp", "Harpsichord", "Kit",
                                              "Lite Kit", "Perc", "Organ", "Music Box", "Breath",
                                              "Chip", "Choir", "Koto", "Grains",
-                                             "Muted Trumpet", "Timpani", "Sax", "Cello", "Upright", "Haze", "Vibes", "Brushes"};
+                                             "Trumpet", "Timpani", "Sax", "Cello", "Upright", "Haze", "Vibes", "Brushes", "Rhodes"};
 const char *const GL_MODE_NAME[GL_NMODES] = {"Ionian", "Dorian", "Phrygian", "Lydian",
                                              "Mixolydian", "Aeolian", "Pent maj", "Pent min"};
 static const uint16_t MODE_POOL[GL_NMODES] = {
@@ -229,12 +229,12 @@ static const float PAD_FACTOR[NV] = {1.0f, 1.31f, 1.62f, 1.93f};   /* unequal br
 static const uint8_t STEREO[GV_COUNT] = {1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1,
                                         0, 0, 1, 1, 1,
                                         1, 0, 1, 1, 0, 0, 1, 1, 1,     /* lite kit .. grains */
-                                        0, 0, 0, 0, 0, 1, 1, 0};      /* trumpet .. brushes */
+                                        0, 0, 0, 0, 0, 1, 1, 1, 1};   /* trumpet .. rhodes */
 static const float SPREAD[GV_COUNT] = {0.3f, 0.25f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.0f, 0.25f,
                                        0.35f, 0.0f, 0.0f, 0.0f, 0.3f, 0.3f, 0.2f, 0.35f, 0.0f, 0.0f, 0.4f,
                                        0.0f, 0.0f, 0.35f, 0.25f, 0.5f,
                                        0.3f, 0.0f, 0.4f, 0.25f, 0.0f, 0.0f, 0.35f, 0.3f, 0.45f,
-                                       0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f};
+                                       0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.3f, 0.25f, 0.3f};
 
 /* the kit (glag_kit.h): a snare (also the roll's), and each sound's state */
 typedef struct { float x1, y1, x2, y2, e1, e2, drop, dk, b, bk, n, nk, hp, l1, l2, lpk, nl, drive, lo; } kit_snare;
@@ -366,6 +366,14 @@ static uint32_t chord_count;
 static uint16_t scale_mask, chord_mask;     /* bit pc: in the scale / in the chord */
 static float chord_timer;
 static uint8_t chord_pending;
+/* audition: a piece's own chord progression (glag_new2.h) in place of the drift: which (0 none),
+ * the chord in it, the bars it has had; and under it, the melody's notes (the scale with the
+ * chord's own in place of their neighbours) and the chord's colour tones */
+static uint8_t prog_x, prog_i, prog_bars;
+static uint16_t mel_mask, colour_mask;
+static void prog_chord(void);
+static int prog_len(void);
+static int prog_bars_of(void);
 
 /* time */
 static float step_acc;                     /* 16ths */
@@ -434,11 +442,15 @@ static void harmony_update(void)
 	root_pc = root;
 	if (chord_deg >= scale_n)
 		chord_deg = 0;
-	chord_pending = 1;                         /* rebuild the chord on the new scale now */
+	chord_pending = prog_x ? 3 : 1;            /* rebuild the chord on the new scale now (a progression: the same chord) */
 }
 
 static void chord_build(void)
 {
+	if (prog_x) {
+		prog_chord();
+		return;
+	}
 	chord_n = (scale_n >= 7 && rnd() < 0.6f) ? 4 : 3;
 	chord_mask = 0;
 	for (int k = 0; k < chord_n; k++) {
@@ -454,6 +466,11 @@ static void chord_next(void)
 	/* a gentle walk: IV, V, vi, ii mostly, and home again after a few moves */
 	static const int8_t MOVE[6] = {3, 4, 5, 1, -2, 2};
 	static const uint8_t W[6] = {30, 22, 20, 14, 7, 7};
+	if (prog_x) {                              /* the piece's progression: its next chord */
+		prog_i = (uint8_t)((prog_i + 1) % prog_len());
+		chord_build();
+		return;
+	}
 	if (chord_moves >= 3 && rnd() < 0.5f) {
 		chord_deg = 0;
 		chord_moves = 0;
@@ -513,14 +530,14 @@ static int place(int pc, float from, int lo, int hi)
 static const uint8_t PLUCK[GV_COUNT] = {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0,
                                        0, 0, 1, 1, 1,
                                        1, 1, 0, 1, 0, 1, 0, 1, 0,
-                                       0, 1, 0, 0, 1, 0, 1, 0};
+                                       0, 1, 0, 0, 1, 0, 1, 0, 1};
 #ifndef GLOW_HOME
 #define GLOW_HOME 69                       /* glow: A4, as it began (its top is cut instead) */
 #endif
 static const uint8_t HOME[GV_COUNT] = {57, 72, 38, 64, 72, 45, 72, 72, 67, 57, 60, 33, 67, 79, 64, 36, 57, GLOW_HOME, 55, 57,
                                       67, 40, 62, 60, 36,
                                       36, 60, 57, 72, 67, 67, 57, 62, 60,
-                                      67, 41, 62, 50, 36, 60, 67, 36};
+                                      60, 41, 57, 50, 36, 60, 62, 36, 57};
 
 /* ---- the channel macro: a slow random glide pushing each voice's own controls around ----
  * Per voice, how far the macro moves:   tone  char  trem  oct   len   act */
@@ -553,20 +570,21 @@ static const uint8_t MW[GV_COUNT][6] = {
 	{50, 80,  0,  0, 50, 50},   /* lite kit: the groove, decays, hits */
 	{50, 90,  0, 40, 40, 40},   /* perc: the material, octaves */
 	{70, 60, 50,  0, 30, 20},   /* organ: the drawbars, a breathing swell */
-	{50, 60,  0, 50, 40, 40},   /* music box */
+	{50, 60,  0,  0, 40, 40},   /* music box (no leaps: nothing shrill) */
 	{70, 70, 40, 30, 40, 30},   /* breath: tonal to airy */
-	{60, 80,  0, 50, 50, 40},   /* chip: the width, into the arpeggio */
+	{60, 80,  0,  0, 50, 40},   /* chip: the width, into the arpeggio (no leaps) */
 	{60, 90, 40,  0, 30, 20},   /* choir: the vowels */
 	{50, 80,  0, 40, 50, 40},   /* koto: koto to sitar */
 	{60, 90, 30, 40, 60, 50},   /* grains: their pitches, their length, how many */
-	{60, 70, 30, 30, 50, 40},   /* muted trumpet: the mute, phrases */
+	{50, 60,  0,  0, 40, 40},   /* trumpet: open to Harmon, phrases (no tremolo, no leaps) */
 	{40, 70,  0,  0, 40, 40},   /* timpani: the mallets, rolls */
-	{60, 80, 30, 30, 50, 40},   /* sax: breathier, phrases */
-	{60, 70, 30,  0, 40, 30},   /* cello: tasto to ponticello */
+	{50, 70,  0,  0, 40, 40},   /* sax: breathier, phrases (no tremolo, no leaps) */
+	{50, 60,  0,  0, 40, 30},   /* cello: tasto to ponticello (no tremolo) */
 	{50, 70,  0,  0, 40, 40},   /* upright: walking more */
 	{50, 90,  0,  0, 60, 50},   /* haze: how far back, how strange */
-	{50, 70,  0, 30, 50, 40},   /* vibes: the motor, the pedal */
+	{50, 70,  0,  0, 50, 40},   /* vibes: the motor, the pedal (no leaps) */
 	{40, 60,  0,  0, 40, 40},   /* brushes: the ride, the taps */
+	{50, 60,  0,  0, 40, 30},   /* rhodes: the bark, the tremolo */
 };
 /* arp mode (glag_play.h): whether a channel is being played by it, and the held voices' short
  * envelope while it is */
@@ -795,7 +813,7 @@ const uint8_t GL_VCOST[GV_COUNT] = {
 	30, 2, 8, 22,                         /* strings glow seq super */
 	4, 3, 10, 11, 29,                     /* ribbon funk harp harpsichord kit */
 	6, 2, 3, 2, 2, 2, 4, 4, 2,            /* (estimates, not measured) lite kit perc organ music-box breath chip choir koto grains */
-	2, 2, 2, 3, 1, 2, 2, 1                /* (estimates) trumpet timpani sax cello upright haze vibes brushes */
+	2, 2, 2, 3, 1, 2, 2, 1, 3             /* (estimates) trumpet timpani sax cello upright haze vibes brushes rhodes */
 };
 static float duck_g[GL_NCH] = {1.0f, 1.0f, 1.0f, 1.0f};
 static uint8_t duck_mask, duck_order[GL_NCH], duck_n, duck_strike[GL_NCH];
@@ -938,6 +956,7 @@ static int nslots(int voice)
 	case GV_HAZE: return 0;                   /* reads of the reverb's tail: the same */
 	case GV_UPRIGHT: return 2;
 	case GV_VIBES: return 4;
+	case GV_RHODES: return 4;
 	case GV_BRUSH: return 0;                  /* drums: outside the budget */
 	default: return 3;
 	}
@@ -1978,13 +1997,21 @@ static void chan_step(chan *c, int ch, uint32_t step)
 	case GV_TRUMPET:
 	case GV_SAX:
 	case GV_CELLO:
-		line_step(c, ch, step, base);
+		if (prog_x)
+			phrase_step(c, ch, step, base);   /* the noir side: in phrases */
+		else
+			line_step(c, ch, step, base);     /* AMB-1's way: loops of unequal lengths */
+		break;
+	case GV_RHODES:
+		rhodes_step(c, ch, step, act, base);
 		break;
 	case GV_TIMPANI:
 		timp_step(c, ch, step, act, base);
 		break;
 	case GV_VIBES:
-		if ((step & 3u) == 0u)
+		if (prog_x)
+			phrase_step(c, ch, step, base);   /* the noir side: broken chords in phrases */
+		else if ((step & 3u) == 0u)
 			bells_beat(c, ch);                /* the bells' four loops */
 		break;
 	case GV_BRUSH:
@@ -2065,7 +2092,7 @@ static void chan_step(chan *c, int ch, uint32_t step)
 		static const float PMAX[GV_COUNT] = {0, 0, 0, 0.14f, 0.2f, 0, 0.28f, 0.07f, 0,
 		                                     0, 0.14f, 0, 0, 0.07f, 0.08f, 0, 0, 0.12f, 0, 0, 0, 0, 0, 0, 0,
 		                                     0, 0.22f, 0, 0.14f, 0.06f, 0.24f, 0, 0.2f, 0,
-		                                     0, 0, 0, 0, 0, 0, 0, 0};
+		                                     0, 0, 0, 0, 0, 0, 0, 0, 0};
 		float p = act * act * PMAX[c->voice];
 		if (c->voice == GV_GLOW && (step & 15u) == 0u)
 			c->arp_dir = (uint8_t)((c->arp_dir + 1u) & 3u);   /* full macro: a bar each at 0, -1, -2, -1 octaves */
@@ -3186,6 +3213,9 @@ static void chan_control(chan *c, int ch, float dt)
 	case GV_VIBES:
 		vibes_control(c, ch, dt);
 		break;
+	case GV_RHODES:
+		rhodes_control(c, ch, dt);
+		break;
 	case GV_KALIMBA:
 	default:
 		break;
@@ -4026,7 +4056,10 @@ static int chan_render(chan *c, float *A, float *B)
 		any = vibes_render(c, A, B);
 		break;
 	case GV_BRUSH:
-		any = br_render(c, A);
+		any = br_render(c, A, B);
+		break;
+	case GV_RHODES:
+		any = rhodes_render(c, A, B);
 		break;
 	case GV_KALIMBA:
 	case GV_HARP:
@@ -4188,6 +4221,7 @@ void gl_init(uint32_t seed)
 	space_init();
 	mode_cur = root_cur = -1;
 	chord_deg = 0;
+	prog_i = prog_bars = 0;
 	harmony_update();
 	chord_build();
 	chord_pending = 0;
@@ -4546,6 +4580,10 @@ static void clock_step(int play)
 	chk_nf0 = notes_fired;
 #endif
 	step_nf0 = notes_fired;
+	if ((step_n & 15) == 0 && prog_x && step_n && ++prog_bars >= prog_bars_of()) {
+		prog_bars = 0;                        /* the progression: its chord's bars are up */
+		chord_pending = 2;
+	}
 	if ((step_n & 15) == 0 && chord_pending == 2) {   /* drifted: on the bar */
 		chord_pending = 0;
 		chord_next();
@@ -4597,13 +4635,15 @@ static void control(float dt)
 			for (int k = 0; k < 2; k++)
 				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
 		{
-			const uint8_t sx = scale_x;              /* (the posted piece's scale, kept across this reset) */
+			const uint8_t sx = scale_x, px = prog_x;   /* (the posted piece's scale and progression, kept across this reset) */
 			gl_piece(0, &P);
 			scale_x = sx;
+			prog_x = px;
 		}
 		space_init();
 		mode_cur = root_cur = -1;
 		chord_deg = 0;
+		prog_i = prog_bars = 0;
 		harmony_update();
 		chord_build();
 		chord_pending = 0;
@@ -4677,11 +4717,15 @@ static void control(float dt)
 		chord_timer += dt * speed;
 	if (chord_timer >= d_drift) {
 		chord_timer = 0.0f;
-		chord_pending = 2;
+		if (!prog_x)
+			chord_pending = 2;
 	}
 	if (chord_pending == 1) {                  /* asked for: now */
 		chord_pending = 0;
 		chord_next();
+	} else if (chord_pending == 3) {           /* the same chord on the new scale */
+		chord_pending = 0;
+		chord_build();
 	}
 
 	/* voice changes: fade the channel out, swap, fade in */
@@ -6145,9 +6189,9 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {28, 35, 78, 48, 9, 5, 35, 45}, {GR_HALL, GS_OCTAVE, 3}, {0, 1, 0, 0}, 16, {2, 2, 2, 0}, 16, 0, {0, 0, 0, 0}, 0},
 	/* a choir breathing, a music box on unequal loops, the reverb's tail coming back as grains, the bass; Lydian, 44 */
 	{"Choir Tape", {GV_CHOIR, GV_MBOX, GV_HAZE, GV_BASS},
-	 {{45, 45, 75, 50, 15, 75, 50, 30, 72}, {30, 35, 60, 50, 40, 65, 60, 50, 70},
+	 {{45, 45, 75, 50, 15, 75, 50, 30, 72}, {30, 35, 60, 25, 40, 65, 60, 50, 70},
 	  {45, 50, 80, 50, 0, 25, 45, 50, 80}, {35, 30, 85, 50, 6, 28, 50, 25, 40}},
-	 {24, 40, 82, 47, 7, 3, 30, 45}, {GR_BLOOM, GS_OCTAVE, 4}, {1, 1, 1, 0}, 16, {2, 2, 3, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	 {24, 40, 82, 47, 7, 3, 30, 45}, {GR_BLOOM, GS_OCTAVE, 4}, {1, 0, 1, 0}, 16, {2, 2, 3, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* vibes with a slow motor, a cello an octave down, the tail's grains over a drone; Dorian, 40 */
 	{"Glass Hours", {GV_VIBES, GV_CELLO, GV_HAZE, GV_DRONE},
 	 {{40, 35, 70, 50, 30, 70, 40, 35, 72}, {35, 35, 75, 25, 15, 60, 60, 25, 70},
@@ -6168,36 +6212,44 @@ static const recipe PIECES[GL_NPIECES] = {
 	 {{35, 30, 45, 50, 45, 65, 40, 40, 68}, {35, 30, 65, 50, 30, 70, 60, 0, 68},
 	  {70, 30, 30, 50, 20, 70, 50, 20, 50}, {35, 30, 85, 50, 6, 28, 50, 25, 40}},
 	 {32, 45, 78, 47, 5, 3, 30, 45}, {GR_BLOOM, GS_OCTAVE, 4}, {1, 0, 0, 0}, 14, {2, 2, 2, 1}, 14, 0, {0, 0, 0, 0}, 0},
-	/* a breathy tenor's long phrase on its loop, a dull Rhodes, the double bass on the root, brushes circling; Aeolian, 44 */
-	{"Rain Window", {GV_SAX, GV_EP, GV_UPRIGHT, GV_BRUSH},
-	 {{40, 30, 80, 50, 30, 65, 40, 70, 92}, {30, 20, 70, 50, 25, 65, 60, 30, 80},
-	  {35, 30, 80, 50, 0, 25, 50, 15, 94}, {30, 25, 55, 50, 0, 35, 50, 20, 78}},
-	 {24, 35, 85, 45, 9, 5, 20, 40}, {GR_HALL, GS_OCTAVE, 3}, {1, 0, 0, 0}, 20, {2, 1, 1, 1}, 20, 0, {0, 0, 0, 0}, 0},
-	/* a Harmon-muted trumpet into a long echo, vibes on a slow motor, the double bass, brushes and a quiet ride; Dorian, 48 */
-	{"Harmon at Four", {GV_TRUMPET, GV_VIBES, GV_UPRIGHT, GV_BRUSH},
-	 {{40, 35, 75, 50, 50, 55, 45, 75, 90}, {35, 30, 70, 50, 30, 65, 60, 55, 82},
-	  {40, 30, 75, 50, 0, 25, 50, 30, 94}, {40, 25, 55, 50, 0, 35, 55, 40, 78}},
-	 {28, 50, 75, 46, 2, 1, 20, 40}, {GR_HALL, GS_OCTAVE, 0}, {1, 0, 0, 0}, 16, {2, 2, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
-	/* vibes with a fast deep motor, a dark pad, the double bass, a low Rhodes; Aeolian, 50 */
-	{"Slow Elevator", {GV_VIBES, GV_PAD, GV_UPRIGHT, GV_EP},
-	 {{40, 30, 75, 50, 30, 70, 45, 70, 80}, {70, 20, 35, 50, 15, 75, 50, 30, 62},
-	  {35, 30, 80, 50, 0, 25, 50, 15, 82}, {25, 20, 70, 25, 20, 65, 60, 20, 64}},
-	 {30, 35, 80, 46, 4, 5, 20, 40}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 0}, 18, {2, 2, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
-	/* the double bass very slow and heavy, a low tenor, only the brushes' sweeps, a drone under it; Phrygian, 40 */
-	{"Velvet Doom", {GV_UPRIGHT, GV_SAX, GV_BRUSH, GV_DRONE},
-	 {{30, 25, 90, 50, 0, 30, 50, 10, 88}, {35, 25, 85, 25, 25, 65, 55, 65, 80},
-	  {25, 20, 60, 50, 0, 40, 50, 0, 64}, {30, 20, 60, 25, 0, 60, 50, 0, 54}},
-	 {20, 30, 85, 44, 4, 2, 15, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 1, 0, 1}, 20, {1, 2, 1, 2}, 20, 0, {0, 0, 0, 0}, 0},
-	/* a cello and a tenor on loops of 19 and 23 beats, drifting apart and together, the double bass, the tail's grains; Aeolian, 42 */
-	{"Last Ferry", {GV_CELLO, GV_SAX, GV_UPRIGHT, GV_HAZE},
-	 {{35, 35, 80, 50, 15, 60, 35, 30, 80}, {35, 30, 80, 50, 30, 65, 65, 60, 78},
-	  {35, 30, 80, 50, 0, 25, 50, 15, 82}, {45, 50, 85, 50, 0, 25, 50, 55, 82}},
-	 {22, 35, 82, 46, 7, 5, 20, 40}, {GR_HALL, GS_OCTAVE, 3}, {1, 1, 0, 1}, 18, {2, 2, 1, 2}, 18, 0, {0, 0, 0, 0}, 0},
-	/* a Rhodes, a Harmon trumpet far back in the echo, the tail's grains, the double bass; Dorian, 46 */
-	{"Neon Fog", {GV_EP, GV_TRUMPET, GV_HAZE, GV_UPRIGHT},
-	 {{35, 25, 70, 50, 30, 65, 40, 30, 82}, {35, 35, 75, 50, 45, 60, 60, 80, 88},
-	  {45, 50, 85, 50, 0, 25, 50, 55, 92}, {35, 30, 80, 50, 0, 25, 50, 20, 92}},
-	 {26, 45, 80, 46, 0, 1, 20, 40}, {GR_BLOOM, GS_OCTAVE, 3}, {1, 1, 0, 0}, 18, {2, 2, 2, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	/* side B, noir (138 on): each with its own progression (glag_new2.h, PIECE_PROG) and its
+	 * melodic voices in phrases; after the ways of Bohren, Ascenseur, Badalamenti, Vangelis, Chet
+	 * Baker and Bowie and Eno (their harmony's outlines, pace, rooms and instruments; none of their tunes) */
+	/* after Bohren: a breathy tenor in phrases over minor chords turning over like pages (i, the minor bVI, iv, the minor v), a warm Rhodes, the double bass, brushes circling; A, 42 */
+	{"Rain Window", {GV_SAX, GV_RHODES, GV_UPRIGHT, GV_BRUSH},
+	 {{45, 30, 75, 50, 25, 60, 42, 65, 71}, {40, 30, 70, 50, 20, 60, 58, 35, 62},
+	  {30, 30, 85, 50, 0, 25, 50, 10, 72}, {35, 25, 55, 50, 0, 35, 50, 15, 53}},
+	 {22, 30, 85, 46, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	/* after Ascenseur pour l'echafaud: an open trumpet, dark, over D minor and C7 four bars each, the double bass, brushes and a ride, a Rhodes far back; D, 52 */
+	{"Elevator, Paris", {GV_TRUMPET, GV_UPRIGHT, GV_BRUSH, GV_RHODES},
+	 {{45, 30, 75, 50, 30, 60, 45, 25, 64}, {45, 30, 75, 50, 0, 25, 50, 40, 65},
+	  {50, 30, 55, 50, 0, 35, 55, 55, 48}, {25, 25, 70, 50, 20, 60, 60, 20, 48}},
+	 {32, 35, 78, 46, 2, 1, 20, 35}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	/* after Badalamenti: vibes in broken chords on a slow motor over Imaj7, vi9, IVmaj7 and a suspended V, a dark pad, the double bass, a Rhodes; F, 56 */
+	{"Pine Lake", {GV_VIBES, GV_PAD, GV_UPRIGHT, GV_RHODES},
+	 {{45, 30, 75, 50, 30, 70, 42, 60, 83}, {70, 20, 40, 50, 15, 75, 50, 30, 49},
+	  {35, 30, 80, 50, 0, 25, 50, 15, 87}, {40, 30, 75, 50, 20, 65, 58, 30, 72}},
+	 {36, 30, 82, 46, 5, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	/* after Vangelis's Blade Runner: a brass swell for the CS-80, a tenor's phrases, a gliding bass, a Rhodes for the electric grand; IV and I, then the long turn home; D-flat, 58 */
+	{"Neon Rain", {GV_SWELL, GV_SAX, GV_BASS, GV_RHODES},
+	 {{45, 25, 70, 50, 15, 75, 50, 40, 41}, {45, 30, 75, 50, 30, 70, 42, 55, 63},
+	  {35, 30, 85, 50, 6, 28, 50, 30, 31}, {35, 30, 70, 50, 25, 65, 60, 25, 50}},
+	 {38, 30, 85, 46, 1, 0, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	/* after Chet Baker's ballads: an open trumpet, soft, behind the beat, a cello answering below, the double bass, brushes; a ballad's changes; E-flat, 54 */
+	{"Last Ferry", {GV_TRUMPET, GV_CELLO, GV_UPRIGHT, GV_BRUSH},
+	 {{45, 30, 75, 50, 25, 55, 45, 0, 68}, {30, 30, 80, 50, 15, 55, 60, 30, 55},
+	  {40, 30, 75, 50, 0, 25, 50, 35, 69}, {40, 25, 55, 50, 0, 35, 52, 35, 50}},
+	 {34, 25, 70, 47, 3, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	/* after Bowie and Eno's Subterraneans: a wordless choir, a pad, a tenor weaving in phrases, the bass; major and minor on the same ground; F-sharp, 48 */
+	{"Under the Wall", {GV_CHOIR, GV_PAD, GV_SAX, GV_BASS},
+	 {{45, 40, 75, 50, 15, 75, 45, 40, 54}, {70, 25, 40, 50, 20, 75, 55, 30, 37},
+	  {40, 30, 75, 50, 35, 70, 40, 60, 68}, {35, 30, 85, 50, 6, 28, 50, 25, 30}},
+	 {28, 35, 82, 45, 6, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	/* after Bohren's doom and the noir line cliche: the double bass very slow, a low tenor, a Rhodes carrying the falling inner line, only the brushes' sweeps; E, 40 */
+	{"Velvet Doom", {GV_UPRIGHT, GV_SAX, GV_RHODES, GV_BRUSH},
+	 {{30, 25, 90, 50, 0, 30, 50, 10, 74}, {40, 25, 80, 25, 25, 65, 55, 60, 69},
+	  {35, 25, 80, 50, 20, 65, 45, 30, 61}, {25, 20, 60, 50, 0, 40, 50, 0, 50}},
+	 {20, 30, 85, 44, 4, 5, 15, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 20, {1, 1, 1, 1}, 20, 0, {0, 0, 0, 0}, 0},
 #elif defined(GL_TEST_PIECES)
 	/* the CPU test build: the four heaviest audition pieces, as 17 to 20 */
 	R_SHIFTED_METAL, R_WAREHOUSE, R_STRING_DRUM_MASS, R_HARPSI_DRILL,
@@ -6280,8 +6332,11 @@ void gl_piece(int i, gl_patch *out)
 #ifdef GL_DEMO_PIECES
 	/* (audition: the twelve scale pieces carry their scale, 106 on) */
 	scale_x = (unsigned)(i - 106) < GL_NXSCALES ? (uint8_t)(i - 105) : 0;
+	/* (and the noir side its progressions, 138 on) */
+	prog_x = (unsigned)(i - 138) < 7u ? PIECE_PROG[i - 138] : 0;
 #else
 	scale_x = 0;
+	prog_x = 0;
 #endif
 	for (int c = 0; c < GL_NCH; c++) {
 		out->voice[c] = r->voice[c];

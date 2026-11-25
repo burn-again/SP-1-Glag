@@ -75,7 +75,8 @@ static int line_note(int base, int deg)
 		note += 12;
 	return note;
 }
-static void line_fire(chan *c, int ch, int note, float vel, float hold);
+static void line_fire(chan *c, int ch, int note, float vel, float hold, float emph);
+static void ph_range(int voice, int base, int *lo, int *hi);
 static void line_step(chan *c, int ch, uint32_t step, int base)
 {
 	if (step & 3u)
@@ -92,7 +93,13 @@ static void line_step(chan *c, int ch, uint32_t step, int base)
 		float hold = (float)du[s] * beat * (0.55f + 0.5f * P.ch[ch][CP_LENGTH]);
 		if (c->voice == GV_CELLO && hold > 6.0f)
 			hold = 6.0f;                          /* a bow is only so long */
-		line_fire(c, ch, line_note(base, dg[s]), 0.5f + 0.25f * rnd(), hold);
+		int note = line_note(base, dg[s]), lo, hi;
+		ph_range(c->voice, base, &lo, &hi);               /* the instrument's middle only: nothing shrill */
+		while (note > hi)
+			note -= 12;
+		while (note < lo)
+			note += 12;
+		line_fire(c, ch, note, 0.5f + 0.25f * rnd(), hold, hold >= 3.0f ? 1.0f : 0.0f);
 	}
 	if (++c->lpos[0] >= len) {
 		c->lpos[0] = 0;
@@ -106,7 +113,7 @@ static void line_step(chan *c, int ch, uint32_t step, int base)
 }
 /* a line's note: one voice at a time. The same note again carries on in the same voice (a bow
  * change, no second saw beating against the first); another lets the last one go quickly */
-static void line_fire(chan *c, int ch, int note, float vel, float hold)
+static void line_fire(chan *c, int ch, int note, float vel, float hold, float emph)
 {
 	(void)ch;
 	nvoice *same = 0;
@@ -127,34 +134,61 @@ static void line_fire(chan *c, int ch, int note, float vel, float hold)
 		v = alloc(c, 3);
 		if (!sounding(v))
 			make_room(v);
-		nv_trigger(v, (float)note, vel, 1.0f, 0);
+		nv_trigger(v, (float)note, vel, emph, 0);   /* (ratio: its emphasis) */
 	} else {
 		v->stage = ST_ATT;
 		v->t = 0.0f;
 		v->vel = vel;
+		v->ratio = emph;
 	}
 	v->hold = hold;
 	c->glow = vel;
 }
 
-/* a voice's own vibrato: its phase in pm2, 4.8 to 5.6 Hz (each voice a little different), coming
- * in after `delay` s over a second and a half */
-static float own_vib(nvoice *v, int i, float sdt, float delay, float depth)
+/* a voice's own vibrato, as players use it: for emphasis. Only a note given it (ratio, its
+ * emphasis: the long tones a phrase leans into; a key held), and only late in it: from half way
+ * through the note (no sooner than 0.9 s; a held key after 1.2 s), growing over a second and a half
+ * from nothing, its rate easing up from 4.2 to 5.3 Hz as it grows. Short notes are straight */
+static float own_vib(nvoice *v, int i, float sdt, float depth)
 {
-	v->pm2 += (uint32_t)(sdt * (4.8f + 0.25f * (float)i + 0.3f * v->vel) * 4294967296.0f);
-	return 1.0f + depth * clampf((v->t - delay) * 0.66f, 0.0f, 1.0f) * sin_u(v->pm2);
+	float on;
+	if (v->mnote)
+		on = 1.2f;
+	else {
+		const float whole = v->t + (v->hold > 0.0f ? v->hold : 0.0f);
+		on = whole * 0.5f > 0.9f ? whole * 0.5f : 0.9f;
+	}
+	const float g = v->ratio * clampf((v->t - on) * 0.65f, 0.0f, 1.0f);
+	if (g <= 0.0f)
+		return 1.0f;
+	v->pm2 += (uint32_t)(sdt * (4.2f + 1.1f * g + 0.12f * (float)i) * 4294967296.0f);
+	return 1.0f + depth * g * sin_u(v->pm2);
+}
+/* the long tone leaned into: a gentle swell up and back over the note (emphasis), held keys flat */
+static inline float lean(const nvoice *v)
+{
+	if (v->mnote || v->ratio <= 0.0f || v->hold <= 0.0f)
+		return 0.0f;
+	const float x = v->t / (v->t + v->hold);
+	return v->ratio * sin_u((uint32_t)(x * 2147483648.0f));
 }
 /* key tracking for the low-passes: 1 at C3, falling an octave's worth for every two octaves up */
 static inline float kt_dark(float note) { return clampf(fexp2(-(note - 48.0f) * (1.0f / 24.0f)), 0.35f, 1.3f); }
 
-/* ---- the horns (Muted Trumpet, Sax): f1 f2 a low-pass's states, fk its coefficient; the
- * trumpet's mute: idx2 menv2 a band's states, fq fb its a and b, idx its gain; hold: seconds
- * left before the breath stops (-1: let go quickly); t: seconds since the note began ---- */
+/* a phrase's note waiting its moment (a little behind the beat): echo_at the seconds left,
+ * echo_note, echo_vel, hq_dt its hold, hq_vel its emphasis */
+static void ph_pending(chan *c, int ch, float sdt);
+
+/* ---- the horns (Trumpet, Sax): f1 f2 a low-pass's states, fk its coefficient; the trumpet's
+ * mute: idx2 menv2 a band's states, fq fb its a and b, idx its gain; hold: seconds left before
+ * the breath stops (-1: let go quickly); t: seconds since the note began; ratio its emphasis.
+ * The trumpet's CHARACTER: open and dark (Chet Baker's) to a gentle Harmon (Miles's) ---- */
 static void horn_control(chan *c, int ch, float dt)
 {
 	const int tpt = c->voice == GV_TRUMPET;
 	const float chr = P.ch[ch][CP_CHAR], tone = eff_tone(ch), len = P.ch[ch][CP_LENGTH];
 	const float sdt = dt * speed;
+	ph_pending(c, ch, sdt);
 	/* a slow swell in: a quarter to two thirds of a second (TONE quicker) */
 	const float att = (tpt ? 0.22f : 0.28f) + 0.4f * (1.0f - tone), rel = 0.45f + 1.0f * len;
 	for (int i = 0; i < 3; i++) {
@@ -171,7 +205,7 @@ static void horn_control(chan *c, int ch, float dt)
 				v->stage = ST_DEC;
 			}
 		} else if (v->stage == ST_DEC) {
-			v->env += (0.85f - v->env) * (1.0f - dcoef(0.8f, sdt));
+			v->env += (0.8f + 0.15f * lean(v) - v->env) * (1.0f - dcoef(0.5f, sdt));
 			v->hold -= sdt;
 			if (v->hold <= 0.0f && !v->mnote)
 				v->stage = ST_REL;
@@ -183,26 +217,27 @@ static void horn_control(chan *c, int ch, float dt)
 			}
 		}
 		const float e2 = v->env * v->env;           /* (the swell eased in: no edge on the start) */
-		/* a small scoop up into the note, then the vibrato, late */
-		const float scoop = (tpt ? -0.2f : -0.4f) * fexp2(-v->t * 10.0f);
-		const float hz = mtof(v->note + scoop) * speed * pbend * own_vib(v, i, sdt, 0.6f, tpt ? 0.0022f : 0.003f);
+		/* a breath of a scoop into the note; the vibrato only on a note leaned into, late */
+		const float scoop = (tpt ? -0.12f : -0.3f) * fexp2(-v->t * 9.0f);
+		const float hz = mtof(v->note + scoop) * speed * pbend * own_vib(v, i, sdt, tpt ? 0.0016f : 0.0028f);
 		v->ic = hz_inc(hz);
-		/* the low-pass opens with the breath, never far: two to five harmonics in (TONE), fewer as
-		 * it climbs, under 1.2 to 3.4 kHz whatever the note */
-		const float bright = e2 * (0.6f + 0.4f * v->vel);
-		float fc = hz * (1.1f + (1.0f + 3.0f * tone) * bright) * kt_dark(v->note);
-		const float cap = (tpt ? 1400.0f : 1200.0f) + 2200.0f * tone;
-		fc = clampf(fc < cap ? fc : cap, 60.0f, 6000.0f);
+		/* the low-pass opens with the breath and never far: one to three harmonics in (TONE),
+		 * fewer as it climbs, and under 0.95 to 2 kHz whatever the note: nothing shrill */
+		const float bright = e2 * (0.6f + 0.4f * v->vel) * (1.0f + 0.15f * lean(v));
+		float fc = hz * (1.05f + (0.8f + 2.2f * tone) * bright) * kt_dark(v->note);
+		const float cap = (tpt ? 950.0f : 900.0f) + (tpt ? 1100.0f : 1200.0f) * tone;
+		fc = clampf(fc < cap ? fc : cap, 60.0f, 3000.0f);
 		v->fk = 1.0f - fexp2(-1.4427f * 6.2832f * fc / VSR);
 		if (tpt) {
-			/* the Harmon mute: a nasal band at 1 to 1.6 kHz, narrower toward harmon */
-			const float fm = 1000.0f + 600.0f * chr;
+			/* toward the Harmon: a soft nasal hump at 0.9 to 1.3 kHz, wide, never a whistle */
+			const float fm = 900.0f + 400.0f * chr;
 			float g;
-			band_set(fm, fm * (0.6f - 0.3f * chr), &v->fq, &v->fb, &g);
-			v->idx = g * (1.2f + 1.2f * chr) * (0.4f + 0.6f * bright);
+			band_set(fm, fm * 0.9f, &v->fq, &v->fb, &g);
+			v->idx = g * 0.9f * chr * (0.4f + 0.6f * bright);
+			v->bend = 1.0f - 0.35f * chr;          /* (the open horn's share) */
 		} else
 			v->idx = chr;                         /* the sax: how breathy */
-		const float a = e2 * v->vel * (tpt ? 1.3f : 1.7f);
+		const float a = e2 * v->vel * (tpt ? 1.6f : 1.9f);
 		v->ainc = (a - v->amp) * ctl_inv;
 		if (a <= 0.0f && v->amp < 0.0002f)
 			v->amp = v->ainc = 0.0f;
@@ -223,14 +258,14 @@ static int horn_render(chan *c, float *A)
 		const float k = v->fk, ai = v->ainc;
 		if (tpt) {
 			float z1 = v->idx2, z2 = v->menv2;
-			const float ba = v->fq, bb = v->fb, bg = v->idx;
+			const float ba = v->fq, bb = v->fb, bg = v->idx, op = v->bend;
 			for (uint32_t j = 0; j < VSUB; j++) {
 				const float s = nb_saw(pc, ic);
 				y1 += k * (s - y1);
 				y2 += k * (y1 - y2);
 				const float z = ba * z1 - bb * z2 + bg * y2;
 				z2 = z1; z1 = z;
-				A[j] += (0.45f * y2 + z) * amp;
+				A[j] += (op * y2 + z) * amp;
 				pc += ic;
 				amp += ai;
 			}
@@ -321,7 +356,7 @@ static int timp_render(chan *c, float *A)
 		float y1 = v->f1, y2 = v->f2, z1 = v->idx2, z2 = v->menv2, amp = v->amp, m = v->menv;
 		const float a1 = v->fk, b1 = v->fq, g1 = v->ratio, a2 = v->hold, b2 = v->fb, g2 = v->bend;
 		const float mk = v->iinc, nz = v->idx, ai = v->ainc;
-		const float xs = (1.0f - mk) * 1.1f;          /* (the pulse's area: the same strike whatever the mallet) */
+		const float xs = (1.0f - mk) * 0.8f;          /* (the pulse's area: the same strike whatever the mallet) */
 		for (uint32_t j = 0; j < VSUB; j++) {
 			const float x = m * xs * (1.0f + nz * nb_noise(&v->pm));
 			m *= mk;
@@ -369,6 +404,7 @@ static void cello_control(chan *c, int ch, float dt)
 	const float chr = P.ch[ch][CP_CHAR], tone = eff_tone(ch), len = P.ch[ch][CP_LENGTH];
 	const float sdt = dt * speed;
 	const float att = 0.7f + 0.8f * (1.0f - tone), rel = 0.9f + 1.0f * len;
+	ph_pending(c, ch, sdt);
 	for (int i = 0; i < 3; i++) {
 		nvoice *v = &c->v[i];
 		if (v->stage == ST_IDLE && v->amp <= 0.0f) {
@@ -385,7 +421,7 @@ static void cello_control(chan *c, int ch, float dt)
 		} else if (v->stage == ST_DEC) {
 			/* the bow: a slow fall through its length; a bow change (dip) every 5 s held */
 			const float bp = v->mnote ? v->t - 5.0f * (float)(int)(v->t * 0.2f) : 1.0f;
-			const float want = v->mnote && v->t > 2.0f && bp < 0.4f ? 0.55f : 0.8f;
+			const float want = v->mnote && v->t > 2.0f && bp < 0.4f ? 0.55f : 0.78f + 0.15f * lean(v);
 			v->env += (want - v->env) * (1.0f - dcoef(v->mnote ? 0.15f : 1.5f, sdt));
 			v->hold -= sdt;
 			if (v->hold <= 0.0f && !v->mnote)
@@ -398,7 +434,7 @@ static void cello_control(chan *c, int ch, float dt)
 			}
 		}
 		const float e2 = v->env * v->env;
-		const float hz = mtof(v->note) * speed * pbend * own_vib(v, i, sdt, 0.5f, 0.0028f);
+		const float hz = mtof(v->note) * speed * pbend * own_vib(v, i, sdt, 0.0026f);
 		v->ic = hz_inc(hz);
 		/* the low-pass: with the bow's pressure, three to eight harmonics, and fewer as it
 		 * climbs (an octave's worth darker for every two up from C3); never past 2.5 kHz */
@@ -673,6 +709,7 @@ static void vibes_control(chan *c, int ch, float dt)
 	const float rate = chr < 0.2f ? 0.0f : 3.0f + 4.0f * (chr - 0.2f) / 0.8f;
 	c->lfo2 += (uint32_t)(sdt * rate * 4294967296.0f);
 	c->swell = chr < 0.2f ? 0.0f : 0.15f + 0.4f * (chr - 0.2f) / 0.8f;   /* (its depth, kept for render) */
+	ph_pending(c, ch, sdt);
 	for (int i = 0; i < 4; i++) {
 		nvoice *v = &c->v[i];
 		if (v->stage == ST_IDLE && v->amp <= 0.0f) {
@@ -715,18 +752,24 @@ static int vibes_render(chan *c, float *A, float *B)
 	return any;
 }
 
-/* ---- Brushes: in the Kit's room ---- */
+/* ---- Brushes: in the Kit's room. The sweep is the brush going round the head: as it circles it
+ * crosses the stereo field and back, its colour rises and falls (nearer the rim, brighter), and
+ * the pressure swells twice a circle; each circle a little different in speed, colour and where
+ * it starts. A tap is the brush laid on the head, then dragged off it (a soft tail). Busier, a
+ * faint stir carries on underneath, wandering in level. A quiet ride; a felt kick, barely there ---- */
 typedef struct {
-	float sw_ph, sw_dt, sw_a, sw_y1, sw_y2, sw_ba, sw_bb, sw_bg;     /* the sweep: its place, rate, level, band */
-	float tp_a, tp_k, tp_y1, tp_y2, tp_ba, tp_bb, tp_bg;            /* the tap */
-	float rd_a, rd_k, rd_y1, rd_y2, rd_z1, rd_z2;                   /* the ride: two narrow bands */
+	float sw_ph, sw_dt, sw_a, sw_fc, sw_p0, sw_y1, sw_y2, sw_ba, sw_bb, sw_bg;   /* the sweep */
+	float tp_a, tp_k, dr_a, dr_k, tp_y1, tp_y2, tp_ba, tp_bb, tp_bg;            /* the tap and its drag */
+	float rd_a, rd_k, rd_y1, rd_y2, rd_z1, rd_z2;                               /* the ride: two narrow bands */
 	float rd_aa, rd_ab, rd_ag, rd_ba, rd_bb, rd_bg;
-	float kk_ph, kk_f, kk_a, kk_k;                                  /* the felt kick */
+	float kk_ph, kk_f, kk_a, kk_k;                                              /* the felt kick */
+	float st_a, st_want, st_y;                                                  /* the stir */
 	uint32_t rng;
 } br_state;
 _Static_assert(sizeof(br_state) <= sizeof(kit_state), "the Brushes live in the Kit's room");
 #define BR(c) ((br_state *)(void *)&(c)->kt)
 enum { BR_SWEEP = 1, BR_TAP = 2, BR_RIDE = 4, BR_KICK = 8 };
+static float br_rnd(br_state *S) { return 0.5f + 0.5f * nb_noise(&S->rng); }
 static void br_fire(chan *c, int ch, int m, float vel)
 {
 	br_state *S = BR(c);
@@ -734,24 +777,27 @@ static void br_fire(chan *c, int ch, int m, float vel)
 	const float beat = 60.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
 	if (S->rng == 0u)
 		S->rng = 0x9E3779B9u;
-	if (m & BR_SWEEP) {                           /* a circle of the brush: two beats, rising and falling */
+	if (m & BR_SWEEP) {                           /* a circle of the brush: about two beats */
 		S->sw_ph = 0.0f;
-		S->sw_dt = 1.0f / (1.8f * beat * VSR);
-		S->sw_a = vel * (0.2f + 0.12f * tone);
-		band_set(2200.0f + 1500.0f * tone, 2600.0f, &S->sw_ba, &S->sw_bb, &S->sw_bg);
+		S->sw_dt = 1.0f / ((1.6f + 0.5f * br_rnd(S)) * beat * VSR);
+		S->sw_a = vel * (0.2f + 0.12f * tone) * (0.8f + 0.4f * br_rnd(S));
+		S->sw_fc = (1500.0f + 1300.0f * tone) * (0.85f + 0.3f * br_rnd(S));
+		S->sw_p0 = br_rnd(S);
 	}
-	if (m & BR_TAP) {                             /* the brush laid on the snare */
-		S->tp_a = vel * 0.55f;
-		S->tp_k = fexp2(-9.9658f / ((0.09f + 0.15f * len) * VSR));
-		band_set(1800.0f + 1200.0f * tone, 2200.0f, &S->tp_ba, &S->tp_bb, &S->tp_bg);
+	if (m & BR_TAP) {                             /* laid on the head, then dragged off it */
+		S->tp_a = vel * 0.5f;
+		S->tp_k = fexp2(-9.9658f / ((0.05f + 0.08f * len) * VSR));
+		S->dr_a = vel * 0.12f;
+		S->dr_k = fexp2(-9.9658f / ((0.18f + 0.15f * len) * VSR));
+		band_set(1700.0f + 1100.0f * tone, 2000.0f, &S->tp_ba, &S->tp_bb, &S->tp_bg);
 	}
-	if (m & BR_RIDE) {                            /* a quiet ride: its shimmer, long */
-		S->rd_a = vel * 0.1f;
+	if (m & BR_RIDE) {
+		S->rd_a = vel * 0.08f;
 		S->rd_k = fexp2(-9.9658f / ((0.8f + 1.4f * len) * VSR));
-		band_set(4300.0f + 900.0f * tone, 500.0f, &S->rd_aa, &S->rd_ab, &S->rd_ag);
-		band_set(6100.0f + 1100.0f * tone, 700.0f, &S->rd_ba, &S->rd_bb, &S->rd_bg);
+		band_set(4000.0f + 700.0f * tone, 500.0f, &S->rd_aa, &S->rd_ab, &S->rd_ag);
+		band_set(5600.0f + 900.0f * tone, 700.0f, &S->rd_ba, &S->rd_bb, &S->rd_bg);
 	}
-	if (m & BR_KICK) {                            /* a felt beater, barely there */
+	if (m & BR_KICK) {
 		S->kk_ph = 0.0f;
 		S->kk_f = 70.0f;
 		S->kk_a = vel * 0.5f;
@@ -762,6 +808,7 @@ static void br_fire(chan *c, int ch, int m, float vel)
 }
 static void br_step(chan *c, int ch, uint32_t step)
 {
+	br_state *S = BR(c);
 	const float act = eff_activity(ch), chr = P.ch[ch][CP_CHAR];
 	const int s16 = (int)(step & 15u);
 	int m = 0;
@@ -771,7 +818,6 @@ static void br_step(chan *c, int ch, uint32_t step)
 	if ((s16 == 4 || s16 == 12) && act > 0.3f && rnd() < 0.6f + act)
 		m |= BR_TAP;
 	if (act > 0.5f && chr > 0.15f) {
-		/* the ride: on the beats, and the swung note before two and four as it gets busier */
 		if ((s16 & 3) == 0 && rnd() < 0.5f + 0.5f * chr)
 			m |= BR_RIDE;
 		if ((s16 == 7 || s16 == 15) && rnd() < (act - 0.5f) * 2.0f * chr)
@@ -780,40 +826,55 @@ static void br_step(chan *c, int ch, uint32_t step)
 	if (s16 == 0 && act > 0.7f && rnd() < 0.5f)
 		m |= BR_KICK;
 	if (!m && act > 0.4f && (s16 & 1) && rnd() < 0.03f * act) {
-		m = BR_TAP;                                /* a ghost */
+		m = BR_TAP;
 		vel = 0.3f;
 	}
+	if ((s16 & 3) == 0)                            /* the stir: busier, a faint bed, wandering */
+		S->st_want = act > 0.55f ? (act - 0.55f) * 0.05f * (0.4f + 0.6f * rnd()) : 0.0f;
 	if (m)
 		br_fire(c, ch, m, vel);
 }
-static int br_render(chan *c, float *A)
+static int br_render(chan *c, float *A, float *B)
 {
 	br_state *S = BR(c);
-	if (S->sw_ph >= 1.0f && S->tp_a < 1e-4f && S->rd_a < 1e-4f && S->kk_a < 1e-4f)
+	if (S->sw_ph >= 1.0f && S->tp_a < 1e-4f && S->dr_a < 1e-4f && S->rd_a < 1e-4f && S->kk_a < 1e-4f &&
+	    S->st_a < 1e-5f && S->st_want <= 0.0f)
 		return 0;
+	/* the sweep's place in its circle, for this block: colour, pressure, where it is across */
+	float swe = 0.0f, pan = 0.5f;
+	if (S->sw_ph < 1.0f) {
+		const uint32_t ph = (uint32_t)(S->sw_ph * 4294967296.0f);
+		const uint32_t p0 = (uint32_t)(S->sw_p0 * 4294967296.0f);
+		const float half = sin_u(ph >> 1);           /* 0 .. 1 .. 0 over the circle */
+		swe = half * half * (0.72f + 0.28f * sin_u(2u * ph + 0x40000000u)) * S->sw_a;
+		pan = 0.5f + 0.26f * sin_u(ph + p0);
+		band_set(S->sw_fc * (1.0f + 0.3f * sin_u(ph + p0 + 0x40000000u)), S->sw_fc * 0.9f, &S->sw_ba, &S->sw_bb, &S->sw_bg);
+	}
+	S->st_a += (S->st_want - S->st_a) * 0.01f;
+	const float gl = 1.3f * (1.0f - pan), gr = 1.3f * pan;
 	for (uint32_t j = 0; j < VSUB; j++) {
 		const float n = nb_noise(&S->rng);
-		float x = 0.0f;
-		if (S->sw_ph < 1.0f) {
-			const float e = sin_u((uint32_t)(S->sw_ph * 2147483648.0f));
-			const float y = S->sw_ba * S->sw_y1 - S->sw_bb * S->sw_y2 + S->sw_bg * n * e * e;
+		float x = 0.0f, l = 0.0f, r = 0.0f;
+		if (swe > 0.0f) {
+			const float y = S->sw_ba * S->sw_y1 - S->sw_bb * S->sw_y2 + S->sw_bg * n * swe;
 			S->sw_y2 = S->sw_y1; S->sw_y1 = y;
-			x += y * S->sw_a;
-			S->sw_ph += S->sw_dt;
+			l += y * gl;
+			r += y * gr;
 		}
-		if (S->tp_a > 1e-4f) {
-			const float y = S->tp_ba * S->tp_y1 - S->tp_bb * S->tp_y2 + S->tp_bg * n * S->tp_a;
+		if (S->tp_a > 1e-4f || S->dr_a > 1e-4f) {
+			const float y = S->tp_ba * S->tp_y1 - S->tp_bb * S->tp_y2 + S->tp_bg * n * (S->tp_a + S->dr_a);
 			S->tp_y2 = S->tp_y1; S->tp_y1 = y;
 			x += y;
 			S->tp_a *= S->tp_k;
+			S->dr_a *= S->dr_k;
 		}
 		if (S->rd_a > 1e-4f) {
 			const float y = S->rd_aa * S->rd_y1 - S->rd_ab * S->rd_y2 + S->rd_ag * n * S->rd_a;
 			const float z = S->rd_ba * S->rd_z1 - S->rd_bb * S->rd_z2 + S->rd_bg * n * S->rd_a;
 			S->rd_y2 = S->rd_y1; S->rd_y1 = y;
 			S->rd_z2 = S->rd_z1; S->rd_z1 = z;
-			x += 1.6f * (y + z);
-			S->rd_a *= S->rd_k;
+			l += 0.9f * (y + z);
+			r += 1.5f * (y + z);                       /* (the ride a little to the right) */
 		}
 		if (S->kk_a > 1e-4f) {
 			x += S->kk_a * sin_u((uint32_t)(S->kk_ph * 4294967296.0f));
@@ -822,7 +883,478 @@ static int br_render(chan *c, float *A)
 			S->kk_f += (46.0f - S->kk_f) * 0.0006f;
 			S->kk_a *= S->kk_k;
 		}
-		A[j] += x;
+		S->st_y += 0.2f * (n - S->st_y);                /* the stir: soft, low-passed */
+		x += S->st_y * S->st_a;
+		A[j] += x + l;
+		B[j] += x + r;
 	}
+	if (S->sw_ph < 1.0f)
+		S->sw_ph += S->sw_dt * (float)VSUB;
 	return 1;
+}
+
+/* ================================================================ the noir side's harmony */
+/* A progression's chord: its root in semitones above the key's, its notes above its root (up to
+ * four), its colour tones (bits above its root: 2 the ninth, 5 the eleventh, 6 the sharp eleventh,
+ * 9 the thirteenth, 11 the major seventh, 1 the flat ninth), and its bars. These follow what the
+ * scores and the players' own accounts show, as approximations, with no one's melody in them */
+typedef struct { int8_t root; uint8_t n; int8_t iv[4]; uint16_t col; uint8_t bars; } prog_step;
+#define C9 (1u << 2)
+#define C11 (1u << 5)
+#define CS11 (1u << 6)
+#define C13 (1u << 9)
+#define CM7 (1u << 11)
+#define CB9 (1u << 1)
+/* 1 Ascenseur pour l'echafaud: the session as Pierre Michelot recalled it, D minor and C7, four
+ * bars each, ad lib (in the key's Dorian: i m7, bVII7) */
+static const prog_step PG_LIFT[] = {
+	{0, 4, {0, 3, 7, 10}, C9 | C11, 4}, {10, 4, {0, 4, 7, 10}, C9 | C13, 4}};
+/* 2 Blade Runner's love theme (after a transcription's reading): IV and I for eight bars, then
+ * ii, III7, vi, vi dim, bVII, V7 and home */
+static const prog_step PG_RAIN[] = {
+	{5, 4, {0, 4, 7, 11}, C9 | CS11, 2}, {0, 4, {0, 4, 7, 11}, C9 | C13, 2},
+	{5, 4, {0, 4, 7, 11}, C9 | CS11, 2}, {0, 4, {0, 4, 7, 11}, C9 | C13, 2},
+	{2, 4, {0, 3, 7, 10}, C9 | C11, 1}, {4, 4, {0, 4, 7, 10}, CB9, 1}, {9, 4, {0, 3, 7, 10}, C9, 1},
+	{9, 4, {0, 3, 6, 9}, 0, 1}, {10, 4, {0, 4, 7, 11}, C9, 1}, {7, 4, {0, 4, 7, 10}, C9 | C13, 1},
+	{0, 4, {0, 4, 7, 11}, C9 | C13, 2}};
+/* 3 Badalamenti: the Twin Peaks theme's own few chords (I, vi, IV, V, diatonic), coloured and
+ * slowed: Imaj7, vi9, IVmaj7 with its sharp eleventh, V suspended, then V */
+static const prog_step PG_PINES[] = {
+	{0, 4, {0, 4, 7, 11}, C9, 2}, {9, 4, {0, 3, 7, 10}, C9, 2}, {5, 4, {0, 4, 7, 11}, C9 | CS11, 2},
+	{7, 4, {0, 5, 7, 10}, C9, 1}, {7, 3, {0, 4, 7}, C9, 1}};
+/* 4 Bohren: a few minor chords turning over like pages, each moving to a distant minor (i, the
+ * minor bVI, iv, the minor v), four bars each */
+static const prog_step PG_DOOM[] = {
+	{0, 3, {0, 3, 7}, C9, 4}, {8, 3, {0, 3, 7}, C9, 4}, {5, 4, {0, 3, 7, 10}, C9, 4}, {7, 3, {0, 3, 7}, C9 | C11, 4}};
+/* 5 the noir line cliche: the minor chord with its inner line falling a semitone at a time (root,
+ * major seventh, seventh, sixth), then iv and V7 */
+static const prog_step PG_CLICHE[] = {
+	{0, 3, {0, 3, 7}, C9, 2}, {0, 4, {0, 3, 7, 11}, C9, 2}, {0, 4, {0, 3, 7, 10}, C9, 2}, {0, 4, {0, 3, 7, 9}, C9, 2},
+	{5, 4, {0, 3, 7, 10}, C9, 2}, {7, 4, {0, 4, 7, 10}, CB9, 2}};
+/* 6 Subterraneans: major and minor on the same ground, slow (I, bVI, bVII, i, iv) */
+static const prog_step PG_WALL[] = {
+	{0, 3, {0, 4, 7}, C9 | CM7, 4}, {8, 3, {0, 4, 7}, C9 | CM7, 4}, {10, 3, {0, 4, 7}, C9, 4},
+	{0, 3, {0, 3, 7}, C9, 4}, {5, 3, {0, 3, 7}, C9, 4}};
+/* 7 a ballad's changes, as Chet Baker played them: Imaj7, vi7, ii7, V7, then iii7, VI7, ii7, V7 */
+static const prog_step PG_BALLAD[] = {
+	{0, 4, {0, 4, 7, 11}, C9 | C13, 2}, {9, 4, {0, 3, 7, 10}, C9, 2}, {2, 4, {0, 3, 7, 10}, C9 | C11, 2},
+	{7, 4, {0, 4, 7, 10}, C9 | C13, 2}, {4, 4, {0, 3, 7, 10}, C11, 2}, {9, 4, {0, 4, 7, 10}, C9, 2},
+	{2, 4, {0, 3, 7, 10}, C9 | C11, 2}, {7, 4, {0, 4, 7, 10}, C9 | C13, 2}};
+static const struct { const prog_step *s; uint8_t n; } PROGS[7] = {
+	{PG_LIFT, 2}, {PG_RAIN, 11}, {PG_PINES, 5}, {PG_DOOM, 4}, {PG_CLICHE, 6}, {PG_WALL, 5}, {PG_BALLAD, 8}};
+/* the noir pieces (138 on) and their progressions */
+static const uint8_t PIECE_PROG[7] = {4, 1, 3, 2, 7, 6, 5};
+static int prog_len(void) { return prog_x ? PROGS[prog_x - 1].n : 1; }
+static int prog_bars_of(void) { return prog_x ? PROGS[prog_x - 1].s[prog_i % PROGS[prog_x - 1].n].bars : 4; }
+static void prog_chord(void)
+{
+	const prog_step *st = &PROGS[prog_x - 1].s[prog_i % PROGS[prog_x - 1].n];
+	const int r = (root_pc + st->root) % 12;
+	chord_n = st->n;
+	chord_mask = 0;
+	for (int k = 0; k < chord_n; k++) {
+		chord_pc[k] = (r + st->iv[k]) % 12;
+		chord_mask |= (uint16_t)(1u << chord_pc[k]);
+	}
+	colour_mask = 0;
+	for (int b = 0; b < 12; b++)
+		if (st->col & (1u << b))
+			colour_mask |= (uint16_t)(1u << ((r + b) % 12));
+	/* the melody's notes: the scale, the chord's own and its colours in place of whatever sits a
+	 * semitone from them */
+	uint16_t m = scale_mask;
+	const uint16_t keep = chord_mask | colour_mask;
+	for (int pc = 0; pc < 12; pc++)
+		if ((keep >> pc) & 1u) {
+			m |= (uint16_t)(1u << pc);
+			const int a = (pc + 1) % 12, b = (pc + 11) % 12;
+			if (!((keep >> a) & 1u))
+				m &= (uint16_t)~(1u << a);
+			if (!((keep >> b) & 1u))
+				m &= (uint16_t)~(1u << b);
+		}
+	mel_mask = m ? m : scale_mask;
+	gl_chord_root = (uint8_t)chord_pc[0];
+	chord_count++;
+}
+
+/* ================================================================ the phrase */
+/* Under a progression the melodic voices (Trumpet, Sax, Cello, Vibes) sing in phrases, as the
+ * ballad players do: a motif of three to five notes leaning into a long tone (the chord's third,
+ * seventh, fifth or a colour); the motif again, fitted to the chord it now meets; an answer
+ * stepping down to rest on the root or the fifth; a breath of a bar or more; the motif again, and
+ * after two or three times a new one. Each part starts on or just after the bar and a little
+ * behind the beat (20 to 80 ms). Only the middle of each instrument: nothing shrill.
+ * In the channel's loop memory: loop[0] the motif's rhythm (half-beats; [6] how many), loop[1]
+ * its contour (steps through the melody's notes), loop[2] this part's notes ([6] how many, [7]
+ * the statement's first), loop[3] their onsets in sixteenths ([6..11] their lengths); lpos[0] the
+ * part (0 resting, 1 statement, 2 again, 3 answer), lpos[1] sixteenths into it (255: waiting for
+ * the bar), lpos[2] the next note, lpos[3] times stated; arp_dir bars of rest; arp_i the lag in
+ * sixteenths after the bar */
+static const int8_t PH_RHY[6][6] = {
+	{1, 1, 2, 6, 0}, {2, 2, 8, 0}, {1, 1, 1, 1, 8, 0}, {3, 1, 8, 0}, {2, 1, 1, 2, 6, 0}, {4, 2, 8, 0}};
+static const int8_t PH_VRHY[3][6] = {{2, 2, 2, 6, 0}, {1, 1, 1, 1, 8, 0}, {3, 1, 4, 8, 0}};
+static const int8_t PH_ANS[3][6] = {{2, 2, 8, 0}, {1, 1, 2, 8, 0}, {3, 1, 2, 8, 0}};
+static void ph_range(int voice, int base, int *lo, int *hi)
+{
+	int l, h, home;
+	switch (voice) {
+	case GV_TRUMPET: l = 53; h = 69; break;            /* F3 to A4 */
+	case GV_SAX: l = 46; h = 65; break;                /* B-flat 2 to F4: a tenor's middle */
+	case GV_CELLO: l = 40; h = 60; break;              /* E2 to C4 */
+	default: l = 53; h = 74; break;                    /* the vibes: F3 to D5 */
+	}
+	home = HOME[voice];
+	int off = base - home;                             /* REGISTER: down, never up */
+	off = off > 0 ? 0 : off;
+	*lo = l + off;
+	*hi = h + off;
+}
+static int mel_step(int note, int k, uint16_t set)
+{
+	if (!set)
+		set = scale_mask;
+	const int d = k > 0 ? 1 : -1;
+	for (int n = k > 0 ? k : -k; n > 0 && note > 12 && note < 115;) {
+		note += d;
+		if ((set >> (note % 12)) & 1u)
+			n--;
+	}
+	return note;
+}
+static int nearest_in(int note, uint16_t set, int lo, int hi)
+{
+	for (int d = 0; d < 12; d++) {
+		if (note - d >= lo && ((set >> ((note - d) % 12)) & 1u))
+			return note - d;
+		if (note + d <= hi && ((set >> ((note + d) % 12)) & 1u))
+			return note + d;
+	}
+	return note < lo ? lo : note > hi ? hi : note;
+}
+static void ph_new(chan *c, int vib)
+{
+	int8_t *rh = c->loop[0], *ct = c->loop[1];
+	const int8_t *r = vib ? PH_VRHY[rndi(3)] : PH_RHY[rndi(6)];
+	int n = 0;
+	while (n < 6 && r[n]) {
+		rh[n] = r[n];
+		n++;
+	}
+	rh[6] = (int8_t)n;
+	/* its shape: an arch (a leap up, then stepping down into the long tone), a sigh (stepping
+	 * down), or a turn (up, down, and down again into the tone); the vibes go up the chord */
+	const int shape = rndi(3);
+	ct[0] = 0;
+	for (int k = 1; k < n; k++) {
+		if (vib)
+			ct[k] = 1;
+		else if (shape == 0)
+			ct[k] = (int8_t)(k == 1 ? 3 + rndi(2) : -1);
+		else if (shape == 1)
+			ct[k] = -1;
+		else
+			ct[k] = (int8_t)((k & 1) ? 1 : -1 - (k == n - 1));
+	}
+}
+static void ph_fit(chan *c, int part, int lo, int hi, int vib)
+{
+	int8_t *rh = c->loop[0], *ct = c->loop[1], *nt = c->loop[2], *on = c->loop[3];
+	const uint16_t set = vib ? (uint16_t)(chord_mask | colour_mask) : mel_mask;
+	const int center = (lo + hi) / 2;
+	int8_t dur[6], stp[6];
+	int n = 0;
+	if (part == 3) {                                   /* the answer: down to the root or the fifth */
+		const int8_t *r = PH_ANS[rndi(3)];
+		while (n < 5 && r[n]) {
+			dur[n] = r[n];
+			stp[n] = (int8_t)(n ? -1 : 0);
+			n++;
+		}
+	} else {
+		n = rh[6] > 0 ? rh[6] : 1;
+		for (int k = 0; k < n; k++) {
+			dur[k] = rh[k];
+			stp[k] = ct[k];
+		}
+	}
+	int start;
+	if (part == 1)
+		start = center - 3 + rndi(5);
+	else if (part == 2)
+		start = nt[7] > 0 ? nt[7] : center;                /* the same height, on the chord it meets */
+	else
+		start = (c->last_note > 0 ? c->last_note : center) + 2;
+	int tmp[6];
+	tmp[0] = nearest_in(start, chord_mask, lo, hi);
+	for (int k = 1; k < n; k++)
+		tmp[k] = mel_step(tmp[k - 1], stp[k], set);
+	/* the long tone: one of the chord's beautiful notes (the answer: its root or fifth) */
+	const uint16_t beauty = (uint16_t)((1u << chord_pc[1]) | (1u << chord_pc[2 % chord_n]) |
+	                                   (chord_n > 3 ? (1u << chord_pc[3]) : 0u) | colour_mask);
+	const uint16_t rest = (uint16_t)((1u << chord_pc[0]) | (1u << chord_pc[2 % chord_n]));
+	if (part == 3) {                                   /* the answer settles: down to its rest, never up */
+		int x = tmp[n - 1];
+		while (x > tmp[n - 1] - 12 && !((rest >> (x % 12)) & 1u))
+			x--;
+		tmp[n - 1] = x;
+	} else
+		tmp[n - 1] = nearest_in(tmp[n - 1], beauty, tmp[n - 1] - 5, tmp[n - 1] + 5);
+	/* into the range: the whole phrase an octave down (or up), then any stray note folded in */
+	int mx = tmp[0], mn = tmp[0];
+	for (int k = 1; k < n; k++) {
+		mx = tmp[k] > mx ? tmp[k] : mx;
+		mn = tmp[k] < mn ? tmp[k] : mn;
+	}
+	int sh = 0;
+	while (mx + sh > hi && mn + sh - 12 >= lo - 2)
+		sh -= 12;
+	while (mn + sh < lo && mx + sh + 12 <= hi + 2)
+		sh += 12;
+	int acc = 0;
+	for (int k = 0; k < n; k++) {
+		int x = tmp[k] + sh;
+		while (x > hi)
+			x -= 12;
+		while (x < lo)
+			x += 12;
+		nt[k] = (int8_t)x;
+		on[k] = (int8_t)acc;
+		on[6 + k] = dur[k];
+		acc += 2 * dur[k];
+	}
+	nt[6] = (int8_t)n;
+	if (part == 1)
+		nt[7] = nt[0];
+	if (part != 3)
+		c->last_note = nt[n - 1];
+}
+static void ph_fire_now(chan *c, int ch, int note, float vel, float hold, float emph)
+{
+	if (c->voice == GV_VIBES) {
+		nvoice *v = alloc(c, 4);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
+		c->glow = vel;
+	} else
+		line_fire(c, ch, note, vel, hold, emph);
+}
+static void ph_pending(chan *c, int ch, float sdt)
+{
+	if (c->echo_at <= 0.0f)
+		return;
+	c->echo_at -= sdt;
+	if (c->echo_at <= 0.0f) {
+		c->echo_at = 0.0f;
+		ph_fire_now(c, ch, (int)c->echo_note, c->echo_vel, c->hq_dt, c->hq_vel);
+	}
+}
+static void phrase_step(chan *c, int ch, uint32_t step, int base)
+{
+	const int vib = c->voice == GV_VIBES;
+	int lo, hi;
+	ph_range(c->voice, base, &lo, &hi);
+	const int s16 = (int)(step & 15u);
+	uint8_t *part = &c->lpos[0], *pos = &c->lpos[1], *idx = &c->lpos[2], *times = &c->lpos[3];
+	const float act = eff_activity(ch);
+	if (*part == 0) {                                  /* a breath between phrases */
+		if (s16 != 0)
+			return;
+		if (c->arp_dir) {
+			c->arp_dir--;
+			return;
+		}
+		if (c->loop[0][6] <= 0 || *times >= 2 + rndi(2)) {
+			ph_new(c, vib);
+			*times = 0;
+		}
+		*part = 1;
+		*pos = 255;
+	}
+	if (*pos == 255) {                                 /* waiting for the bar */
+		if (s16 != 0)
+			return;
+		*pos = 0;
+		*idx = 0;
+		c->arp_i = (uint8_t)(rnd() < 0.5f ? 0 : 2 * (1 + rndi(2)));   /* on the bar, or an eighth or a beat after */
+		ph_fit(c, *part, lo, hi, vib);
+	}
+	const int n = c->loop[2][6];
+	const int off = c->arp_i;
+	const float hb = 30.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
+	while (*idx < n && (int)*pos == off + c->loop[3][*idx]) {
+		const int k = *idx, dur = c->loop[3][6 + k], last = k == n - 1;
+		const float hold = (float)dur * hb * (last ? 0.92f : 1.04f);   /* legato, the last let go */
+		float vel = 0.5f + 0.22f * (float)k / (float)n + (last ? 0.08f : 0.0f);   /* leaning into the tone */
+		if (*part == 3)
+			vel *= 0.85f;
+		c->echo_note = (float)c->loop[2][k];
+		c->echo_vel = vel * (0.95f + 0.1f * rnd());
+		c->hq_dt = hold;
+		c->hq_vel = dur >= 6 ? 1.0f : 0.0f;
+		c->echo_at = 0.02f + 0.06f * rnd();             /* behind the beat */
+		(*idx)++;
+	}
+	if (*pos < 250)
+		(*pos)++;
+	if (*idx >= n && (int)*pos >= off + c->loop[3][n - 1] + 2 * c->loop[3][6 + n - 1]) {
+		if (*part == 1)
+			*part = rnd() < 0.85f ? 2 : 3;
+		else if (*part == 2)
+			*part = rnd() < 0.75f ? 3 : 0;
+		else
+			*part = 0;
+		if (*part == 0) {
+			(*times)++;
+			c->arp_dir = (uint8_t)((1 + rndi(3)) * (1.5f - act));
+		}
+		*pos = 255;
+	}
+}
+
+/* ================================================================ the Rhodes */
+/* Warm, no tine: per voice a sine phase-modulated by itself (1:1, the bark, falling away over a
+ * third of a second; TONE how much, harder notes more, less as it climbs) and a touch of its
+ * octave; a quick fall to two thirds (menv2), then a long one (LENGTH, 2.5 to 9 s); the damper when
+ * the chord moves. A suitcase tremolo across the two sides (CHARACTER). It comps: the chord without
+ * its root (third, seventh, a colour; the fifth for a triad), each note led to the nearest of the
+ * last voicing, rolled up from the bottom; now and then a softer touch on beat three.
+ * Per voice: pc its phase, fk the bark's depth, hold the seconds to the damper (-1: now) ---- */
+static void rhodes_strike(chan *c, int note, float vel)
+{
+	nvoice *v = alloc(c, 4);
+	if (!sounding(v))
+		make_room(v);
+	nv_trigger(v, (float)note, vel, 1.0f, c->vnext++);
+	v->hold = 30.0f;
+	c->glow = vel;
+}
+static void rhodes_control(chan *c, int ch, float dt)
+{
+	const float chr = P.ch[ch][CP_CHAR], tone = eff_tone(ch), len = P.ch[ch][CP_LENGTH];
+	const float sdt = dt * speed, T = expmap(len, 2.5f, 9.0f);
+	c->lfo2 += (uint32_t)(sdt * 4.4f * 4294967296.0f);
+	c->swell = 0.55f * chr;
+	if (c->hq_i < c->hq_n) {                            /* the roll: the next note up */
+		c->hq_t -= sdt;
+		if (c->hq_t <= 0.0f) {
+			rhodes_strike(c, c->hq[c->hq_i], c->hq_vel * (0.92f + 0.12f * rnd()));
+			c->hq_i++;
+			c->hq_t += c->hq_dt;
+		}
+	}
+	for (int i = 0; i < 4; i++) {
+		nvoice *v = &c->v[i];
+		if (v->stage == ST_IDLE && v->amp <= 0.0f) {
+			v->ainc = 0.0f;
+			continue;
+		}
+		v->t += sdt;
+		if (v->stage == ST_ATT) {
+			v->env += sdt / 0.004f;
+			if (v->env >= 1.0f) {
+				v->env = 1.0f;
+				v->stage = ST_DEC;
+			}
+		} else if (v->stage == ST_DEC) {
+			v->env *= dcoef(T, sdt);
+			v->hold -= sdt;
+			if ((v->hold <= 0.0f && !v->mnote) || v->env < 0.0005f)
+				v->stage = ST_REL;
+		} else if (v->stage == ST_REL) {
+			v->env *= dcoef(0.3f, sdt);
+			if (v->env < 0.0005f) {
+				v->env = 0.0f;
+				v->stage = ST_IDLE;
+			}
+		}
+		v->menv *= dcoef(0.32f, sdt);
+		v->menv2 *= dcoef(0.6f, sdt);
+		v->ic = hz_inc(mtof(v->note) * speed * pbend);
+		v->fk = (0.12f + 0.75f * tone * v->vel) * v->menv * kt_dark(v->note);
+		const float a = v->env * v->vel * 0.75f * (0.62f + 0.38f * v->menv2) * clampf(1.0f - (v->note - 64.0f) * 0.02f, 0.6f, 1.0f);
+		v->ainc = (a - v->amp) * ctl_inv;
+		if (a <= 0.0f && v->amp < 0.0002f)
+			v->amp = v->ainc = 0.0f;
+	}
+}
+static int rhodes_render(chan *c, float *A, float *B)
+{
+	int any = 0;
+	const float tr = c->swell * sin_u(c->lfo2), gl = 0.75f * (1.0f + tr), gr = 0.75f * (1.0f - tr);
+	for (int i = 0; i < 4; i++) {
+		nvoice *v = &c->v[i];
+		if (v->amp <= 0.0f && v->ainc <= 0.0f)
+			continue;
+		any = 1;
+		uint32_t pc = v->pc;
+		const uint32_t ic = v->ic;
+		float amp = v->amp;
+		const float ai = v->ainc, I = v->fk * 683565275.6f;
+		for (uint32_t j = 0; j < VSUB; j++) {
+			const float x = sin_u(pc + (uint32_t)(int32_t)(I * sin_u(pc))) + 0.06f * sin_u(2u * pc);
+			A[j] += x * amp * gl;
+			B[j] += x * amp * gr;
+			pc += ic;
+			amp += ai;
+		}
+		v->pc = pc; v->amp = amp;
+	}
+	return any;
+}
+static void rhodes_voicing(chan *c, int base, float vel, int damp)
+{
+	int pcs[4], n = 0;
+	pcs[n++] = chord_pc[1];
+	if (chord_n > 3)
+		pcs[n++] = chord_pc[3];
+	pcs[n++] = chord_pc[2 % chord_n];
+	/* a colour: the progression's own, else the ninth if the scale has it */
+	int col = -1;
+	for (int b = 0; b < 12 && col < 0; b++) {
+		const int pc = (chord_pc[0] + b) % 12;
+		if ((colour_mask >> pc) & 1u)
+			col = pc;
+	}
+	if (col < 0 && prog_x == 0 && in_scale((chord_pc[0] + 2) % 12))
+		col = (chord_pc[0] + 2) % 12;
+	if (col >= 0 && n < 4)
+		pcs[n++] = col;
+	const int lo = base - 7, hi = base + 10;           /* D3 to G4 at home */
+	const int center = c->glide_note > 0.0f ? (int)c->glide_note : base;
+	int notes[4], sum = 0;
+	for (int k = 0; k < n; k++) {
+		notes[k] = place(pcs[k], (float)center, lo, hi > lo + 11 ? hi : lo + 11);
+		sum += notes[k];
+	}
+	for (int i = 1; i < n; i++)
+		for (int j = i; j > 0 && notes[j] < notes[j - 1]; j--) {
+			const int t = notes[j];
+			notes[j] = notes[j - 1];
+			notes[j - 1] = t;
+		}
+	c->glide_note = (float)sum / (float)n;             /* (the voicing's centre, for the next) */
+	if (damp)
+		for (int i = 0; i < 4; i++)
+			if (sounding(&c->v[i]) && !c->v[i].mnote)
+				c->v[i].hold = 0.05f * (float)i;          /* the damper, a breath behind the new chord */
+	for (int k = 0; k < n; k++)
+		c->hq[k] = (int8_t)notes[k];
+	c->hq_n = (uint8_t)n;
+	c->hq_i = 0;
+	c->hq_t = 0.0f;
+	c->hq_dt = 0.035f + 0.035f * rnd();
+	c->hq_vel = vel;
+}
+static void rhodes_step(chan *c, int ch, uint32_t step, float act, int base)
+{
+	const int s16 = (int)(step & 15u);
+	if (s16 == 0 && (c->seen_chord != chord_count || rnd() < 0.15f * act)) {
+		const int fresh = c->seen_chord != chord_count;
+		c->seen_chord = chord_count;
+		rhodes_voicing(c, base, 0.55f + 0.15f * rnd(), fresh);
+	} else if (s16 == 8 && rnd() < 0.45f * act)
+		rhodes_voicing(c, base, 0.35f + 0.1f * rnd(), 0);
+	(void)ch;
 }

@@ -88,7 +88,7 @@ textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--
 <header>
   <span class="eyebrow">SP-1 · Glag · instruments</span>
   <h1>Glag Instruments</h1>
-  <p class="lede">Play the seventeen new voices yourself and shape them, or put on the album of pieces built from them. It's the real Glag engine in your browser; the keys play channel 1 the way MIDI would, and every slider is the same control the SP-1 has.</p>
+  <p class="lede">Play the eighteen new voices yourself and shape them, or put on the album of pieces built from them. It's the real Glag engine in your browser; the keys play channel 1 the way MIDI would, and every slider is the same control the SP-1 has.</p>
 </header>
 
 <section aria-label="Transport">
@@ -154,7 +154,7 @@ textarea { font: 400 12px/1.45 var(--mono); color: var(--fg); background: var(--
       <button type="button" id="albShuf" aria-pressed="false">Shuffle</button>
       <label class="vol" for="albLen">Each track <select id="albLen"><option value="120">2 min</option><option value="240" selected>4 min</option><option value="360">6 min</option></select></label>
     </div>
-    <p class="cap">Built on AMB-1's ways: slow, sparse, loops of unequal lengths drifting against each other, a held layer, the bass on the root, long rooms. Side B takes the methods of Bohren &amp; der Club of Gore, Miles Davis's <i>Ascenseur pour l'échafaud</i> and Badalamenti (their pace, weight, rooms and instruments; none of their melodies). Each track starts fresh in its own key, fades in, plays as written (song mode, if you turn it on, adds its arcs: channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
+    <p class="cap">Built on AMB-1's ways: slow, sparse, loops of unequal lengths drifting against each other, a held layer, the bass on the root, long rooms. Side B follows Bohren &amp; der Club of Gore, Miles Davis's <i>Ascenseur pour l'échafaud</i>, Badalamenti, Vangelis's <i>Blade Runner</i>, Chet Baker and Bowie and Eno's <i>Subterraneans</i>: each piece has its own chord progression drawn from the outline of theirs (D minor and C7 four bars each; IV–I then ii, III7, vi, vi°, ♭VII, V7, I; I, vi, IV, V coloured with sevenths and ninths; minor chords moving to distant minors; the noir line cliché), and the horns, cello and vibes sing in phrases: a motif that leans into a long chord tone, the motif again on the next chord, an answer that settles, a breath. Vibrato only on the long tones, late. None of their melodies. Each track starts fresh in its own key, fades in, plays as written (song mode, if you turn it on, adds its arcs: channels coming and going in overlapping waves), and fades out before the next. Levels are matched from measured loudness. Playing the keys while it runs takes channel 1 for a moment.</p>
   </div>
   <div class="voices" id="tracks"></div>
 </section>
@@ -178,7 +178,7 @@ const LK_DRUMS = ["kick", "rim", "snare", "clap", "snare", "tom", "hat", "tom", 
 const PULSE_DRUMS = ["kick", "click", "snare", "click", "snare", "shaker", "hat", "shaker", "hat", "shaker", "open", "shaker"];
 const BRUSH_DRUMS = ["kick", "tap", "tap", "tap", "tap", "sweep", "ride", "sweep", "ride", "tap", "ride", "tap"];
 /* where the keyboard starts for each voice (its low C) */
-const START_OCT = { 2: 24, 38: 24, 35: 36, 37: 36, 5: 36, 11: 36, 36: 48, 34: 48, 27: 48, 31: 48, 40: 48, 28: 60, 15: 36, 24: 36, 25: 36, 41: 36 };
+const START_OCT = { 2: 24, 38: 24, 35: 36, 37: 36, 5: 36, 11: 36, 36: 36, 34: 48, 27: 48, 31: 48, 40: 48, 42: 48, 28: 60, 15: 36, 24: 36, 25: 36, 41: 36 };
 const KIT_DRUMS = ["kick", "clank", "snare", "tissue", "Nord", "hat", "hat", "roll", "hat", "ghost", "open", "hat"];
 const ECHO_NAMES = ["dotted ¼", "½", "dotted ½", "a bar", "two bars", "⅛", "dotted ⅛", "¼", "the string"];
 const RV_NAMES = ["Hall", "Chamber", "Shimmer", "Bloom"];
@@ -203,11 +203,11 @@ const NEW_INFO = {
         chr: "koto to sitar: how much the bridge buzzes" },
   33: { t: "Slices of the echo's tape, replayed", tone: "", len: "each grain's length",
         chr: "how far back in the tape it reaches (and, playing itself, how often it shifts pitch)", grains: 1 },
-  34: { t: "A Harmon-muted horn, a slow swell", tone: "how far the horn opens (and a quicker swell)", len: "the release, and how long its notes hold",
-        chr: "the mute: cup (warmer) to harmon (nasal, narrow)" },
+  34: { t: "Open and warm, or a soft Harmon", tone: "how far the horn opens (and a quicker swell); it never gets shrill", len: "the release, and how long its notes hold",
+        chr: "open and dark (Chet Baker) to a gentle Harmon (Miles)" },
   35: { t: "Two membrane modes, a mallet, rolls", tone: "", len: "how long the drum rings",
         chr: "the mallet: soft felt to hard (brighter, the pitch settling after the hit)" },
-  36: { t: "A breathy tenor, a slow swell", tone: "how far it opens (and a quicker swell)", len: "the release, and how long its notes hold",
+  36: { t: "A breathy tenor, a slow swell", tone: "how far it opens (and a quicker swell); it never gets shrill", len: "the release, and how long its notes hold",
         chr: "how breathy" },
   37: { t: "A slow bow, darker as it climbs", tone: "how quickly the bow speaks", len: "the release, and how long it bows (a bow lasts six seconds at most)",
         chr: "sul tasto (warm, over the fingerboard) to ponticello (glassy, near the bridge)" },
@@ -217,8 +217,10 @@ const NEW_INFO = {
         chr: "how far back it reaches, and how often grains go an octave down or backwards", grains: 2 },
   40: { t: "A vibraphone on the bells' loops", tone: "the bar's ring (its fourth harmonic)", len: "the pedal: 1.5 to 7 s",
         chr: "the motor: off, then slow to fast and deep" },
-  41: { t: "Sweeps, taps, a quiet ride, a felt kick", tone: "the brushes' brightness", len: "the taps' and ride's decay",
-        chr: "how much ride (Activity adds sweeps, then taps, the ride, the kick)", key: "drums" },
+  41: { t: "Brushes circling, taps, a quiet ride", tone: "the brushes' brightness", len: "the taps' and ride's decay",
+        chr: "how much ride (Activity adds sweeps, then taps, the ride, the kick, a faint stir)", key: "drums" },
+  42: { t: "A warm Rhodes, no tine, comping", tone: "the bark on a harder touch", len: "how long a chord rings, 2.5 to 9 s",
+        chr: "the suitcase tremolo across the two sides" },
 };
 
 /* ---- the engine, in a worklet (or on the page where there is none) ---- */
@@ -500,17 +502,18 @@ const LATE = [
   [135, "Low Tide", "A pad, a breath's loop, an upright on the root, grains", "A"],
   [136, "Paper Organ", "The organ's flute stop, a music box, the echo's grains", "A"],
   [137, "Snow Chip", "The chip dark and round, vibes, a pad, the bass", "A"],
-  [138, "Rain Window", "A breathy tenor, a dull Rhodes, the double bass, brushes", "B"],
-  [139, "Harmon at Four", "A Harmon trumpet in a long echo, vibes, bass, brushes", "B"],
-  [140, "Slow Elevator", "Vibes with a deep motor, a dark pad, bass, low Rhodes", "B"],
-  [141, "Velvet Doom", "The double bass slow and heavy, a low tenor, sweeps, a drone", "B"],
-  [142, "Last Ferry", "A cello and a tenor drifting on loops of 19 and 23 beats", "B"],
-  [143, "Neon Fog", "A Rhodes, a far Harmon trumpet, grains, the double bass", "B"],
+  [138, "Rain Window", "After Bohren: a breathy tenor in phrases over slow minor chords, a warm Rhodes, the double bass, brushes", "B"],
+  [139, "Elevator, Paris", "After Ascenseur: an open trumpet over D minor and C7, the double bass, brushes and a ride", "B"],
+  [140, "Pine Lake", "After Badalamenti: vibes in broken chords over Imaj7, vi9, IVmaj7, a suspended V; a dark pad, a Rhodes", "B"],
+  [141, "Neon Rain", "After Vangelis: a brass swell, a tenor, a gliding bass, a Rhodes; IV and I, then the long turn home", "B"],
+  [142, "Last Ferry", "After Chet Baker's ballads: a soft open trumpet behind the beat, a cello answering, brushes", "B"],
+  [143, "Under the Wall", "After Subterraneans: a wordless choir, a pad, a tenor weaving; major and minor on one ground", "B"],
+  [144, "Velvet Doom", "Bohren's weight and the noir line cliché: the double bass slow, a low tenor, the Rhodes' falling line", "B"],
 ];
 /* each piece's measured loudness (dBFS, 90 s on the host), for matching the tracks */
 const LOUD = {118: -23.7, 119: -24.0, 120: -23.5, 121: -18.7, 122: -23.9, 123: -23.2, 124: -22.9, 125: -22.8, 126: -21.6,
-  127: -23.7, 128: -20.8, 129: -23.0, 130: -28.2, 131: -23.4, 132: -25.8, 133: -26.6, 134: -23.5, 135: -25.1, 136: -25.9,
-  137: -25.4, 138: -27.7, 139: -27.7, 140: -22.4, 141: -24.9, 142: -27.4, 143: -28.4};
+  127: -23.7, 128: -20.8, 129: -23.0, 130: -28.2, 131: -23.4, 132: -24.8, 133: -26.3, 134: -23.9, 135: -25.1, 136: -25.8,
+  137: -25.3, 138: -23.2, 139: -23.2, 140: -22.8, 141: -23.1, 142: -23.4, 143: -23.3, 144: -23.3};
 const alb = { on: false, list: [], idx: 0, timer: 0, t0: 0, song: false, lab: false, shuf: false, len: 240, tick: 0 };
 function albGain(i) { const db = Math.max(-4, Math.min(6, -23 - (LOUD[i] ?? -23))); return Math.pow(10, db / 20); }
 function albBuild() {
