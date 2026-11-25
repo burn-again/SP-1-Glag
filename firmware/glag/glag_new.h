@@ -409,17 +409,20 @@ static int breath_render(chan *c, float *A)
 	return any;
 }
 
-/* ---- Chip: a band-limited pulse (two saws a width apart); past 3/4 of CHARACTER, a 50 Hz
- * arpeggio through the chord's tones above the note ---- */
+/* ---- Chip: a band-limited pulse (two saws a width apart) through a two-pole low-pass (TONE: half
+ * way, ~2.4 kHz, at the middle), a soft 15 ms start; past 3/4 of CHARACTER, an arpeggio through
+ * the chord's tones above the note in sixteenth triplets (6-12 Hz, with the tempo). Tamed: it was
+ * a bare pulse, an instant start and a 50 Hz arpeggio, too much of a video game beside the rest.
+ * bend: the width; fq the filter's coefficient, f1 f2 its states ---- */
 static void chip_control(chan *c, int ch, float dt)
 {
-	const float chr = P.ch[ch][CP_CHAR], len = P.ch[ch][CP_LENGTH];
+	const float chr = P.ch[ch][CP_CHAR], len = P.ch[ch][CP_LENGTH], tone = eff_tone(ch);
 	static const float W[3] = {0.125f, 0.25f, 0.5f};
 	const float w = W[stepped(chr < 0.75f ? chr / 0.75f : 1.0f, 3)];
 	const int arp = chr >= 0.75f;
-	{	/* the arpeggio's clock: a step each 20 ms */
+	{	/* the arpeggio's clock: sixteenth triplets */
 		const uint32_t was = c->lfo1;
-		c->lfo1 += (uint32_t)(dt * 50.0f * 4294967296.0f);
+		c->lfo1 += (uint32_t)(dt * speed * gl_tempo_bpm(P.g[GP_TEMPO]) * (6.0f / 60.0f) * 4294967296.0f);
 		c->arp_i = (uint8_t)(c->arp_i + (c->lfo1 < was));
 	}
 	for (int i = 0; i < 3; i++) {
@@ -428,14 +431,17 @@ static void chip_control(chan *c, int ch, float dt)
 			v->ainc = 0.0f;
 			continue;
 		}
-		nv_perc(v, 0.002f, expmap(len, 0.15f, 2.0f) / speed, 1.0f, 0.0f, dt);
+		nv_perc(v, 0.015f, expmap(len, 0.15f, 2.0f) / speed, 1.0f, 0.0f, dt);
 		float n = v->note;
 		if (arp && chord_n > 1) {
 			const int k = (int)(c->arp_i % (uint8_t)chord_n);
 			n = (float)place(chord_pc[k], v->note, (int)v->note, (int)v->note + 11);
 		}
-		v->ic = hz_inc(mtof(n) * speed * pbend);
-		v->fk = w;
+		const float hz = mtof(n) * speed * pbend;
+		v->ic = hz_inc(hz);
+		v->bend = w;
+		const float fc = clampf(300.0f * fexp2(6.0f * tone), 1.5f * hz, 9000.0f);
+		v->fq = 1.0f - fexp2(-1.4427f * 6.2832f * fc / VSR);
 	}
 }
 static int chip_render(chan *c, float *A)
@@ -447,15 +453,17 @@ static int chip_render(chan *c, float *A)
 			continue;
 		any = 1;
 		uint32_t pc = v->pc;
-		const uint32_t ic = v->ic, wd = (uint32_t)(v->fk * 4294967296.0f);
-		float amp = v->amp;
-		const float ai = v->ainc;
+		const uint32_t ic = v->ic, wd = (uint32_t)(v->bend * 4294967296.0f);
+		float amp = v->amp, y1 = v->f1, y2 = v->f2;
+		const float ai = v->ainc, k = v->fq;
 		for (uint32_t j = 0; j < VSUB; j++) {
-			A[j] += 0.6f * (nb_saw(pc, ic) - nb_saw(pc + wd, ic)) * amp;
+			y1 += k * (0.6f * (nb_saw(pc, ic) - nb_saw(pc + wd, ic)) - y1);
+			y2 += k * (y1 - y2);
+			A[j] += y2 * amp;
 			pc += ic;
 			amp += ai;
 		}
-		v->pc = pc; v->amp = amp;
+		v->pc = pc; v->amp = amp; v->f1 = y1; v->f2 = y2;
 	}
 	return any;
 }
@@ -634,11 +642,17 @@ static void grains_step(chan *c, int ch, uint32_t step)
 /* keys held on a Grains channel (MIDI): a cloud of grains at that pitch while held */
 static uint8_t gr_key[GL_NCH][4];
 static void grains_note(chan *c, int ch, int note, float vel);
+static void haze_note(chan *c, int ch, int note, float vel);
 static void grains_keys(chan *c, int ch, float dt)
 {
 	for (int k = 0; k < 4; k++)
 		if (gr_key[ch][k] && rnd() < dt * (6.0f + 30.0f * eff_activity(ch) * eff_activity(ch)))
-			grains_note(c, ch, gr_key[ch][k] - 1, 0.7f);
+		{
+			if (c->voice == GV_HAZE)
+				haze_note(c, ch, gr_key[ch][k] - 1, 0.7f);
+			else
+				grains_note(c, ch, gr_key[ch][k] - 1, 0.7f);
+		}
 }
 /* a grain played by a key: read back at the key's distance from middle C (an octave each way at
  * most, as the fast grains must not overtake the tape's head) */

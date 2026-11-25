@@ -57,6 +57,8 @@ enum gl_voice {
 	GV_RIBBON, GV_FUNK, GV_HARP, GV_HARPSI, GV_KIT,
 	/* audition (glag_new.h): nine light voices, after the rest so no piece changes */
 	GV_LITEKIT, GV_PERC, GV_ORGAN, GV_MBOX, GV_BREATH, GV_CHIP, GV_CHOIR, GV_KOTO, GV_GRAINS,
+	/* audition (glag_new2.h): six more */
+	GV_TRUMPET, GV_TIMPANI, GV_SAX, GV_CELLO, GV_UPRIGHT, GV_HAZE,
 	GV_COUNT
 };
 extern const char *const GL_VOICE_NAME[GV_COUNT];
@@ -303,7 +305,7 @@ extern uint8_t gl_scope_on;
 
 /* ---- pieces ---- */
 #ifdef GL_DEMO_PIECES
-#define GL_NPIECES 132                  /* an audition build: a hundred and two more (five of them labs), and fourteen on the light voices */
+#define GL_NPIECES 144                  /* an audition build: a hundred and two more (five of them labs), fourteen on the light voices, twelve late rooms */
 #elif defined(GL_TEST_PIECES)
 #define GL_NPIECES 20                   /* the CPU test build: the sixteen and the four heaviest auditions */
 #else

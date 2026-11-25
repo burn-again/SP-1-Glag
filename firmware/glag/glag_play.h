@@ -133,10 +133,11 @@ static int voice_role(int v)
 {
 	if (v == GV_PULSE || v == GV_KIT || v == GV_LITEKIT)
 		return ROLE_DRUMS;
-	if (v == GV_BASS || v == GV_FUNK)
+	if (v == GV_BASS || v == GV_FUNK || v == GV_UPRIGHT)
 		return ROLE_BASS;
 	if (v == GV_PAD || v == GV_DRONE || v == GV_FLUTE || v == GV_SWELL || v == GV_GONG ||
-	    v == GV_ORGAN || v == GV_CHOIR || v == GV_BREATH)
+	    v == GV_ORGAN || v == GV_CHOIR || v == GV_BREATH || v == GV_TRUMPET || v == GV_SAX ||
+	    v == GV_CELLO || v == GV_HAZE)
 		return ROLE_HELD;
 	return ROLE_PLUCK;
 }
@@ -518,8 +519,27 @@ static nvoice *voice_note(chan *c, int ch, int note, float vel, float gate)
 		v->t = 0.0f;
 		notes_fired++;
 		break;
+	case GV_TRUMPET:
+	case GV_SAX:
+	case GV_CELLO:
+		v = alloc(c, 3);
+		if (!sounding(v))
+			make_room(v);
+		nv_trigger(v, (float)note, vel, 1.0f, 0);
+		v->hold = gate;
+		break;
+	case GV_TIMPANI:
+		timp_strike(c, ch, note, vel);
+		return 0;
+	case GV_UPRIGHT:
+		upright_pluck(c, ch, note, vel);
+		return 0;
 	case GV_GRAINS:
-		grains_note(c, ch, note, vel);
+	case GV_HAZE:
+		if (c->voice == GV_HAZE)
+			haze_note(c, ch, note, vel);
+		else
+			grains_note(c, ch, note, vel);
 		if (midi_live(ch))
 			for (int k = 0; k < 4; k++)
 				if (!gr_key[ch][k]) {
@@ -664,14 +684,15 @@ static void midi_tick(float dt)
 				v->mnote = 0;
 				if (arp_held(c->voice))
 					v->stage = ST_REL;
-				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE || c->voice == GV_BREATH)
+				else if (c->voice == GV_FUNK || c->voice == GV_RIBBON || c->voice == GV_FLUTE || c->voice == GV_BREATH ||
+				         c->voice == GV_TRUMPET || c->voice == GV_SAX || c->voice == GV_CELLO)
 					v->hold = 0.0f;
 			}
 		}
 		mq_r++;
 	}
 	for (int ch = 0; ch < 4; ch++) {
-		if (CH[ch].voice == GV_GRAINS)
+		if (CH[ch].voice == GV_GRAINS || CH[ch].voice == GV_HAZE)
 			grains_keys(&CH[ch], ch, dt);
 		else
 			memset(gr_key[ch], 0, sizeof gr_key[ch]);

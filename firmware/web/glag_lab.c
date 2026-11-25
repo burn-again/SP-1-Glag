@@ -95,6 +95,9 @@ EXPORT void lab_set_space(int i, int v) { if ((unsigned)i < GL_NSP) { base.space
 EXPORT int lab_get_space(int i) { return (unsigned)i < GL_NSP ? base.space[i] : 0; }
 EXPORT void lab_set_chx(int c, int v) { if ((unsigned)c < GL_NCH) { base.chx[c] = (uint8_t)v; post_now(); } }
 EXPORT void lab_macro(int c, float depth, float per) { gl_macro(c, depth, per); }
+/* the album: song mode's arcs, and each piece kept in its own key */
+EXPORT void lab_song(int on) { gl_world(GW_SONG, on ? 1.0f : 0.0f); }
+EXPORT void lab_key_hold(int on) { gl_world(GW_KEY_HOLD, on ? 1.0f : 0.0f); }
 EXPORT float lab_glow(int c) { return gl_glow[c & 3]; }
 EXPORT float lab_beat(void) { return gl_beat; }
 EXPORT int lab_ducked(void) { return gl_ducked(); }

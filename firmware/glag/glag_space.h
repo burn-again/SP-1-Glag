@@ -879,6 +879,7 @@ static void space_block(const float *E, const float *V, float *L, float *R, int 
 			rv_fx_block(X0, WL, WRr, GL_SUB / 2);
 	}
 	reverse_block(WL, WRr, GL_SUB / 2);
+	haze_write(WL, WRr, GL_SUB / 2);              /* (Haze: the tail kept, audition builds only) */
 	if (dist.amt && dist.post == 2) {            /* dirty tails, clean instruments */
 		dist_block(WL, GL_SUB / 2, 4);
 		dist_block(WRr, GL_SUB / 2, 5);
