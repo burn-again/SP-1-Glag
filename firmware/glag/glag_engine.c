@@ -351,6 +351,7 @@ static volatile uint32_t post_seq, post_seen = 0xFFFFFFFFu;
 
 static volatile uint8_t cmd_play = 1, cmd_freeze, cmd_slow;
 static volatile uint32_t cmd_next, cmd_panic, cmd_fresh, cmd_fresh_seed, cmd_crank;
+static volatile uint8_t cmd_fresh_keep;   /* (the next fresh start leaves the space as it is: the noir album's changes) */
 static uint32_t seen_crank, notes_fired;     /* the crank; notes begun (for it to find the next) */
 static uint32_t seen_fresh;
 static uint32_t seen_next, seen_panic;
@@ -4245,6 +4246,14 @@ void gl_crank(void) { cmd_crank++; }
 void gl_fresh(uint32_t seed)
 {
 	cmd_fresh_seed = seed;
+	cmd_fresh_keep = 0;
+	cmd_fresh++;
+}
+/* the same, but the echo and the reverb left as they are, ringing on into the next piece */
+void gl_fresh_keep(uint32_t seed)
+{
+	cmd_fresh_seed = seed;
+	cmd_fresh_keep = 1;
 	cmd_fresh++;
 }
 
@@ -4642,6 +4651,11 @@ static void control(float dt)
 		for (int c = 0; c < GL_NCH; c++)
 			for (int k = 0; k < 2; k++)
 				mac_ph[c][k] = mac_from[c][k] = mac_to[c][k] = mac_u[c][k] = 0.0f;
+		const int keep = cmd_fresh_keep;
+		uint8_t sp_was[GL_NSP];
+		float dl_was = P.g[GP_DELAY], rv_was = P.g[GP_REVERB];
+		for (int k = 0; k < GL_NSP; k++)
+			sp_was[k] = P.space[k];
 		{
 			const uint8_t sx = scale_x, px = prog_x, tx = tide_x, pp = ph_piece;   /* (the posted piece's scale, progression, tide and manner, kept across this reset) */
 			gl_piece(0, &P);
@@ -4650,7 +4664,13 @@ static void control(float dt)
 			tide_x = tx;
 			ph_piece = pp;
 		}
-		space_init();
+		if (keep) {                               /* the space as it was: its room, echo and amounts, ringing */
+			for (int k = 0; k < GL_NSP; k++)
+				P.space[k] = sp_was[k];
+			P.g[GP_DELAY] = dl_was;
+			P.g[GP_REVERB] = rv_was;
+		} else
+			space_init();
 		mode_cur = root_cur = -1;
 		chord_deg = 0;
 		prog_i = prog_bars = 0;
@@ -4664,7 +4684,8 @@ static void control(float dt)
 				bells_fill(&CH[c], c);
 		}
 		derive();
-		space_settle();
+		if (!keep)
+			space_settle();
 		post_seen = s - 1u;                       /* and now the piece itself, as posted */
 	}
 	if (s != post_seen) {
@@ -6231,39 +6252,39 @@ static const recipe PIECES[GL_NPIECES] = {
 	 * Baker and Bowie and Eno (their harmony's outlines, pace, rooms and instruments; none of their tunes) */
 	/* after Bohren: a breathy tenor in phrases over minor chords turning over like pages (i, the minor bVI, iv, the minor v), a warm Rhodes, the double bass, brushes circling; A, 42 */
 	{"Rain Window", {GV_SAX, GV_RHODES, GV_UPRIGHT, GV_BRUSH},
-	 {{45, 30, 75, 50, 25, 60, 42, 65, 71}, {40, 30, 70, 50, 20, 60, 58, 35, 62},
-	  {30, 30, 85, 50, 0, 25, 50, 10, 72}, {35, 25, 55, 50, 0, 35, 50, 15, 53}},
-	 {22, 30, 85, 46, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	 {{45, 30, 75, 50, 25, 51, 42, 65, 71}, {40, 30, 70, 50, 20, 51, 58, 35, 62},
+	  {30, 30, 85, 50, 0, 21, 50, 10, 72}, {35, 25, 55, 50, 0, 30, 50, 15, 53}},
+	 {22, 30, 72, 46, 9, 5, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* after Ascenseur pour l'echafaud: an open trumpet, dark, over D minor and C7 four bars each, the double bass, brushes and a ride, a Rhodes far back; D, 52 */
 	{"Elevator, Paris", {GV_TRUMPET, GV_UPRIGHT, GV_BRUSH, GV_RHODES},
-	 {{45, 30, 75, 50, 30, 60, 45, 25, 64}, {45, 30, 75, 50, 0, 25, 50, 40, 65},
-	  {50, 30, 55, 50, 0, 35, 55, 55, 48}, {25, 25, 70, 50, 20, 60, 60, 20, 48}},
-	 {32, 35, 78, 46, 2, 1, 20, 35}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	 {{45, 30, 75, 50, 30, 51, 45, 25, 64}, {45, 30, 75, 50, 0, 21, 50, 40, 65},
+	  {50, 30, 55, 50, 0, 30, 55, 55, 48}, {25, 25, 70, 50, 20, 51, 60, 20, 48}},
+	 {32, 35, 68, 46, 2, 1, 20, 35}, {GR_HALL, GS_OCTAVE, 0}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* after Badalamenti: vibes in broken chords on a slow motor over Imaj7, vi9, IVmaj7 and a suspended V, a dark pad, the double bass, a Rhodes; F, 56 */
 	{"Pine Lake", {GV_VIBES, GV_PAD, GV_UPRIGHT, GV_RHODES},
-	 {{45, 30, 75, 50, 30, 70, 42, 60, 83}, {70, 20, 40, 50, 15, 75, 50, 30, 49},
-	  {35, 30, 80, 50, 0, 25, 50, 15, 87}, {40, 30, 75, 50, 20, 65, 58, 30, 72}},
-	 {36, 30, 82, 46, 5, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	 {{45, 30, 75, 50, 30, 50, 42, 60, 83}, {70, 20, 40, 50, 15, 54, 50, 30, 49},
+	  {35, 30, 80, 50, 0, 18, 50, 15, 87}, {40, 30, 75, 50, 20, 47, 58, 30, 72}},
+	 {36, 30, 62, 46, 5, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Vangelis's Blade Runner: a brass swell for the CS-80, a tenor's phrases, a gliding bass, a Rhodes for the electric grand; IV and I, then the long turn home; D-flat, 58 */
 	{"Neon Rain", {GV_SWELL, GV_SAX, GV_BASS, GV_RHODES},
-	 {{45, 25, 70, 50, 15, 75, 50, 40, 41}, {45, 30, 75, 50, 30, 70, 42, 55, 63},
-	  {35, 30, 85, 50, 6, 28, 50, 30, 31}, {35, 30, 70, 50, 25, 65, 60, 25, 50}},
-	 {38, 30, 85, 46, 1, 0, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	 {{45, 25, 70, 50, 15, 60, 50, 40, 41}, {45, 30, 75, 50, 30, 56, 42, 55, 63},
+	  {35, 30, 85, 50, 6, 22, 50, 30, 31}, {35, 30, 70, 50, 25, 52, 60, 25, 50}},
+	 {38, 30, 70, 46, 1, 0, 20, 35}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Chet Baker's ballads: an open trumpet, soft, behind the beat, a cello answering below, the double bass, brushes; a ballad's changes; E-flat, 54 */
 	{"Last Ferry", {GV_TRUMPET, GV_CELLO, GV_UPRIGHT, GV_BRUSH},
-	 {{45, 30, 75, 50, 25, 55, 45, 0, 68}, {30, 30, 80, 50, 15, 55, 60, 30, 55},
-	  {40, 30, 75, 50, 0, 25, 50, 35, 69}, {40, 25, 55, 50, 0, 35, 52, 35, 50}},
-	 {34, 25, 70, 47, 3, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
+	 {{45, 30, 75, 50, 25, 50, 45, 0, 68}, {30, 30, 80, 50, 15, 50, 60, 30, 55},
+	  {40, 30, 75, 50, 0, 22, 50, 35, 69}, {40, 25, 55, 50, 0, 32, 52, 35, 50}},
+	 {34, 25, 62, 47, 3, 0, 20, 35}, {GR_CHAMBER, GS_OCTAVE, 3}, {0, 0, 0, 0}, 16, {1, 1, 1, 1}, 16, 0, {0, 0, 0, 0}, 0},
 	/* after Bowie and Eno's Subterraneans: a wordless choir, a pad, a tenor weaving in phrases, the bass; major and minor on the same ground; F-sharp, 48 */
 	{"Under the Wall", {GV_CHOIR, GV_PAD, GV_SAX, GV_BASS},
-	 {{45, 40, 75, 50, 15, 75, 45, 40, 54}, {70, 25, 40, 50, 20, 75, 55, 30, 37},
-	  {40, 30, 75, 50, 35, 70, 40, 60, 68}, {35, 30, 85, 50, 6, 28, 50, 25, 30}},
-	 {28, 35, 82, 45, 6, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
+	 {{45, 40, 75, 50, 15, 56, 45, 40, 54}, {70, 25, 40, 50, 20, 56, 55, 30, 37},
+	  {40, 30, 75, 50, 35, 52, 40, 60, 68}, {35, 30, 85, 50, 6, 21, 50, 25, 30}},
+	 {28, 35, 65, 45, 6, 0, 20, 35}, {GR_BLOOM, GS_OCTAVE, 4}, {0, 0, 0, 0}, 18, {1, 1, 1, 1}, 18, 0, {0, 0, 0, 0}, 0},
 	/* after Bohren's doom and the noir line cliche: the double bass very slow, a low tenor, a Rhodes carrying the falling inner line, only the brushes' sweeps; E, 40 */
 	{"Velvet Doom", {GV_UPRIGHT, GV_SAX, GV_RHODES, GV_BRUSH},
-	 {{30, 25, 90, 50, 0, 30, 50, 10, 74}, {40, 25, 80, 25, 25, 65, 55, 60, 69},
-	  {35, 25, 80, 50, 20, 65, 45, 30, 61}, {25, 20, 60, 50, 0, 40, 50, 0, 50}},
-	 {20, 30, 85, 44, 4, 5, 15, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 20, {1, 1, 1, 1}, 20, 0, {0, 0, 0, 0}, 0},
+	 {{30, 25, 90, 50, 0, 26, 50, 10, 74}, {40, 25, 80, 25, 25, 55, 55, 60, 69},
+	  {35, 25, 80, 50, 20, 55, 45, 30, 61}, {25, 20, 60, 50, 0, 34, 50, 0, 50}},
+	 {20, 30, 72, 44, 4, 5, 15, 30}, {GR_HALL, GS_OCTAVE, 3}, {0, 0, 0, 0}, 20, {1, 1, 1, 1}, 20, 0, {0, 0, 0, 0}, 0},
 	/* ---- space (145 to 154): struck voices (no drum kit) that keep playing, the echo's grains
 	 * and the reverb's feeding on them, each with its tide: the dry levels pulled back and pushed
 	 * forward, the sends, delay and reverb moving, the echo's time walking (glag_new2.h) ---- */

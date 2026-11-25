@@ -596,7 +596,7 @@ static void upright_step(chan *c, int ch, uint32_t step, float act, int base)
 /* ---- Haze: grains of the reverb's tail. Its last four seconds at 8 kHz (written from the space,
  * only while a channel plays Haze, only in the audition builds). Per grain as the Grains': pc its
  * place, fk the fraction, fq its rate (negative: reversed), t its window, hold the window's step ---- */
-#ifdef GL_DEMO_PIECES
+#if defined(GL_DEMO_PIECES) && !defined(GL_NO_HAZE_RAM)
 #define HZ_N 32768u
 static float hz_ring[HZ_N];
 static uint32_t hz_ph;
@@ -608,7 +608,7 @@ static float hz_ring[HZ_N];
 static uint32_t hz_w;
 static void haze_write(const float *L, const float *R, uint32_t n)
 {
-#ifdef GL_DEMO_PIECES
+#if defined(GL_DEMO_PIECES) && !defined(GL_NO_HAZE_RAM)
 	if (CH[0].voice != GV_HAZE && CH[1].voice != GV_HAZE && CH[2].voice != GV_HAZE && CH[3].voice != GV_HAZE)
 		return;
 	for (uint32_t j = 0; j < n; j++) {
@@ -623,11 +623,19 @@ static void haze_write(const float *L, const float *R, uint32_t n)
 	(void)L; (void)R; (void)n;
 #endif
 }
+#if defined(GL_NO_HAZE_RAM)
+/* (on the device there is no room for the tail's four seconds: Haze reads the echo's tape, the same
+ * size and rate, and keeps its own way of reading it, long, slow, low and reversed) */
+static float haze_read(uint32_t i, float f) { return grain_read(i, f); }
+#define HZ_W() grain_w()
+#else
 static float haze_read(uint32_t i, float f)
 {
 	const float a = hz_ring[i & (HZ_N - 1u)], b = hz_ring[(i + 1u) & (HZ_N - 1u)];
 	return a + (b - a) * f;
 }
+#define HZ_W() hz_w
+#endif
 static void haze_grain(chan *c, int ch, float r, float vel)
 {
 	const float chr = P.ch[ch][CP_CHAR], len = P.ch[ch][CP_LENGTH];
@@ -648,7 +656,7 @@ static void haze_grain(chan *c, int ch, float r, float vel)
 		back = 31000.0f - span;
 	if (back < 200.0f)
 		back = 200.0f;
-	v->pc = hz_w - (uint32_t)back;
+	v->pc = HZ_W() - (uint32_t)back;
 	v->fk = 0.0f;
 	v->fq = r * (8000.0f / VSR);
 	v->t = 0.0f;

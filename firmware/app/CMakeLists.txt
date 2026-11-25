@@ -39,7 +39,11 @@ if(CONFIG_SP1_GLAG)
 	zephyr_library_sources(${GLAG}/glag_engine.c ${GLAG}/glag_ui.c)
 	zephyr_library_include_directories(${GLAG})
 	zephyr_library_compile_options(-O2 -ffp-contract=off -Wdouble-promotion)
-	if(CONFIG_SP1_GLAG_CPU_TEST)
+	if(CONFIG_SP1_GLAG_NOIR_TEST)
+		# the noir album as the CPU test: the audition pieces, Haze on the echo's tape, no script
+		zephyr_library_compile_definitions(GL_PROF GL_DEMO_PIECES GL_NO_HAZE_RAM GL_NOIR_TEST GL_TEST_HOOKS)
+		target_compile_definitions(app PRIVATE GL_PROF GL_DEMO_PIECES GL_NO_HAZE_RAM GL_NOIR_TEST GL_TEST_HOOKS)
+	elseif(CONFIG_SP1_GLAG_CPU_TEST)
 		# its parts timed and its output checked; the four heaviest pieces as 17-20; the
 		# controls' test hooks for the scenario script (glag_test.h, run from main.c)
 		zephyr_library_compile_definitions(GL_PROF GL_TEST_PIECES GL_TEST_HOOKS)

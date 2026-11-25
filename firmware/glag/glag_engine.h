@@ -148,6 +148,7 @@ void gl_macro(int ch, float depth, float period_s);
  * chord, the dice, the clock and the slow LFOs from the start, every channel reset, the echo and
  * reverb emptied. For the album (between tracks, in silence): each piece plays as recorded. */
 void gl_fresh(uint32_t seed);
+void gl_fresh_keep(uint32_t seed);   /* the same, the echo and reverb left ringing (the noir album) */
 /* The crank: while resting or frozen, play on to the next step where something sounds (a bar
  * at most), now. */
 void gl_crank(void);

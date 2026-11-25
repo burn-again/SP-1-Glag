@@ -21,11 +21,20 @@
 
 static gl_patch cur, undo_patch;
 static int undo_valid, undo_piece;
-static gl_patch saved[GL_NPIECES];
-static uint8_t saved_valid[GL_NPIECES];
+/* each piece's working copy and hidden scene, by slot: one a piece (the noir test, short of RAM,
+ * keeps them only for the sixteen and its own pieces, 138 to 154; the others load as written) */
+#ifdef GL_NOIR_TEST
+#define UI_NSLOT 33
+static int ui_slot(int i) { return (unsigned)i < 16u ? i : (i >= 138 && i < 155) ? 16 + i - 138 : -1; }
+#else
+#define UI_NSLOT GL_NPIECES
+static int ui_slot(int i) { return (unsigned)i < (unsigned)GL_NPIECES ? i : -1; }
+#endif
+static gl_patch saved[UI_NSLOT];
+static uint8_t saved_valid[UI_NSLOT];
 /* each piece's hidden macro scene: from the piece, overwritten by saving it (•• + RWD held 3 s) */
-static uint8_t scene_mac[GL_NPIECES][4];
-static float scene_per[GL_NPIECES][4];
+static uint8_t scene_mac[UI_NSLOT][4];
+static float scene_per[UI_NSLOT][4];
 static int piece;
 static int dirty = 1;
 
@@ -88,7 +97,39 @@ static uint32_t demo_piece_ms = 120000u;        /* (the hardware test plays shor
 #define DEMO_SKIPIN_MS 4000u                    /* ... and the next in over this (and the first track) */
 #define DEMO_COUNT 8                            /* for now the AMB-1 pieces */
 #define DEMO_SEED 1234u                         /* the seed the clips were rendered with */
-static int demo_on, demo_idx, demo_n, play_prev_page;   /* demo_on: 1 the album, 2 shuffle */
+static int demo_on, demo_idx, demo_n, play_prev_page;   /* demo_on: 1 the album, 2 shuffle (3 the noir test's album) */
+#ifdef GL_NOIR_TEST
+/* The noir test: the seven noir songs (138 on) in the C phrasing, 2:30 each, a space piece (145 on)
+ * between each two, 1:15, round and round (the space pieces turning through all ten). The
+ * instruments fade, not the room: at each change the reverb and echo are held, the next piece
+ * starts in the same room, and four seconds into its fade-in they let go and it takes its own */
+#define NOIR_SONG_MS 150000u
+#define NOIR_GAP_MS 75000u
+#define NOIR_FADE_MS 10000u
+#define NOIR_HOLD_MS 4000u
+static int noir_hold, noir_round, noir_first;
+static uint8_t noir_room;
+static float noir_g = -1.0f;
+static uint32_t noir_len(int idx) { return (idx & 1) ? NOIR_GAP_MS : NOIR_SONG_MS; }
+static void noir_post(float g)
+{
+	gl_patch q = cur;
+	for (int c = 0; c < 4; c++)
+		q.ch[c][CP_LEVEL] *= g;
+	if (noir_hold)
+		q.space[GL_SP_REVERB] = noir_room;               /* (the last piece's room, ringing on) */
+	gl_post_patch(&q);
+	noir_g = g;
+}
+static void noir_release(void)
+{
+	if (noir_hold) {
+		gl_perform(GF_HOLD_VERB, 0.0f);
+		gl_perform(GF_HOLD_ECHO, 0.0f);
+		noir_hold = 0;
+	}
+}
+#endif
 static uint8_t demo_list[GL_NPIECES];
 static uint32_t demo_t0;
 static float demo_gain = 1.0f;
@@ -341,8 +382,8 @@ static void load_piece(int i)
 	undo_piece = piece;
 	undo_valid = 1;
 	piece = (i % GL_NPIECES + GL_NPIECES) % GL_NPIECES;
-	if (saved_valid[piece])
-		cur = saved[piece];
+	if (ui_slot(piece) >= 0 && saved_valid[ui_slot(piece)])
+		cur = saved[ui_slot(piece)];
 	else
 		gl_piece(piece, &cur);
 	{	/* the macros as the piece loads (most: off); its scene waits for •• + FFWD held 3 s */
@@ -372,14 +413,15 @@ void glui_enter(void)
 
 void glui_set_saved(int i, const gl_patch *p)
 {
-	if ((unsigned)i >= GL_NPIECES)
+	const int sl = ui_slot(i);
+	if (sl < 0)
 		return;
-	saved_valid[i] = p != 0;
+	saved_valid[sl] = p != 0;
 	if (p)
-		saved[i] = *p;
+		saved[sl] = *p;
 
 }
-const gl_patch *glui_saved(int i) { return (unsigned)i < GL_NPIECES && saved_valid[i] ? &saved[i] : 0; }
+const gl_patch *glui_saved(int i) { const int sl = ui_slot(i); return sl >= 0 && saved_valid[sl] ? &saved[sl] : 0; }
 const gl_patch *glui_patch(void) { return &cur; }
 float glui_target(int f, int *c)
 {
@@ -392,10 +434,13 @@ float glui_target(int f, int *c)
 void glui_init(void)
 {
 	for (int i = 0; i < GL_NPIECES; i++) {
+		const int sl = ui_slot(i);
 		float per;
-		gl_piece_scene(i, scene_mac[i], &per);
+		if (sl < 0)
+			continue;
+		gl_piece_scene(i, scene_mac[sl], &per);
 		for (int c = 0; c < 4; c++)
-			scene_per[i][c] = per;
+			scene_per[sl][c] = per;
 	}
 	piece = 0;
 	if (saved_valid[0])
@@ -625,6 +670,19 @@ static void demo_track(uint32_t now)
 {
 	trk_ui_seed = seed;                   /* (kept, so a track can be replayed exactly) */
 	load_piece(demo_list[demo_idx]);
+#ifdef GL_NOIR_TEST
+	if (demo_on == 3) {
+		noir_post(0.0f);                  /* (in at nothing; the fade brings it up) */
+		dirty = 0;
+		trk_fresh_seed = now * 2654435761u + 1u;
+		if (noir_first) {
+			noir_first = 0;
+			gl_fresh(trk_fresh_seed);
+		} else
+			gl_fresh_keep(trk_fresh_seed);     /* the echo and the reverb ringing on */
+		return;
+	}
+#endif
 	if (demo_on == 2)
 		shuffle_settings();
 	gl_post_patch(&cur);
@@ -641,6 +699,19 @@ static void demo_start(int mode, uint32_t now, const gl_input *in)
 		shuf_was[2] = (uint8_t)w_pump; shuf_was[3] = (uint8_t)w_tex;
 	}
 	demo_idx = 0;
+#ifdef GL_NOIR_TEST
+	if (demo_on == 3) {                          /* the noir test: songs and, between, the space pieces */
+		demo_n = 0;
+		for (int k = 0; k < 7; k++) {
+			demo_list[demo_n++] = (uint8_t)(138 + k);
+			demo_list[demo_n++] = (uint8_t)(145 + (noir_round * 7 + k) % 10);
+		}
+		gl_world(GW_KEY_HOLD, 1.0f);
+		gl_phrase_style(2);
+		noir_first = 1;
+		noir_hold = 0;
+	} else
+#endif
 	if (demo_on == 1) {                          /* the album: the AMB-1 pieces, each in its key */
 		demo_n = DEMO_COUNT;
 		for (int i = 0; i < demo_n; i++)
@@ -657,6 +728,13 @@ static void demo_start(int mode, uint32_t now, const gl_input *in)
 	demo_in = DEMO_SKIPIN_MS;
 	demo_out = DEMO_FADE_MS;
 	demo_end = DEMO_PIECE_MS;
+#ifdef GL_NOIR_TEST
+	if (demo_on == 3) {
+		demo_in = NOIR_FADE_MS;
+		demo_out = NOIR_FADE_MS;
+		demo_end = noir_len(demo_idx);
+	}
+#endif
 	demo_skipped = 0;
 	if (!playing) {
 		playing = 1;
@@ -721,6 +799,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	out->save_slot = 0;
 	if (!started) {                               /* the faders are wherever they are */
 		started = 1;
+#ifdef GL_NOIR_TEST
+		demo_start(3, now, in);                   /* the noir test: its album from the start */
+#endif
 		for (int f = 0; f < 4; f++)
 			last_pos[f] = in->fader[f];
 		layer_shift = fn;
@@ -764,6 +845,12 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				if (w_tex)
 					world_apply_all(3);
 			}
+#ifdef GL_NOIR_TEST
+			if (demo_on == 3) {
+				noir_release();
+				gl_post_patch(&cur);
+			}
+#endif
 			demo_on = 0;
 			gl_world(GW_KEY_HOLD, 0.0f);
 			if (PRESSED(GB_PLAY))
@@ -774,6 +861,21 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		if (demo_on) {
 			t = now - demo_t0;
 			if (t >= demo_end) {                      /* the switch, in the quiet */
+#ifdef GL_NOIR_TEST
+				if (demo_on == 3) {                   /* the room held across the change (if not already) */
+					if (!noir_hold) {
+						noir_room = cur.space[GL_SP_REVERB];
+						gl_perform(GF_HOLD_VERB, 1.0f);
+						gl_perform(GF_HOLD_ECHO, 1.0f);
+						noir_hold = 1;
+					}
+					if ((demo_idx + 1) % demo_n == 0) {     /* a new round: the next seven space pieces */
+						noir_round++;
+						for (int k = 0; k < 7; k++)
+							demo_list[2 * k + 1] = (uint8_t)(145 + (noir_round * 7 + k) % 10);
+					}
+				}
+#endif
 				demo_idx = (demo_idx + 1) % demo_n;
 				if (demo_on == 2 && demo_idx == 0)
 					shuffle_list(now);               /* the whole list played: a new order */
@@ -784,6 +886,13 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 				demo_in = demo_skipped ? DEMO_SKIPIN_MS : DEMO_FADE_MS;
 				demo_out = DEMO_FADE_MS;
 				demo_end = DEMO_PIECE_MS;
+#ifdef GL_NOIR_TEST
+				if (demo_on == 3) {
+					demo_in = NOIR_FADE_MS;
+					demo_out = NOIR_FADE_MS;
+					demo_end = noir_len(demo_idx);
+				}
+#endif
 				demo_skipped = 0;
 			}
 			/* in, and out toward the end: whichever is lower (a skip mid-fade carries on from there) */
@@ -791,6 +900,24 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 			const float go = t >= demo_end ? 0.0f : demo_end - t < demo_out ? (float)(demo_end - t) / (float)demo_out : 1.0f;
 			const float g = gi < go ? gi : go;
 			demo_gain = g * g * (3.0f - 2.0f * g);
+#ifdef GL_NOIR_TEST
+			if (demo_on == 3) {                       /* the instruments fade; the room rings on */
+				const float gg = demo_gain;
+				demo_gain = 1.0f;
+				if (!noir_hold && t + demo_out / 2u >= demo_end && t < demo_end) {
+					/* half way through the fade out, while the room is still full: hold it, to
+					 * carry it across the change into the next piece */
+					noir_room = cur.space[GL_SP_REVERB];
+					gl_perform(GF_HOLD_VERB, 1.0f);
+					gl_perform(GF_HOLD_ECHO, 1.0f);
+					noir_hold = 1;
+				} else if (noir_hold && t >= NOIR_HOLD_MS && t + demo_out / 2u < demo_end) {
+					noir_release();                   /* and now its own room */
+					noir_post(gg);
+				} else if (gg - noir_g > 0.01f || noir_g - gg > 0.01f || (gg == 0.0f && noir_g != 0.0f) || (gg == 1.0f && noir_g != 1.0f))
+					noir_post(gg);
+			}
+#endif
 		}
 	}
 	if (!demo_on && demo_gain < 1.0f) {               /* ended mid-fade: back up in a second */
@@ -974,9 +1101,9 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 		uint32_t held = now - down_at[GB_FFWD];
 		if (held >= SCENE_HOLD_MS) {
 			ffwd_done = 1;
-			for (int c = 0; c < 4; c++) {
-				mac_step[c] = scene_mac[piece][c];
-				mac_period[c] = scene_per[piece][c];
+			for (int c = 0; c < 4 && ui_slot(piece) >= 0; c++) {
+				mac_step[c] = scene_mac[ui_slot(piece)][c];
+				mac_period[c] = scene_per[ui_slot(piece)][c];
 				macro_post(c);
 			}
 			say(SH_MACROS, now, 1500);
@@ -1078,11 +1205,14 @@ void glui_tick(uint32_t now, const gl_input *in, gl_ui_out *out)
 	}
 	if (DOWN(GB_RWD) && rwd_shift && !rwd_saved && now - down_at[GB_RWD] >= SAVE_HOLD_MS) {
 		rwd_saved = 1;
-		saved[piece] = cur;
-		saved_valid[piece] = 1;
-		for (int c = 0; c < 4; c++) {           /* the macros as they are: its scene */
-			scene_mac[piece][c] = mac_step[c];
-			scene_per[piece][c] = mac_period[c];
+		const int sl = ui_slot(piece);
+		if (sl >= 0) {
+			saved[sl] = cur;
+			saved_valid[sl] = 1;
+			for (int c = 0; c < 4; c++) {       /* the macros as they are: its scene */
+				scene_mac[sl][c] = mac_step[c];
+				scene_per[sl][c] = mac_period[c];
+			}
 		}
 		out->save_slot = (uint8_t)(piece + 1);
 		say(SH_FLASH, now, 900);

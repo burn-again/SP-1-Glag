@@ -236,6 +236,16 @@ config SP1_GLAG
 	  faders, buttons and LEDs. Wakes' power, watchdog, standby, battery and audio
 	  bring-up are used unchanged. n: Wakes' M2 test tone (the fallback).
 
+config SP1_GLAG_NOIR_TEST
+	bool "Diagnostics: the noir album as a CPU test"
+	default n
+	depends on SP1_GLAG_CPU_TEST
+	help
+	  The CPU test's logging and checks, without its scenario script: from power-on the noir
+	  album plays (the seven noir songs, 2:30 each, in the C phrasing, a space piece of 1:15
+	  between each two, the room held across each change). The audition pieces are carried
+	  (GL_DEMO_PIECES); Haze reads the echo's tape (no room for its own memory).
+
 config SP1_GLAG_CPU_TEST
 	bool "Diagnostics: Glag's hardware test (v3): a scenario script with checks"
 	default n

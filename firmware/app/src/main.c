@@ -2431,9 +2431,11 @@ int main(void)
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
 				/* the test's script: after the power gesture above (which never reads gi),
 				 * through the controls as a hand would; out of the way the moment a hand is on them */
+#if !defined(GL_NOIR_TEST)
 				if (glt_tick(k_uptime_get_32(), &gi, glt_touch(&gi)) == GLT_END) {
 					glag_t3_device();
 				}
+#endif
 #endif
 
 				const gl_ui_out was = g_glag_out;
@@ -2684,6 +2686,19 @@ int main(void)
 				       );
 #if defined(CONFIG_SP1_GLAG_CPU_TEST)
 				glag_cpu_test_tick(as.cyc_budget);
+#if defined(GL_NOIR_TEST)
+				{	/* the noir album: each track as it begins */
+					static int noir_seen = -2;
+					int pc, md;
+					uint32_t us, fs;
+					glui_track(&pc, &md, &us, &fs);
+					if (pc != noir_seen) {
+						noir_seen = pc;
+						printk("GLAG noir track %d %s (%s)\n", pc, pc >= 0 ? gl_piece_name(pc) : "-",
+						       pc >= 145 ? "space" : pc >= 138 ? "song" : "-");
+					}
+				}
+#endif
 #endif
 #if defined(CONFIG_SP1_PLAITS)
 				trig_print0 = sp1_synth_trig_edges();
