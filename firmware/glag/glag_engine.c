@@ -2213,6 +2213,11 @@ static void chan_step(chan *c, int ch, uint32_t step)
 				while (note > 79)
 					note -= 12;                  /* a ceiling at G5 (784 Hz), leaps folded under it */
 			}
+			if (c->voice == GV_BREATH) {         /* its loop never past D5: above, a breath turns shrill */
+				while (note > 74)
+					note -= 12;
+				vel *= clampf(1.0f - (float)(note - 67) * 0.03f, 0.8f, 1.0f);   /* (and the top of it softer) */
+			}
 			if (!sounding(v))
 				make_room(v);
 			nv_trigger(v, (float)note, c->voice == GV_FLUTE || c->voice == GV_BREATH ? vel : vel * 1.35f, ratio, vp);
