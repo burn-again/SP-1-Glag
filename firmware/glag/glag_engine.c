@@ -1992,6 +1992,15 @@ static void ribbon_control(chan *c, int ch, float sdt, float tone, float len)
 
 static void answer_call(void);
 #include "glag_kit.h"
+/* (the shaped envelopes, glag_new2.h: asked for, and a piece of The Late Rooms) */
+static uint8_t esh_on, esh_pc;
+#define ESH_LIVE (esh_on && esh_pc)
+static float esh_rnd(void);
+static void esh_note(int c, int note, float vel, float hold);
+/* (shaped: each choir breath's own vibrato, as fast as written or slower: its pulse through the
+ * formants varied) */
+static uint32_t esh_vph[GL_NCH][3];
+static float esh_vk[GL_NCH][3];
 #include "glag_new.h"
 #include "glag_new2.h"
 
@@ -2209,6 +2218,8 @@ static void chan_step(chan *c, int ch, uint32_t step)
 			nv_trigger(v, (float)note, c->voice == GV_FLUTE || c->voice == GV_BREATH ? vel : vel * 1.35f, ratio, vp);
 			if (c->voice == GV_FLUTE || c->voice == GV_BREATH)
 				v->hold = expmap(P.ch[ch][CP_LENGTH], 0.8f, 7.0f);
+			if (c->voice == GV_BREATH)
+				esh_note(ch, note, vel, v->hold);    /* (the shaped envelopes, if on) */
 		}
 		c->glow = vel;
 		break;
@@ -4689,6 +4700,7 @@ static void control(float dt)
 		{
 			const uint8_t sx = scale_x, px = prog_x, tx = tide_x, pp = ph_piece;   /* (the posted piece's scale, progression, tide and manner, kept across this reset) */
 			const float rx = room_x, ex = echo_x;
+			const uint8_t epc = esh_pc;
 			gl_piece(0, &P);
 			scale_x = sx;
 			prog_x = px;
@@ -4696,6 +4708,7 @@ static void control(float dt)
 			ph_piece = pp;
 			room_x = rx;
 			echo_x = ex;
+			esh_pc = epc;
 		}
 		if (keep) {                               /* the space as it was: its room, echo and amounts, ringing */
 			for (int k = 0; k < GL_NSP; k++)
@@ -6459,6 +6472,7 @@ void gl_piece(int i, gl_patch *out)
 	ph_piece = (unsigned)(i - 138) < 7u ? (uint8_t)(i - 137) : 0;
 	room_x = ph_piece ? room_noir : 1.0f;
 	echo_x = ph_piece ? echo_noir : 1.0f;
+	esh_pc = (unsigned)(i - 132) < 13u;
 	/* (the space pieces, 145 on: a progression, perhaps, and their tide) */
 	tide_x = 0;
 	if ((unsigned)(i - 145) < 10u) {

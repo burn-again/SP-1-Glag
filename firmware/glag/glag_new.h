@@ -513,6 +513,7 @@ static void held_control(chan *c, int ch, float dt)
 				v->vel = organ ? 0.55f : 0.45f + 0.15f * rnd();
 				v->t = 0.0f;
 				notes_fired++;
+				esh_vk[ch][i] = ESH_LIVE && !organ ? 0.33f + 0.67f * esh_rnd() : 0.0f;   /* (shaped: this breath's own pulse) */
 			}
 		} else if (v->stage != ST_IDLE)
 			v->stage = ST_REL;
@@ -545,7 +546,10 @@ static void held_control(chan *c, int ch, float dt)
 			c->cyc[i] += sdt / (9.0f + 5.0f * (float)i);           /* the vowel's drift */
 			c->cyc[i] -= c->cyc[i] >= 1.0f ? 1.0f : 0.0f;
 		}
-		const float vib = 1.0f + (organ ? 0.0015f : 0.004f) * sin_u(lfo_vib + (uint32_t)i * 0x55555555u) *
+		if (esh_vk[ch][i] > 0.0f)                  /* (shaped: its own vibrato, 2.55 Hz as written or slower) */
+			esh_vph[ch][i] += (uint32_t)(sdt * 2.55f * esh_vk[ch][i] * 4294967296.0f);
+		const float vib = 1.0f + (organ ? 0.0015f : 0.004f) *
+		                         sin_u(esh_vk[ch][i] > 0.0f ? esh_vph[ch][i] : lfo_vib + (uint32_t)i * 0x55555555u) *
 		                         (organ ? sin_u(c->lfo1) : 1.0f);
 		const float hz = mtof(v->ratio) * speed * pbend * vib;
 		v->ic = hz_inc(hz);

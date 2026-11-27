@@ -27,8 +27,6 @@
 
 /* (the noir side's phrasing and its arc, defined below; the brushes follow it) */
 static uint8_t ph_style, ph_piece;
-static uint8_t esh_on;                              /* (the shaped envelopes, below: on and a noir song) */
-#define ESH_LIVE (esh_on && ph_piece)
 /* shaped, a lead cut off by its next note lets go over 0.6 s, not in a snap */
 #define ESH_LETGO(t) (ESH_LIVE ? 0.6f : (t))
 static float c_int(void);
@@ -121,9 +119,10 @@ static void line_step(chan *c, int ch, uint32_t step, int base)
 }
 /* a line's note: one voice at a time. The same note again carries on in the same voice (a bow
  * change, no second saw beating against the first); another lets the last one go quickly */
+static void esh_note(int c, int note, float vel, float hold);
 static void line_fire(chan *c, int ch, int note, float vel, float hold, float emph)
 {
-	(void)ch;
+	esh_note(ch, note, vel, hold);                  /* (the shaped envelopes, if on: its contour) */
 	nvoice *same = 0;
 	for (int i = 0; i < 3; i++) {
 		nvoice *v = &c->v[i];
@@ -1171,7 +1170,7 @@ static void ph_fit(chan *c, int part, int lo, int hi, int vib)
 	if (part != 3)
 		c->last_note = nt[n - 1];
 }
-/* ---- shaped envelopes (audition, the noir songs, off unless asked): the long notes breathe the
+/* ---- shaped envelopes (audition, The Late Rooms' thirteen, 132-144, off unless asked): the long notes breathe the
  * way players hold them, and listen. A lead's note (the sax, trumpet, cello, breath) takes a contour
  * from how it comes: rising, it is pushed out (a lift into it); falling, it relaxes (leaning down
  * through it, or sagging and coming back); a step, a sag, two dips or a bloom; the same note again,
@@ -1245,7 +1244,7 @@ static void esh_set(int c, int shape, float len, float d)
 /* a lead's note, as the phrase plays it: hold its length in seconds */
 static void esh_note(int c, int note, float vel, float hold)
 {
-	if (!esh_on || !ph_piece || esh_kind(CH[c].voice) != 1)
+	if (!ESH_LIVE || esh_kind(CH[c].voice) != 1)
 		return;
 	const int iv = esh[c].last ? note - esh[c].last : 99;
 	const float gap = esh[c].t - esh[c].len;            /* (past the last note's end: a breath, if long) */
@@ -1289,7 +1288,7 @@ static void esh_control(float dt)
 {
 	sw_b = ESH_LIVE ? 0.4f : 1.0f;                      /* (the swell's beating second carrier: less of it) */
 	sw_g = ESH_LIVE ? 1.3f : 1.0f;
-	if (!esh_on || !ph_piece) {
+	if (!ESH_LIVE) {
 		for (int c = 0; c < GL_NCH; c++) {
 			esh[c].dip = esh[c].att = 0.0f;
 			esh[c].pg = CH[c].glow;
@@ -1348,7 +1347,6 @@ void ph_trace(int ch, int note, float hold);   /* (a test build's hook: each phr
 #endif
 static void ph_fire_now(chan *c, int ch, int note, float vel, float hold, float emph)
 {
-	esh_note(ch, note, vel, hold);
 #ifdef GL_PH_TRACE
 	ph_trace(ch, note, hold);
 #endif
