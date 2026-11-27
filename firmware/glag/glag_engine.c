@@ -1154,14 +1154,16 @@ static void nv_render(nvoice *v, float *out)
 	v->pc = pc; v->pm = pm; v->amp = amp; v->idx = idx;
 }
 
-/* swell: one modulator shared by two detuned carriers (pc and pc2) */
+/* swell: one modulator shared by two detuned carriers (pc and pc2); (audition: the noir songs'
+ * shaped envelopes take the second, which beats against the first, down to sw_b, made up by sw_g) */
+static float sw_b = 1.0f, sw_g = 1.0f;
 static void nv_render_dual(nvoice *v, float *out)
 {
 	uint32_t pc = v->pc, pc2 = v->pc2, pm = v->pm, ic = v->ic, ic2 = v->ic2, im = v->im;
 	float amp = v->amp, ai = v->ainc, idx = v->idx, ii = v->iinc;
 	for (uint32_t i = 0; i < VSUB; i++) {
 		uint32_t m = (uint32_t)(int32_t)(SIN[pm >> TBL_SHIFT] * idx);
-		out[i] += (sin_u(pc + m) + sin_u(pc2 + m)) * amp;
+		out[i] += (sin_u(pc + m) + sw_b * sin_u(pc2 + m)) * (amp * sw_g);
 		pm += im;
 		pc += ic;
 		pc2 += ic2;

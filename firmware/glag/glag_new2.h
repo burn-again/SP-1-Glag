@@ -27,6 +27,10 @@
 
 /* (the noir side's phrasing and its arc, defined below; the brushes follow it) */
 static uint8_t ph_style, ph_piece;
+static uint8_t esh_on;                              /* (the shaped envelopes, below: on and a noir song) */
+#define ESH_LIVE (esh_on && ph_piece)
+/* shaped, a lead cut off by its next note lets go over 0.6 s, not in a snap */
+#define ESH_LETGO(t) (ESH_LIVE ? 0.6f : (t))
 static float c_int(void);
 
 /* ---- the phrase loops (horns, cello). A channel's loop is in its bells' memory (a voice that is
@@ -128,6 +132,11 @@ static void line_fire(chan *c, int ch, int note, float vel, float hold, float em
 		if ((int)(v->note + 0.5f) == note && !v->mnote)
 			same = v;
 		else if (!v->mnote) {
+			if (ESH_LIVE) {                       /* (shaped: a legato crossfade, the last note held a */
+				if (v->stage != ST_REL && v->hold > 0.25f)   /* moment as the next swells in, then let go as written) */
+					v->hold = 0.25f;
+				continue;
+			}
 			v->hold = -1.0f;                      /* (a quick release: the bow leaves it) */
 			if (v->stage != ST_IDLE)
 				v->stage = ST_REL;
@@ -194,7 +203,7 @@ static void horn_control(chan *c, int ch, float dt)
 	const float sdt = dt * speed;
 	ph_pending(c, ch, sdt);
 	/* a slow swell in: a quarter to two thirds of a second (TONE quicker) */
-	const float att = (tpt ? 0.22f : 0.28f) + 0.4f * (1.0f - tone), rel = 0.45f + 1.0f * len;
+	const float att = (tpt ? 0.22f : 0.28f) + 0.4f * (1.0f - tone), rel = (0.45f + 1.0f * len) * (ESH_LIVE ? 2.0f : 1.0f);   /* (shaped: the end of a phrase let go as gently as written: the level is the breath squared) */
 	for (int i = 0; i < 3; i++) {
 		nvoice *v = &c->v[i];
 		if (v->stage == ST_IDLE && v->amp <= 0.0f) {
@@ -214,7 +223,7 @@ static void horn_control(chan *c, int ch, float dt)
 			if (v->hold <= 0.0f && !v->mnote)
 				v->stage = ST_REL;
 		} else if (v->stage == ST_REL) {
-			v->env *= dcoef(v->hold < -0.5f ? 0.15f : rel, sdt);
+			v->env *= dcoef(v->hold < -0.5f ? ESH_LETGO(0.15f) : rel, sdt);
 			if (v->env < 0.0005f) {
 				v->env = 0.0f;
 				v->stage = ST_IDLE;
@@ -436,7 +445,7 @@ static void cello_control(chan *c, int ch, float dt)
 			if (v->hold <= 0.0f && !v->mnote)
 				v->stage = ST_REL;
 		} else if (v->stage == ST_REL) {
-			v->env *= dcoef(v->hold < -0.5f ? 0.25f : rel, sdt);
+			v->env *= dcoef(v->hold < -0.5f ? ESH_LETGO(0.25f) : rel, sdt);
 			if (v->env < 0.0005f) {
 				v->env = 0.0f;
 				v->stage = ST_IDLE;
@@ -1171,16 +1180,19 @@ static void ph_fit(chan *c, int part, int lo, int hi, int vib)
  * through them a bar or two long. And they make room: another instrument coming in, the leads and
  * drones give way a little (the drones more for a lead), a lead pushing out a note of its own
  * comes back through (the bass and the brushes keep time: they are not made room for). Only ever down from the level as written (to ~-6 dB a lead, ~-7 the rest),
- * glided and slewed (never faster than ~18 dB a second), so no attack or decay gets sharper. The
+ * glided and slewed (never faster than ~9 dB a second), so no attack or decay gets sharper. The
+ * loudest long notes reach their peak and then fade through the rest, and a held chord fades a
+ * little after its peak. Shaped, a lead cut off by its next note lets go over 0.6 s (not in a
+ * snap; a note changing, the last is held a quarter second as the next swells in, then let go
+ * as written), and the swell's second carrier, beating against the first, is brought down to 0.4. The
  * bass, upright, vibes and Rhodes are left as they are, but heard. Its own dice: the notes are the
  * same on or off ---- */
-static uint8_t esh_on;
 void gl_env_shape(int on) { esh_on = (uint8_t)(on != 0); }
 enum { ES_FLAT, ES_SAG, ES_BLOOM, ES_TWIST, ES_LEAN, ES_PUSH };
 static struct {
 	float t, len, depth, dip;                      /* the contour: time in, its length, depth; the dip now */
 	float room, room_t, room_amt;                  /* making room for another */
-	float pg, end;                                 /* the glow a tick ago (a rise: a note); when the last note ended */
+	float pg, fade, fpk;                           /* the glow a tick ago (a rise: a note); after its peak, the fade: how far, from where */
 	int8_t last;                                   /* the lead's last note */
 	uint8_t shape, chord;
 } esh[GL_NCH];
@@ -1217,12 +1229,16 @@ static float esh_curve(int shape, float u, float d)
 	default:       return 0.0f;
 	}
 }
+/* where each contour peaks (u): the fade, if any, starts there */
+static const float ESH_PEAK[6] = {0.1f, 0.1f, 0.6f, 0.1f, 0.1f, 0.25f};
 static void esh_set(int c, int shape, float len, float d)
 {
 	esh[c].shape = (uint8_t)shape;
 	esh[c].len = len;
 	esh[c].depth = d;
 	esh[c].t = 0.0f;
+	esh[c].fade = 0.0f;
+	esh[c].fpk = ESH_PEAK[shape];
 }
 /* a lead's note, as the phrase plays it: hold its length in seconds */
 static void esh_note(int c, int note, float vel, float hold)
@@ -1251,20 +1267,26 @@ static void esh_note(int c, int note, float vel, float hold)
 		sh = r < 0.4f ? ES_SAG : r < 0.7f ? ES_TWIST : ES_BLOOM;    /* a step */
 	float d = 0.25f + 0.2f * esh_rnd() + (hold > 3.0f ? 0.05f : 0.0f) + 0.05f * (1.0f - vel);
 	esh_set(c, sh, hold, clampf(d, 0.0f, 0.5f));
+	/* the loudest long notes: their peak, then fading through the rest (to -2 .. -4.5 dB) */
+	if (hold >= 1.5f && vel >= 0.6f)
+		esh[c].fade = 0.2f + 0.2f * clampf((vel - 0.6f) * 2.5f, 0.0f, 1.0f);
 }
 static void esh_drone(int c, float bar, int kind)
 {
 	const float r = esh_rnd();
-	if (kind == 2)
+	if (kind == 2) {
 		esh_set(c, r < 0.3f ? ES_BLOOM : r < 0.6f ? ES_SAG : r < 0.8f ? ES_TWIST : ES_LEAN,
 		        bar * (2.0f + 2.0f * esh_rnd()), 0.3f + 0.25f * esh_rnd());
-	else
+		esh[c].fade = 0.12f + 0.12f * esh_rnd();         /* a chord held: after its peak, a little fading */
+	} else
 		esh_set(c, r < 0.15f ? ES_FLAT : r < 0.6f ? ES_SAG : r < 0.8f ? ES_TWIST : ES_BLOOM,
 		        bar * (1.0f + 1.5f * esh_rnd()), 0.25f + 0.2f * esh_rnd());
 }
 /* each control tick: who began a note; the contours move on; the dips go onto the channels' levels */
 static void esh_control(float dt)
 {
+	sw_b = ESH_LIVE ? 0.4f : 1.0f;                      /* (the swell's beating second carrier: less of it) */
+	sw_g = ESH_LIVE ? 1.3f : 1.0f;
 	if (!esh_on || !ph_piece) {
 		for (int c = 0; c < GL_NCH; c++) {
 			esh[c].dip = 0.0f;
@@ -1273,7 +1295,7 @@ static void esh_control(float dt)
 		return;
 	}
 	const float bar = 4.0f * 60.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
-	const float k = dt / (0.12f + dt), slew = 1.0f * dt;   /* (glided, and never faster than ~18 dB a second) */
+	const float k = dt / (0.2f + dt), slew = 0.5f * dt;   /* (glided, and never faster than ~9 dB a second) */
 	float on[GL_NCH];
 	for (int c = 0; c < GL_NCH; c++) {
 		on[c] = CH[c].glow > esh[c].pg + 0.03f ? clampf(CH[c].glow, 0.4f, 1.0f) : 0.0f;
@@ -1310,8 +1332,10 @@ static void esh_control(float dt)
 			esh_drone(c, bar, 2);
 		} else if (kind == 3 && (esh[c].len <= 0.0f || esh[c].t >= esh[c].len))
 			esh_drone(c, bar, 3);
-		const float sh = esh[c].t < esh[c].len ? esh_curve(esh[c].shape, esh[c].t / esh[c].len, esh[c].depth) : 0.0f;
-		const float want = 1.0f - (1.0f - sh) * (1.0f - esh[c].room);
+		const float u = esh[c].t / (esh[c].len > 0.0f ? esh[c].len : 1.0f);
+		const float sh = esh[c].t < esh[c].len ? esh_curve(esh[c].shape, u, esh[c].depth) : 0.0f;
+		const float fd = esh[c].t < esh[c].len ? esh[c].fade * esh_s01((u - esh[c].fpk) / (1.0f - esh[c].fpk)) : 0.0f;
+		const float want = clampf(1.0f - (1.0f - sh) * (1.0f - fd) * (1.0f - esh[c].room), 0.0f, 0.55f);   /* (all told, never past ~-7 dB) */
 		esh[c].dip += clampf((want - esh[c].dip) * k, -slew, slew);
 	}
 }
