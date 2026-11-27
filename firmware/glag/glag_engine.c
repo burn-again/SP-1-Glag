@@ -1156,7 +1156,7 @@ static void nv_render(nvoice *v, float *out)
 
 /* swell: one modulator shared by two detuned carriers (pc and pc2); (audition: the noir songs'
  * shaped envelopes take the second, which beats against the first, down to sw_b, made up by sw_g) */
-static float sw_b = 1.0f, sw_g = 1.0f;
+static float sw_b = 1.0f, sw_g = 1.0f, sw_k[GL_NCH][NV];   /* (sw_k: each breath's share of the detune, 0 as written) */
 static void nv_render_dual(nvoice *v, float *out)
 {
 	uint32_t pc = v->pc, pc2 = v->pc2, pm = v->pm, ic = v->ic, ic2 = v->ic2, im = v->im;
@@ -2648,6 +2648,8 @@ static void chan_control(chan *c, int ch, float dt)
 						v->vel = 0.5f + 0.2f * rnd();
 						v->ratio = ratio;
 						c->glow = 0.6f;
+						/* (shaped: each breath its own beat, as fast as written or slower, to a third) */
+						sw_k[ch][i] = ESH_LIVE && c->voice == GV_SWELL ? 0.33f + 0.67f * esh_rnd() : 0.0f;
 					}
 				} else {
 					c->cyc[i] += sdt / (cycle * PAD_FACTOR[i]);
@@ -2722,7 +2724,7 @@ static void chan_control(chan *c, int ch, float dt)
 			float hz = mtof(v->note + detune * (float)(i - 1)) * speed * pbend * vib;
 			v->ic = hz_inc(hz);
 			v->im = hz_inc(hz * ratio);
-			v->ic2 = hz_inc(hz * spread);
+			v->ic2 = hz_inc(hz * (sw_k[ch][i] > 0.0f ? fexp2((4.0f + 14.0f * chr) * sw_k[ch][i] * (1.0f / 1200.0f)) : spread));
 		}
 		break;
 	}
@@ -4837,7 +4839,7 @@ static void control(float dt)
 		float l = P.ch[c][CP_LEVEL];
 		const float dg = (duck_mask >> c) & 1u ? -dt / 0.15f : dt / 2.0f;   /* the duck (duck_gov) */
 		duck_g[c] = clampf(duck_g[c] + dg, 0.0f, 1.0f);
-		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c] * duck_g[c] * (1.0f - esh[c].dip);
+		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c] * duck_g[c] * (1.0f - esh[c].att);
 	}
 
 	/* the space (the patch-dependent parts are in derive()) */

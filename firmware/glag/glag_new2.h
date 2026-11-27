@@ -1184,13 +1184,15 @@ static void ph_fit(chan *c, int part, int lo, int hi, int vib)
  * loudest long notes reach their peak and then fade through the rest, and a held chord fades a
  * little after its peak. Shaped, a lead cut off by its next note lets go over 0.6 s (not in a
  * snap; a note changing, the last is held a quarter second as the next swells in, then let go
- * as written), and the swell's second carrier, beating against the first, is brought down to 0.4. The
+ * as written), and the swell's second carrier, beating against the first, is brought down to 0.4, each breath
+ * beating at its own pace (as written or slower, to a third). And the leads and drones sit 4 dB
+ * under their level as written. The
  * bass, upright, vibes and Rhodes are left as they are, but heard. Its own dice: the notes are the
  * same on or off ---- */
 void gl_env_shape(int on) { esh_on = (uint8_t)(on != 0); }
 enum { ES_FLAT, ES_SAG, ES_BLOOM, ES_TWIST, ES_LEAN, ES_PUSH };
 static struct {
-	float t, len, depth, dip;                      /* the contour: time in, its length, depth; the dip now */
+	float t, len, depth, dip, att;                 /* the contour: time in, its length, depth; the dip now; all it takes off */
 	float room, room_t, room_amt;                  /* making room for another */
 	float pg, fade, fpk;                           /* the glow a tick ago (a rise: a note); after its peak, the fade: how far, from where */
 	int8_t last;                                   /* the lead's last note */
@@ -1289,7 +1291,7 @@ static void esh_control(float dt)
 	sw_g = ESH_LIVE ? 1.3f : 1.0f;
 	if (!esh_on || !ph_piece) {
 		for (int c = 0; c < GL_NCH; c++) {
-			esh[c].dip = 0.0f;
+			esh[c].dip = esh[c].att = 0.0f;
 			esh[c].pg = CH[c].glow;
 		}
 		return;
@@ -1305,7 +1307,7 @@ static void esh_control(float dt)
 	for (int c = 0; c < GL_NCH; c++) {
 		const int kind = esh_kind(CH[c].voice);
 		if (!kind) {
-			esh[c].dip = 0.0f;
+			esh[c].dip = esh[c].att = 0.0f;
 			continue;
 		}
 		/* making room: another coming in (a lead, for a drone, more) */
@@ -1337,6 +1339,8 @@ static void esh_control(float dt)
 		const float fd = esh[c].t < esh[c].len ? esh[c].fade * esh_s01((u - esh[c].fpk) / (1.0f - esh[c].fpk)) : 0.0f;
 		const float want = clampf(1.0f - (1.0f - sh) * (1.0f - fd) * (1.0f - esh[c].room), 0.0f, 0.55f);   /* (all told, never past ~-7 dB) */
 		esh[c].dip += clampf((want - esh[c].dip) * k, -slew, slew);
+		/* the held: the leads and drones 4 dB under as written (the brushes, the rest, as they are) */
+		esh[c].att = 1.0f - (1.0f - esh[c].dip) * (kind == 3 ? 1.0f : 0.631f);
 	}
 }
 #ifdef GL_PH_TRACE
