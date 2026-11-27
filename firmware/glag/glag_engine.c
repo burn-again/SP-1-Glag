@@ -4740,6 +4740,7 @@ static void control(float dt)
 	key_tick(dt);
 	autof_tick();
 	tide_control(dt);                         /* (a space piece's tide: nothing elsewhere) */
+	esh_control(dt);                          /* (the noir songs' shaped envelopes, if on: nothing else) */
 	if (cmd_panic != seen_panic) {
 		seen_panic = cmd_panic;
 		for (int c = 0; c < GL_NCH; c++) {
@@ -4834,7 +4835,7 @@ static void control(float dt)
 		float l = P.ch[c][CP_LEVEL];
 		const float dg = (duck_mask >> c) & 1u ? -dt / 0.15f : dt / 2.0f;   /* the duck (duck_gov) */
 		duck_g[c] = clampf(duck_g[c] + dg, 0.0f, 1.0f);
-		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c] * duck_g[c];
+		lvl_ch[c] = l * l * CH[c].fade * w_lvl[c] * duck_g[c] * (1.0f - esh[c].dip);
 	}
 
 	/* the space (the patch-dependent parts are in derive()) */

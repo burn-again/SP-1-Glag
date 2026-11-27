@@ -171,6 +171,9 @@ float gl_space_now(int k);
 /* audition: the noir songs' room and echo: the room's decay time and the echo's feedback as shares
  * of the usual (0.38, 0.62; 1, 1 the old long ones); from the next gl_piece */
 void gl_room_noir(float room, float echo);
+/* audition: the noir songs' shaped envelopes (the leads' long notes, the drones and brushes
+ * breathing in slow contours); off by default */
+void gl_env_shape(int on);
 void gl_phrase_style(int st);         /* audition: the noir side's phrasing, 0 A (as first written), 1 B (after the listening notes) */          /* audition only (the instrument page): these channels stay under MIDI, their sequencers resting */
 void gl_cho_share(int m);            /* audition only: one chorus for the Strings and the Kit (1 Juno, 2 the Kit's) */
 void gl_rv_drift(int mode);          /* audition only: the Hall's lines drifting (1 grow/shrink, 2 diverge, 3 grow, 4 shrink) */
