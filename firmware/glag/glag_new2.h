@@ -275,16 +275,21 @@ static int horn_render(chan *c, float *A)
 			}
 			v->idx2 = z1; v->menv2 = z2;
 		} else {
-			const float br = v->idx * 0.45f;
+			/* the breath: less of it, and what comes out past the reed itself low-passed (~1.6 kHz,
+			 * idx2 its state): straight out it was white noise, a hiss over the tone */
+			const float br = v->idx * 0.36f;
+			float nl = v->idx2;
 			for (uint32_t j = 0; j < VSUB; j++) {
 				const float s = nb_saw(pc, ic);
 				const float n = nb_noise(&v->pm) * br * (0.6f + 0.4f * s);   /* breath riding the reed */
+				nl += 0.35f * (n - nl);
 				y1 += k * (s + n - y1);
 				y2 += k * (y1 - y2);
-				A[j] += (y2 + 0.25f * n * k) * amp;
+				A[j] += (y2 + 0.2f * nl * k) * amp;
 				pc += ic;
 				amp += ai;
 			}
+			v->idx2 = nl;
 		}
 		v->pc = pc; v->amp = amp; v->f1 = y1; v->f2 = y2;
 	}
@@ -1158,17 +1163,27 @@ static void ph_fit(chan *c, int part, int lo, int hi, int vib)
 		c->last_note = nt[n - 1];
 }
 /* ---- shaped envelopes (audition, the noir songs, off unless asked): the long notes breathe the
- * way players hold them. A lead's long note (the sax, trumpet, cello, breath) takes a contour of its
- * own: sagging in the middle and coming back, blooming from soft then easing off, two gentle dips,
- * or leaning down through it; the drones (pad, choir, swell, organ, strings, drone) and the brushes
- * drift through contours a bar to four long. Only ever down from the level as written (2-5 dB at
- * the deepest), glided and slewed (never faster than ~12 dB a second), so no attack or decay gets
- * sharper. The bass, the upright, the
- * vibes and the Rhodes are left as they are. Its own dice: the notes are the same on or off ---- */
+ * way players hold them, and listen. A lead's note (the sax, trumpet, cello, breath) takes a contour
+ * from how it comes: rising, it is pushed out (a lift into it); falling, it relaxes (leaning down
+ * through it, or sagging and coming back); a step, a sag, two dips or a bloom; the same note again,
+ * re-articulated; the first after a breath, blooming from soft. The drones (pad, choir, swell, organ,
+ * strings, drone) take a new contour at every chord and every note of their own; the brushes drift
+ * through them a bar or two long. And they make room: another instrument coming in, the leads and
+ * drones give way a little (the drones more for a lead), a lead pushing out a note of its own
+ * comes back through (the bass and the brushes keep time: they are not made room for). Only ever down from the level as written (to ~-6 dB a lead, ~-7 the rest),
+ * glided and slewed (never faster than ~18 dB a second), so no attack or decay gets sharper. The
+ * bass, upright, vibes and Rhodes are left as they are, but heard. Its own dice: the notes are the
+ * same on or off ---- */
 static uint8_t esh_on;
 void gl_env_shape(int on) { esh_on = (uint8_t)(on != 0); }
-enum { ES_FLAT, ES_SAG, ES_BLOOM, ES_TWIST, ES_LEAN };
-static struct { float t, len, depth, dip; uint8_t shape; } esh[GL_NCH];
+enum { ES_FLAT, ES_SAG, ES_BLOOM, ES_TWIST, ES_LEAN, ES_PUSH };
+static struct {
+	float t, len, depth, dip;                      /* the contour: time in, its length, depth; the dip now */
+	float room, room_t, room_amt;                  /* making room for another */
+	float pg, end;                                 /* the glow a tick ago (a rise: a note); when the last note ended */
+	int8_t last;                                   /* the lead's last note */
+	uint8_t shape, chord;
+} esh[GL_NCH];
 static uint32_t esh_rng = 0x9E3779B9u;
 static float esh_rnd(void)
 {
@@ -1182,9 +1197,9 @@ static float esh_rnd(void)
 static int esh_kind(int v)
 {
 	if (v == GV_SAX || v == GV_TRUMPET || v == GV_CELLO || v == GV_BREATH)
-		return 1;                                  /* a lead: a contour per long note */
+		return 1;                                  /* a lead: a contour per note */
 	if (v == GV_PAD || v == GV_CHOIR || v == GV_DRONE || v == GV_SWELL || v == GV_ORGAN || v == GV_STRINGS)
-		return 2;                                  /* a drone: contours one after another */
+		return 2;                                  /* a drone: a contour per chord, per note */
 	return v == GV_BRUSH ? 3 : 0;
 }
 static float esh_s01(float x) { x = clampf(x, 0.0f, 1.0f); return x * x * (3.0f - 2.0f * x); }
@@ -1195,53 +1210,108 @@ static float esh_curve(int shape, float u, float d)
 	u = clampf(u, 0.0f, 1.0f);
 	switch (shape) {
 	case ES_SAG:   return d * (0.5f - 0.5f * esh_cos(u));                       /* down in the middle, back */
-	case ES_BLOOM: return d * (1.0f - esh_s01(u * (1.0f / 0.6f))) + 0.5f * d * esh_s01((u - 0.6f) * 2.5f);
+	case ES_BLOOM: return d * (1.0f - esh_s01(u * (1.0f / 0.6f))) + 0.45f * d * esh_s01((u - 0.6f) * 2.5f);
 	case ES_TWIST: return d * (0.5f - 0.5f * esh_cos(2.0f * u)) * (u < 0.5f ? 1.0f : 0.6f);   /* two dips, the second less */
-	case ES_LEAN:  return d * esh_s01((u - 0.15f) * (1.0f / 0.7f));              /* full, then leaning down */
+	case ES_LEAN:  return d * esh_s01((u - 0.1f) * (1.0f / 0.75f));              /* full, then leaning down */
+	case ES_PUSH:  return 0.55f * d * (1.0f - esh_s01(u * 4.0f)) + 0.6f * d * esh_s01((u - 0.45f) * 1.8f);   /* lifted into, easing off */
 	default:       return 0.0f;
 	}
 }
-static void esh_pick(int c, float len, int kind)
+static void esh_set(int c, int shape, float len, float d)
 {
-	const float r = esh_rnd();
-	if (kind == 1)
-		esh[c].shape = (uint8_t)(r < 0.2f ? ES_FLAT : r < 0.45f ? ES_SAG : r < 0.7f ? ES_BLOOM : r < 0.82f ? ES_TWIST : ES_LEAN);
-	else if (kind == 2)
-		esh[c].shape = (uint8_t)(r < 0.25f ? ES_FLAT : r < 0.55f ? ES_SAG : r < 0.8f ? ES_BLOOM : ES_TWIST);
-	else
-		esh[c].shape = (uint8_t)(r < 0.15f ? ES_FLAT : r < 0.6f ? ES_SAG : r < 0.8f ? ES_TWIST : ES_BLOOM);
-	esh[c].depth = (kind == 1 ? 0.2f : 0.25f) + (kind == 1 ? 0.15f : 0.2f) * esh_rnd();   /* -2 to -3.7 dB a lead; to -5 the rest */
+	esh[c].shape = (uint8_t)shape;
 	esh[c].len = len;
+	esh[c].depth = d;
 	esh[c].t = 0.0f;
 }
 /* a lead's note, as the phrase plays it: hold its length in seconds */
-static void esh_note(int c, float hold)
+static void esh_note(int c, int note, float vel, float hold)
 {
 	if (!esh_on || !ph_piece || esh_kind(CH[c].voice) != 1)
 		return;
-	if (hold < 1.0f) {                             /* short notes as they are */
-		esh[c].shape = ES_FLAT;
-		esh[c].len = hold;
-		esh[c].t = 0.0f;
+	const int iv = esh[c].last ? note - esh[c].last : 99;
+	const float gap = esh[c].t - esh[c].len;            /* (past the last note's end: a breath, if long) */
+	esh[c].last = (int8_t)note;
+	esh[c].room_amt *= 0.3f;                            /* pushing out a note of its own: back through */
+	if (hold < 0.6f) {                                  /* short notes as they are */
+		esh_set(c, ES_FLAT, hold, 0.0f);
 		return;
 	}
-	esh_pick(c, hold, 1);
+	const float r = esh_rnd();
+	int sh;
+	if (iv == 99 || gap > 1.5f)
+		sh = r < 0.6f ? ES_BLOOM : ES_PUSH;             /* after a breath: from soft */
+	else if (iv > 2)
+		sh = r < 0.5f ? ES_PUSH : r < 0.8f ? ES_BLOOM : ES_TWIST;   /* rising: pushed out */
+	else if (iv < -2)
+		sh = r < 0.45f ? ES_LEAN : r < 0.8f ? ES_SAG : ES_FLAT;     /* falling: relaxing */
+	else if (iv == 0)
+		sh = r < 0.5f ? ES_TWIST : ES_SAG;              /* the same note again: re-articulated */
+	else
+		sh = r < 0.4f ? ES_SAG : r < 0.7f ? ES_TWIST : ES_BLOOM;    /* a step */
+	float d = 0.25f + 0.2f * esh_rnd() + (hold > 3.0f ? 0.05f : 0.0f) + 0.05f * (1.0f - vel);
+	esh_set(c, sh, hold, clampf(d, 0.0f, 0.5f));
 }
-/* each control tick: the contours move on; the dip goes onto the channel's level */
+static void esh_drone(int c, float bar, int kind)
+{
+	const float r = esh_rnd();
+	if (kind == 2)
+		esh_set(c, r < 0.3f ? ES_BLOOM : r < 0.6f ? ES_SAG : r < 0.8f ? ES_TWIST : ES_LEAN,
+		        bar * (2.0f + 2.0f * esh_rnd()), 0.3f + 0.25f * esh_rnd());
+	else
+		esh_set(c, r < 0.15f ? ES_FLAT : r < 0.6f ? ES_SAG : r < 0.8f ? ES_TWIST : ES_BLOOM,
+		        bar * (1.0f + 1.5f * esh_rnd()), 0.25f + 0.2f * esh_rnd());
+}
+/* each control tick: who began a note; the contours move on; the dips go onto the channels' levels */
 static void esh_control(float dt)
 {
+	if (!esh_on || !ph_piece) {
+		for (int c = 0; c < GL_NCH; c++) {
+			esh[c].dip = 0.0f;
+			esh[c].pg = CH[c].glow;
+		}
+		return;
+	}
 	const float bar = 4.0f * 60.0f / gl_tempo_bpm(P.g[GP_TEMPO]);
-	const float k = dt / (0.12f + dt), slew = 0.9f * dt;   /* (glided, and never faster than ~12 dB a second) */
+	const float k = dt / (0.12f + dt), slew = 1.0f * dt;   /* (glided, and never faster than ~18 dB a second) */
+	float on[GL_NCH];
 	for (int c = 0; c < GL_NCH; c++) {
-		const int kind = esh_on && ph_piece ? esh_kind(CH[c].voice) : 0;
+		on[c] = CH[c].glow > esh[c].pg + 0.03f ? clampf(CH[c].glow, 0.4f, 1.0f) : 0.0f;
+		esh[c].pg = CH[c].glow;
+	}
+	const uint8_t chord = (uint8_t)chord_count;
+	for (int c = 0; c < GL_NCH; c++) {
+		const int kind = esh_kind(CH[c].voice);
 		if (!kind) {
 			esh[c].dip = 0.0f;
 			continue;
 		}
+		/* making room: another coming in (a lead, for a drone, more) */
+		for (int o = 0; o < GL_NCH; o++) {
+			if (o == c || on[o] <= 0.0f)
+				continue;
+			const int ko = esh_kind(CH[o].voice);
+			if (ko == 3 || (!ko && CH[o].voice != GV_RHODES && CH[o].voice != GV_VIBES))
+				continue;                              /* (the bass and the brushes keep time: no one gives way to them) */
+			const float amt = on[o] * (kind == 2 && ko == 1 ? 0.3f : kind == 1 ? 0.18f : 0.14f);
+			const float now = esh[c].room_amt * (esh[c].room_t < 0.3f ? 1.0f : fexp2(-(esh[c].room_t - 0.3f) * 0.96f));
+			if (amt > now) {
+				esh[c].room_amt = amt;
+				esh[c].room_t = 0.0f;
+			}
+		}
+		esh[c].room_t += dt;
+		const float rt = esh[c].room_t;
+		esh[c].room = esh[c].room_amt * (rt < 0.3f ? esh_s01(rt * (1.0f / 0.3f)) : fexp2(-(rt - 0.3f) * 0.96f));   /* in over 0.3 s, back over ~1.5 */
+		/* the contour */
 		esh[c].t += dt;
-		if (kind != 1 && (esh[c].len <= 0.0f || esh[c].t >= esh[c].len))
-			esh_pick(c, bar * (kind == 3 ? 1.0f + 1.5f * esh_rnd() : 1.5f + 2.5f * esh_rnd()), kind);
-		const float want = esh[c].t < esh[c].len ? esh_curve(esh[c].shape, esh[c].t / esh[c].len, esh[c].depth) : 0.0f;
+		if (kind == 2 && (chord != esh[c].chord || on[c] > 0.0f || esh[c].len <= 0.0f || esh[c].t >= esh[c].len)) {
+			esh[c].chord = chord;                          /* a new chord, a note of its own: a new contour */
+			esh_drone(c, bar, 2);
+		} else if (kind == 3 && (esh[c].len <= 0.0f || esh[c].t >= esh[c].len))
+			esh_drone(c, bar, 3);
+		const float sh = esh[c].t < esh[c].len ? esh_curve(esh[c].shape, esh[c].t / esh[c].len, esh[c].depth) : 0.0f;
+		const float want = 1.0f - (1.0f - sh) * (1.0f - esh[c].room);
 		esh[c].dip += clampf((want - esh[c].dip) * k, -slew, slew);
 	}
 }
@@ -1250,7 +1320,7 @@ void ph_trace(int ch, int note, float hold);   /* (a test build's hook: each phr
 #endif
 static void ph_fire_now(chan *c, int ch, int note, float vel, float hold, float emph)
 {
-	esh_note(ch, hold);
+	esh_note(ch, note, vel, hold);
 #ifdef GL_PH_TRACE
 	ph_trace(ch, note, hold);
 #endif
